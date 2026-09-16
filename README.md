@@ -6,6 +6,10 @@ Self-hosted versioned storage. Implementation has started with the SCT-6 develop
 scaffold and SCT-7 protocol contracts. Storage operations, authentication, retention and administration are not
 implemented yet; all five milestones remain required.
 
+The primary repository is hosted on Fucina. The public
+[GitHub mirror](https://github.com/lelloman/sct) updates automatically on pushes
+and every ten minutes. Maintainers push to Fucina through `origin`.
+
 ## Development
 
 Prerequisites: Rust 1.96.0 (installed by rustup from `rust-toolchain.toml`), Node.js
