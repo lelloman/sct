@@ -1,0 +1,25 @@
+//! HTTP translation and runtime composition; domain decisions belong in sct-core.
+
+use std::path::PathBuf;
+
+use axum::{Router, extract::State, http::StatusCode, routing::get};
+use sct_core::catalog::Catalog;
+use tower_http::services::ServeDir;
+
+pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
+    Router::new()
+        .route("/health/live", get(|| async { "ok\n" }))
+        .route("/health/database", get(database_health))
+        // Reserve API paths so missing API operations never return web HTML.
+        .route("/api", get(|| async { StatusCode::NOT_FOUND }))
+        .route("/api/{*path}", get(|| async { StatusCode::NOT_FOUND }))
+        .fallback_service(ServeDir::new(web_directory))
+        .with_state(catalog)
+}
+
+async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {
+    match catalog {
+        Some(catalog) if catalog.ping().await.is_ok() => StatusCode::NO_CONTENT,
+        _ => StatusCode::SERVICE_UNAVAILABLE,
+    }
+}

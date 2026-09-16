@@ -1,0 +1,20 @@
+[package]
+name = "sct-server"
+description = "ScT HTTP server and runtime wiring"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+sct-core.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+
+[dev-dependencies]
+sct-client.workspace = true
+reqwest.workspace = true
+
+[lints]
+workspace = true

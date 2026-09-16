@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+sct_repo="$PWD"
+sct_fixture="$(mktemp -d)"
+trap 'rm -rf "$sct_fixture"' EXIT
+
+# Copy only distributable crates: the sample has no access to core/server or
+# workspace-inherited manifests. cargo package verifies package normalization.
+cargo package --locked -p sct-protocol --allow-dirty --no-verify
+cargo package --locked -p sct-client --allow-dirty --no-verify --exclude-lockfile
+mkdir -p "$sct_fixture/vendor"
+tar -xzf target/package/sct-protocol-0.1.0.crate -C "$sct_fixture/vendor"
+tar -xzf target/package/sct-client-0.1.0.crate -C "$sct_fixture/vendor"
+cp -R examples/standalone-client/. "$sct_fixture/"
+cp Cargo.lock "$sct_fixture/Cargo.lock"
+cd "$sct_fixture"
+CARGO_TARGET_DIR="$sct_repo/target/standalone-client" cargo check --offline
+cargo tree --offline --prefix none > dependencies.txt
+if rg '^sct-(core|server) ' dependencies.txt; then
+  echo 'Standalone client unexpectedly depends on server internals' >&2
+  exit 1
+fi

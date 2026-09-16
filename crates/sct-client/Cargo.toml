@@ -1,0 +1,13 @@
+[package]
+name = "sct-client"
+description = "Standalone asynchronous ScT client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sct-protocol.workspace = true
+reqwest.workspace = true
+
+[lints]
+workspace = true

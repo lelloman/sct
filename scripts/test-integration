@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+sct_pg=""
+cleanup() {
+  if [[ -n "$sct_pg" ]]; then docker rm -f "$sct_pg" >/dev/null; fi
+}
+trap cleanup EXIT
+if [[ -z "${SCT_TEST_DATABASE_URL:-}" ]]; then
+  sct_pg="$(docker run --detach --rm -e POSTGRES_PASSWORD=sct-test -e POSTGRES_DB=sct_test -p 127.0.0.1::5432 postgres:17-alpine)"
+  for attempt in {1..60}; do
+    if docker exec "$sct_pg" pg_isready -h 127.0.0.1 -U postgres -d sct_test >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  docker exec "$sct_pg" pg_isready -h 127.0.0.1 -U postgres -d sct_test
+  sct_port="$(docker port "$sct_pg" 5432/tcp)"
+  export SCT_TEST_DATABASE_URL="postgres://postgres:sct-test@${sct_port}/sct_test"
+fi
+cargo test --locked -p sct-core --test postgres -- --ignored
