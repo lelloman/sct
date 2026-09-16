@@ -1,7 +1,18 @@
 :root {
+  --brand-light: #bfdbfe;
+  --brand-medium: #60a5fa;
+  --brand-primary: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-focus: #3b82f6;
+  --brand-subtle: #dbeafe;
+  --surface-page: #f9fafb;
+  --surface-panel: #fff;
+  --border-default: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
   font-family: system-ui, sans-serif;
-  color: #173a32;
-  background: #f7f7f0;
+  color: var(--text-primary);
+  background: var(--surface-page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -17,6 +28,10 @@ main {
 }
 
 .wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--brand-primary);
   font-weight: 800;
   font-size: 1.5rem;
   letter-spacing: -0.06em;
@@ -35,20 +50,21 @@ h1 {
 section {
   margin-top: 3rem;
   padding: 2rem;
-  background: white;
-  border: 1px solid #d9dfd4;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
   border-radius: 1rem;
 }
 
 section p {
   max-width: 38rem;
   line-height: 1.7;
-  color: #45594f;
+  color: var(--text-secondary);
 }
 
 .badge {
   display: inline-block;
-  background: #edf2e7;
+  color: var(--brand-hover);
+  background: var(--brand-subtle);
   padding: 0.4rem 0.75rem;
   border-radius: 2rem;
   font-size: 0.875rem;

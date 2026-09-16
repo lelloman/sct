@@ -1,3 +1,5 @@
+<img src="web/public/brand.svg" width="72" height="72" alt="ScT chest icon" />
+
 # ScT — Stipa ca Truova
 
 Self-hosted versioned storage. Implementation has started with the SCT-6 development
@@ -95,6 +97,7 @@ repository is needed.
 - [Architecture and product contract](ARCHITECTURE_PLAN.md)
 - [Ticket plan and amendments](TICKET_PLAN.md)
 - [Implementation prerequisites from the readiness review](docs/implementation-readiness.md)
+- [Approved icon and shared palette](docs/branding.md)
 
 Next: SCT-7 protocol foundations, followed by catalog/configuration/authentication,
 root provisioning, policies and namespace according to the recorded dependency graph.

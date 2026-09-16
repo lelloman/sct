@@ -1,6 +1,9 @@
 <template>
   <main>
-    <p class="wordmark">ScT</p>
+    <p class="wordmark">
+      <img src="/brand.svg" alt="" width="56" height="56" />
+      ScT
+    </p>
     <h1>Stipa ca Truova</h1>
     <p class="intro">A home for the files you want to keep.</p>
     <section aria-labelledby="status-heading">
