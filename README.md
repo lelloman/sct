@@ -3,7 +3,7 @@
 # ScT — Stipa ca Truova
 
 Self-hosted versioned storage. Implementation has started with the SCT-6 development
-scaffold. Storage operations, authentication, retention and administration are not
+scaffold and SCT-7 protocol contracts. Storage operations, authentication, retention and administration are not
 implemented yet; all five milestones remain required.
 
 ## Development
@@ -81,7 +81,7 @@ For formatting, run `cargo fmt --all` and `npm --prefix web run format`.
 
 | Component | Responsibility |
 | --- | --- |
-| `sct-protocol` | Public Rust-owned contracts; OpenAPI/TypeScript generation begins in SCT-7 |
+| `sct-protocol` | Public Rust-owned contracts with generated OpenAPI, JSON Schema and TypeScript |
 | `sct-client` | Standalone HTTP transport and later transfer/chunking operations; depends on protocol, never core/server |
 | `sct-core` | Application rules and catalog; later backend registration, byte adapters and a separate placement coordinator |
 | `sct-server` | Axum routes, Tokio runtime, configuration and worker wiring |
@@ -98,8 +98,9 @@ repository is needed.
 - [Ticket plan and amendments](TICKET_PLAN.md)
 - [Implementation prerequisites from the readiness review](docs/implementation-readiness.md)
 - [Approved icon and shared palette](docs/branding.md)
+- [Protocol contracts, generation and wire conventions](contracts/README.md)
 
-Next: SCT-7 protocol foundations, followed by catalog/configuration/authentication,
+Next: SCT-8 PostgreSQL catalog, followed by configuration/authentication,
 root provisioning, policies and namespace according to the recorded dependency graph.
 
 Technical references: [Axum serving](https://docs.rs/axum/0.8.9/axum/fn.serve.html),

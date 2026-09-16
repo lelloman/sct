@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mode="${1:-write}"
+if [[ "$mode" != write && "$mode" != check ]]; then
+  echo 'Usage: scripts/generate-contracts [write|check]' >&2
+  exit 2
+fi
+cargo run --locked --quiet -p sct-protocol --features codegen --bin sct-contracts -- "$mode" "$PWD"

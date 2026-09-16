@@ -8,13 +8,15 @@ publish = false
 
 [dependencies]
 sct-core.workspace = true
+sct-protocol.workspace = true
+uuid = { version = "1.26.0", features = ["v4"] }
 axum.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 
 [dev-dependencies]
 sct-client.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["json"] }
 
 [lints]
 workspace = true

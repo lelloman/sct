@@ -2,8 +2,15 @@
 
 use std::path::PathBuf;
 
-use axum::{Router, extract::State, http::StatusCode, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{any, get},
+};
 use sct_core::catalog::Catalog;
+use sct_protocol::{ErrorCode, ErrorResponse};
 use tower_http::services::ServeDir;
 
 pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
@@ -11,10 +18,24 @@ pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
         .route("/health/live", get(|| async { "ok\n" }))
         .route("/health/database", get(database_health))
         // Reserve API paths so missing API operations never return web HTML.
-        .route("/api", get(|| async { StatusCode::NOT_FOUND }))
-        .route("/api/{*path}", get(|| async { StatusCode::NOT_FOUND }))
+        .route("/api", any(api_not_implemented))
+        .route("/api/{*path}", any(api_not_implemented))
         .fallback_service(ServeDir::new(web_directory))
         .with_state(catalog)
+}
+
+async fn api_not_implemented() -> impl IntoResponse {
+    // Generate server correlation IDs; never echo unvalidated request headers.
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    let body = ErrorResponse::new(
+        id.parse().expect("UUID is a valid request ID"),
+        ErrorCode::UnsupportedOperation,
+    );
+    (
+        StatusCode::NOT_FOUND,
+        [("x-request-id", id), ("cache-control", "no-store".into())],
+        Json(body),
+    )
 }
 
 async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {

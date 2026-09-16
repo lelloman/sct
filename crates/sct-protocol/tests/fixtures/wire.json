@@ -1,0 +1,446 @@
+{
+  "valid": [
+    {
+      "name": "opaque root identity",
+      "schema": "RootId",
+      "data": "root_alpha"
+    },
+    {
+      "name": "Unicode entry name",
+      "schema": "EntryName",
+      "data": "Résumé 📦"
+    },
+    {
+      "name": "Unicode logical path",
+      "schema": "RootPath",
+      "data": "/資料/été.db"
+    },
+    {
+      "name": "largest exact JS count",
+      "schema": "ByteCount",
+      "data": 9007199254740991
+    },
+    {
+      "name": "manifest digest",
+      "schema": "ManifestId",
+      "data": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "default keep-one policy",
+      "schema": "RetentionPolicy",
+      "data": {
+        "mode": "strict",
+        "keep_versions": 1
+      }
+    },
+    {
+      "name": "explicit patch draft",
+      "schema": "DirectoryDraftBase",
+      "data": {
+        "root_id": "root_alpha",
+        "directory_id": "dir_a",
+        "expected_revision": "rev_a",
+        "base_version_id": "version_old",
+        "mode": "patch"
+      }
+    },
+    {
+      "name": "rename preserves entry ID",
+      "schema": "DraftEntryReference",
+      "data": {
+        "identity": {
+          "kind": "existing",
+          "entry_id": "entry_a"
+        },
+        "path": "/renamed.db",
+        "kind": "file",
+        "manifest_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "creation has explicit new identity",
+      "schema": "DraftEntryReference",
+      "data": {
+        "identity": {
+          "kind": "new",
+          "entry_id": "entry_new"
+        },
+        "path": "/recreated.db",
+        "kind": "file",
+        "manifest_id": null
+      }
+    },
+    {
+      "name": "retryable root busy",
+      "schema": "ErrorResponse",
+      "data": {
+        "request_id": "request_a",
+        "code": "root_busy",
+        "message": "Another operation owns this root; retry later.",
+        "retry": {
+          "kind": "after",
+          "delay_ms": 1000
+        },
+        "details": {
+          "kind": "busy",
+          "root_id": "root_alpha",
+          "operation_id": "op_a"
+        }
+      }
+    },
+    {
+      "name": "stale cursor refresh",
+      "schema": "ErrorResponse",
+      "data": {
+        "request_id": "request_b",
+        "code": "cursor_refresh_required",
+        "message": "The directory changed; restart the listing.",
+        "retry": {
+          "kind": "refresh",
+          "scope": "directory"
+        },
+        "details": null
+      }
+    },
+    {
+      "name": "mirror ordered independently of provider and membership",
+      "schema": "Placement",
+      "data": {
+        "kind": "mirror",
+        "backend_ids": [
+          "store_b",
+          "store_a"
+        ],
+        "read_policy": {
+          "candidates": [
+            {
+              "backend_id": "store_a",
+              "connection_timeout_ms": 1500,
+              "initial_response_timeout_ms": 2500,
+              "idle_timeout_ms": 15000,
+              "throughput_window_ms": 30000,
+              "minimum_bytes_per_second": 1024,
+              "startup_allowance_ms": 10000
+            },
+            {
+              "backend_id": "store_b",
+              "connection_timeout_ms": 1500,
+              "initial_response_timeout_ms": 2500,
+              "idle_timeout_ms": 15000,
+              "throughput_window_ms": 30000,
+              "minimum_bytes_per_second": 1024,
+              "startup_allowance_ms": 10000
+            }
+          ],
+          "overall_deadline_ms": null
+        }
+      }
+    },
+    {
+      "name": "unknown hints are distinct from health",
+      "schema": "BackendInspection",
+      "data": {
+        "id": "store_a",
+        "display_name": "Archive",
+        "adapter_kind": "example_adapter",
+        "hints": {
+          "expected_initial_response_ms": null,
+          "expected_bytes_per_second": null,
+          "expected_availability": null
+        },
+        "observed_health": "unknown",
+        "last_observed_at_ms": null
+      }
+    },
+    {
+      "name": "bounded listing snapshot",
+      "schema": "EntryPage",
+      "data": {
+        "directory_id": "dir_a",
+        "directory_revision": "rev_4",
+        "items": [
+          {
+            "id": "entry_a",
+            "root_id": "root_alpha",
+            "parent_id": "dir_a",
+            "name": "Résumé.db",
+            "kind": "file",
+            "revision": "rev_2",
+            "hidden": false,
+            "current_version_id": "version_a"
+          }
+        ],
+        "next_cursor": {
+          "token": "opaque_cursor",
+          "directory_id": "dir_a",
+          "directory_revision": "rev_4"
+        }
+      }
+    },
+    {
+      "name": "server-owned shared staging",
+      "schema": "AllocationInspection",
+      "data": {
+        "id": "alloc_staging",
+        "pool_id": "pool_a",
+        "owner": {
+          "kind": "server_staging"
+        },
+        "capacity_bytes": 1000000000,
+        "reserved_bytes": 500000000,
+        "occupied_bytes": 200000000,
+        "pending_cleanup_bytes": 100000000
+      }
+    },
+    {
+      "name": "missing required acknowledgement is not a committed receipt",
+      "schema": "UploadInspection",
+      "data": {
+        "id": "upload_a",
+        "root_id": "root_alpha",
+        "operation_id": "op_a",
+        "state": "open",
+        "expires_at_ms": 1800000000000,
+        "copies": [
+          {
+            "backend_id": "store_a",
+            "acknowledged_bytes": 1048576,
+            "state": "acknowledged"
+          },
+          {
+            "backend_id": "store_b",
+            "acknowledged_bytes": 0,
+            "state": "unavailable"
+          }
+        ],
+        "result": null
+      }
+    },
+    {
+      "name": "newline is legal inside an entry name",
+      "schema": "EntryName",
+      "data": ".\n"
+    },
+    {
+      "name": "newline is legal in a path component",
+      "schema": "RootPath",
+      "data": "/a\n"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "invalid RootId 1",
+      "schema": "RootId",
+      "data": ""
+    },
+    {
+      "name": "invalid RootId 2",
+      "schema": "RootId",
+      "data": "../secret"
+    },
+    {
+      "name": "invalid RootId 3",
+      "schema": "RootId",
+      "data": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "invalid EntryName 4",
+      "schema": "EntryName",
+      "data": "."
+    },
+    {
+      "name": "invalid EntryName 5",
+      "schema": "EntryName",
+      "data": ".."
+    },
+    {
+      "name": "invalid EntryName 6",
+      "schema": "EntryName",
+      "data": "a/b"
+    },
+    {
+      "name": "invalid EntryName 7",
+      "schema": "EntryName",
+      "data": "a\u0000b"
+    },
+    {
+      "name": "invalid EntryName 8",
+      "schema": "EntryName",
+      "data": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "invalid RootPath 9",
+      "schema": "RootPath",
+      "data": "relative"
+    },
+    {
+      "name": "invalid RootPath 10",
+      "schema": "RootPath",
+      "data": "/a/../b"
+    },
+    {
+      "name": "invalid RootPath 11",
+      "schema": "RootPath",
+      "data": "/a//b"
+    },
+    {
+      "name": "invalid RootPath 12",
+      "schema": "RootPath",
+      "data": "/a/"
+    },
+    {
+      "name": "invalid RootPath 13",
+      "schema": "RootPath",
+      "data": "/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "invalid ByteCount 14",
+      "schema": "ByteCount",
+      "data": -1
+    },
+    {
+      "name": "invalid ByteCount 15",
+      "schema": "ByteCount",
+      "data": 9007199254740992
+    },
+    {
+      "name": "invalid ByteCount 16",
+      "schema": "ByteCount",
+      "data": 0.5
+    },
+    {
+      "name": "invalid PageSize 17",
+      "schema": "PageSize",
+      "data": 0
+    },
+    {
+      "name": "invalid PageSize 18",
+      "schema": "PageSize",
+      "data": 1001
+    },
+    {
+      "name": "invalid Milliseconds 19",
+      "schema": "Milliseconds",
+      "data": 0
+    },
+    {
+      "name": "invalid VersionCount 20",
+      "schema": "VersionCount",
+      "data": 0
+    },
+    {
+      "name": "invalid ManifestId 21",
+      "schema": "ManifestId",
+      "data": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "invalid ChunkDigest 22",
+      "schema": "ChunkDigest",
+      "data": "deadbeef"
+    },
+    {
+      "name": "invalid CursorToken 23",
+      "schema": "CursorToken",
+      "data": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "unknown request field",
+      "schema": "RetentionPolicy",
+      "data": {
+        "mode": "strict",
+        "keep_versions": 1,
+        "secret": "must not be accepted"
+      }
+    },
+    {
+      "name": "mirror requires exactly two members",
+      "schema": "Placement",
+      "data": {
+        "kind": "mirror",
+        "backend_ids": [
+          "store_a"
+        ],
+        "read_policy": {
+          "candidates": [
+            {
+              "backend_id": "store_a",
+              "connection_timeout_ms": 1500,
+              "initial_response_timeout_ms": 2500,
+              "idle_timeout_ms": 15000,
+              "throughput_window_ms": 30000,
+              "minimum_bytes_per_second": 1024,
+              "startup_allowance_ms": 10000
+            },
+            {
+              "backend_id": "store_b",
+              "connection_timeout_ms": 1500,
+              "initial_response_timeout_ms": 2500,
+              "idle_timeout_ms": 15000,
+              "throughput_window_ms": 30000,
+              "minimum_bytes_per_second": 1024,
+              "startup_allowance_ms": 10000
+            }
+          ],
+          "overall_deadline_ms": null
+        }
+      }
+    },
+    {
+      "name": "provider-specific placement is not a wire variant",
+      "schema": "Placement",
+      "data": {
+        "kind": "local_plus_s3",
+        "backend_ids": [
+          "store_a",
+          "store_b"
+        ],
+        "read_policy": {
+          "candidates": [
+            {
+              "backend_id": "store_a",
+              "connection_timeout_ms": 1500,
+              "initial_response_timeout_ms": 2500,
+              "idle_timeout_ms": 15000,
+              "throughput_window_ms": 30000,
+              "minimum_bytes_per_second": 1024,
+              "startup_allowance_ms": 10000
+            },
+            {
+              "backend_id": "store_b",
+              "connection_timeout_ms": 1500,
+              "initial_response_timeout_ms": 2500,
+              "idle_timeout_ms": 15000,
+              "throughput_window_ms": 30000,
+              "minimum_bytes_per_second": 1024,
+              "startup_allowance_ms": 10000
+            }
+          ],
+          "overall_deadline_ms": null
+        }
+      }
+    },
+    {
+      "name": "mutation missing expected revisions",
+      "schema": "RenameEntryRequest",
+      "data": {
+        "destination_parent_id": "dir_b",
+        "name": "new.db"
+      }
+    },
+    {
+      "name": "draft missing replacement-versus-patch choice",
+      "schema": "DirectoryDraftBase",
+      "data": {
+        "root_id": "root_a",
+        "directory_id": "dir_a",
+        "expected_revision": "rev_a",
+        "base_version_id": null
+      }
+    },
+    {
+      "name": "ID cannot end in a newline",
+      "schema": "RootId",
+      "data": "root\n"
+    }
+  ]
+}

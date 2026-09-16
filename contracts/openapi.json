@@ -1,0 +1,2372 @@
+{
+  "components": {
+    "schemas": {
+      "AdapterDocumentation": {
+        "additionalProperties": false,
+        "description": "Administrator-facing behavior documentation, not certified guarantees or provider settings.",
+        "properties": {
+          "acknowledgement": {
+            "type": "string"
+          },
+          "consistency": {
+            "type": "string"
+          },
+          "deletion_and_capacity": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "durability": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "display_name",
+          "acknowledgement",
+          "consistency",
+          "durability",
+          "deletion_and_capacity",
+          "limitations"
+        ],
+        "type": "object"
+      },
+      "AllocationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "AllocationInspection": {
+        "additionalProperties": false,
+        "description": "Pending cleanup is a subset of occupied bytes, not additional free capacity.",
+        "properties": {
+          "capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "id": {
+            "$ref": "#/components/schemas/AllocationId"
+          },
+          "occupied_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/AllocationOwner"
+          },
+          "pending_cleanup_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "pool_id": {
+            "$ref": "#/components/schemas/PoolId"
+          },
+          "reserved_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "id",
+          "pool_id",
+          "owner",
+          "capacity_bytes",
+          "reserved_bytes",
+          "occupied_bytes",
+          "pending_cleanup_bytes"
+        ],
+        "type": "object"
+      },
+      "AllocationOwner": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "root",
+                "type": "string"
+              },
+              "root_id": {
+                "$ref": "#/components/schemas/RootId"
+              }
+            },
+            "required": [
+              "kind",
+              "root_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "server_staging",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ApplyPolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_retention_effect": {
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "expected_scope_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "preview_id": {
+            "$ref": "#/components/schemas/PreviewId"
+          }
+        },
+        "required": [
+          "preview_id",
+          "expected_revision",
+          "expected_scope_revision",
+          "acknowledge_retention_effect"
+        ],
+        "type": "object"
+      },
+      "AvailabilityHint": {
+        "enum": [
+          "intermittent",
+          "normally_available"
+        ],
+        "type": "string"
+      },
+      "BackendId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "BackendInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_kind": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "hints": {
+            "$ref": "#/components/schemas/InstanceHints"
+          },
+          "id": {
+            "$ref": "#/components/schemas/BackendId"
+          },
+          "last_observed_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observed_health": {
+            "$ref": "#/components/schemas/ObservedHealth"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "adapter_kind",
+          "hints",
+          "observed_health"
+        ],
+        "type": "object"
+      },
+      "ByteCount": {
+        "format": "uint64",
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "BytesPerSecond": {
+        "format": "uint64",
+        "maximum": 9007199254740991,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "Capabilities": {
+        "additionalProperties": false,
+        "description": "Advertise only implemented operations/formats. Reserved formats are not capabilities.",
+        "properties": {
+          "chunk_profiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/RequestLimits"
+          },
+          "protocol_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "storage_format_versions": {
+            "items": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "supported_operations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "protocol_version",
+          "supported_operations",
+          "storage_format_versions",
+          "chunk_profiles",
+          "limits"
+        ],
+        "type": "object"
+      },
+      "Capability": {
+        "enum": [
+          "list_read",
+          "write",
+          "manage_policy",
+          "delete",
+          "purge",
+          "manage_grants"
+        ],
+        "type": "string"
+      },
+      "CapacityRecovery": {
+        "enum": [
+          "confirmed",
+          "delayed",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "CheckpointId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "ChunkDigest": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[a-f0-9]{64}$(?![\\s\\S])",
+        "type": "string"
+      },
+      "CommitReceipt": {
+        "additionalProperties": false,
+        "description": "Retained for idempotency reconciliation even if its content version is later pruned.",
+        "properties": {
+          "commit_sequence": {
+            "$ref": "#/components/schemas/CommitSequence"
+          },
+          "manifest_id": {
+            "$ref": "#/components/schemas/ManifestId"
+          },
+          "version_id": {
+            "$ref": "#/components/schemas/VersionId"
+          }
+        },
+        "required": [
+          "version_id",
+          "manifest_id",
+          "commit_sequence"
+        ],
+        "type": "object"
+      },
+      "CommitSequence": {
+        "format": "uint64",
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "CopyAcknowledgement": {
+        "enum": [
+          "pending",
+          "acknowledged",
+          "unavailable",
+          "integrity_failed"
+        ],
+        "type": "string"
+      },
+      "CopyProgress": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledged_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "backend_id": {
+            "$ref": "#/components/schemas/BackendId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CopyAcknowledgement"
+          }
+        },
+        "required": [
+          "backend_id",
+          "acknowledged_bytes",
+          "state"
+        ],
+        "type": "object"
+      },
+      "CreateDirectoryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_parent_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "name": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "parent_id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "versioning": {
+            "$ref": "#/components/schemas/VersioningMode"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "parent_id",
+          "expected_parent_revision",
+          "name",
+          "versioning"
+        ],
+        "type": "object"
+      },
+      "CreateRootRequest": {
+        "additionalProperties": false,
+        "description": "Creates a disabled root. Administration must reject destination aliases and over-allocation.",
+        "properties": {
+          "allocations": {
+            "items": {
+              "$ref": "#/components/schemas/RootAllocationRequest"
+            },
+            "type": "array"
+          },
+          "default_policy": {
+            "$ref": "#/components/schemas/RetentionPolicy"
+          },
+          "display_name": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "mount_path": {
+            "$ref": "#/components/schemas/RootPath"
+          },
+          "owner_id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/Placement"
+          },
+          "quota_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "owner_id",
+          "display_name",
+          "mount_path",
+          "placement",
+          "quota_bytes",
+          "default_policy",
+          "allocations"
+        ],
+        "type": "object"
+      },
+      "CredentialId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "CursorToken": {
+        "maxLength": 2048,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "DestinationUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "backend_id": {
+            "$ref": "#/components/schemas/BackendId"
+          },
+          "capacity_recovery": {
+            "$ref": "#/components/schemas/CapacityRecovery"
+          },
+          "occupied_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "pending_cleanup_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "backend_id",
+          "occupied_bytes",
+          "pending_cleanup_bytes",
+          "capacity_recovery"
+        ],
+        "type": "object"
+      },
+      "DirectoryCursor": {
+        "additionalProperties": false,
+        "description": "Opaque token binds principal/root/directory/revision/filter/limit; server authenticates it.",
+        "properties": {
+          "directory_id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "directory_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "token": {
+            "$ref": "#/components/schemas/CursorToken"
+          }
+        },
+        "required": [
+          "token",
+          "directory_id",
+          "directory_revision"
+        ],
+        "type": "object"
+      },
+      "DirectoryDraftBase": {
+        "additionalProperties": false,
+        "description": "Draft/page encoding and deletion/purge semantics are reserved for M3, not implemented here.",
+        "properties": {
+          "base_version_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "directory_id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/DraftMode"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "root_id",
+          "directory_id",
+          "expected_revision",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "DraftEntryIdentity": {
+        "description": "New identities are server-issued and draft-scoped; never infer identity from a path or digest.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entry_id": {
+                "$ref": "#/components/schemas/EntryId"
+              },
+              "kind": {
+                "const": "existing",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "entry_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entry_id": {
+                "$ref": "#/components/schemas/EntryId"
+              },
+              "kind": {
+                "const": "new",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "entry_id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "DraftEntryReference": {
+        "additionalProperties": false,
+        "description": "Validation must check base identity continuity, uniqueness, root and draft ownership.",
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/DraftEntryIdentity"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EntryKind"
+          },
+          "manifest_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManifestId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "path": {
+            "$ref": "#/components/schemas/RootPath"
+          }
+        },
+        "required": [
+          "identity",
+          "path",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "DraftMode": {
+        "enum": [
+          "complete_replacement",
+          "patch"
+        ],
+        "type": "string"
+      },
+      "EffectivePolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PolicyId"
+          },
+          "inherited": {
+            "type": "boolean"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/RetentionPolicy"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PolicyScope"
+          },
+          "transitioning": {
+            "type": "boolean"
+          },
+          "versioning": {
+            "$ref": "#/components/schemas/VersioningMode"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "source",
+          "inherited",
+          "policy",
+          "versioning",
+          "transitioning"
+        ],
+        "type": "object"
+      },
+      "EntryId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "EntryInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "current_version_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EntryKind"
+          },
+          "name": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntryId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "name",
+          "kind",
+          "revision",
+          "hidden"
+        ],
+        "type": "object"
+      },
+      "EntryKind": {
+        "enum": [
+          "directory",
+          "file"
+        ],
+        "type": "string"
+      },
+      "EntryName": {
+        "maxLength": 255,
+        "minLength": 1,
+        "pattern": "^(?!\\.{1,2}$(?![\\s\\S]))[^/\\u0000]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "EntryPage": {
+        "additionalProperties": false,
+        "properties": {
+          "directory_id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "directory_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntryInspection"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DirectoryCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "directory_id",
+          "directory_revision",
+          "items"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "unauthorized",
+          "forbidden",
+          "not_found",
+          "unsupported_operation",
+          "invalid_request",
+          "invalid_path",
+          "invalid_manifest",
+          "revision_conflict",
+          "idempotency_conflict",
+          "cursor_refresh_required",
+          "root_busy",
+          "policy_transition",
+          "quota_exhausted",
+          "staging_exhausted",
+          "destination_capacity",
+          "destination_unavailable",
+          "upload_expired",
+          "integrity_failure",
+          "rate_limited",
+          "internal_error"
+        ],
+        "type": "string"
+      },
+      "ErrorDetails": {
+        "description": "Include only details the caller is authorized to inspect.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "available_bytes": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ByteCount"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "kind": {
+                "const": "capacity",
+                "type": "string"
+              },
+              "required_bytes": {
+                "$ref": "#/components/schemas/ByteCount"
+              }
+            },
+            "required": [
+              "kind",
+              "required_bytes"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "busy",
+                "type": "string"
+              },
+              "operation_id": {
+                "$ref": "#/components/schemas/OperationId"
+              },
+              "root_id": {
+                "$ref": "#/components/schemas/RootId"
+              }
+            },
+            "required": [
+              "kind",
+              "root_id",
+              "operation_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "current_revision": {
+                "$ref": "#/components/schemas/Revision"
+              },
+              "kind": {
+                "const": "stale_revision",
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/RevisionScope"
+              }
+            },
+            "required": [
+              "kind",
+              "scope",
+              "current_revision"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          },
+          "retry": {
+            "$ref": "#/components/schemas/RetryGuidance"
+          }
+        },
+        "required": [
+          "request_id",
+          "code",
+          "message",
+          "retry"
+        ],
+        "type": "object"
+      },
+      "GrantId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "GrantInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/GrantId"
+          },
+          "principal_id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "principal_id",
+          "revision",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "IdempotencyKey": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "InstanceHints": {
+        "additionalProperties": false,
+        "description": "Null means unknown; these expectations never determine read order.",
+        "properties": {
+          "expected_availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvailabilityHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_bytes_per_second": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BytesPerSecond"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_initial_response_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Milliseconds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ListEntriesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DirectoryCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "include_hidden": {
+            "type": "boolean"
+          },
+          "limit": {
+            "$ref": "#/components/schemas/PageSize"
+          }
+        },
+        "required": [
+          "limit",
+          "include_hidden"
+        ],
+        "type": "object"
+      },
+      "ListRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "$ref": "#/components/schemas/PageSize"
+          }
+        },
+        "required": [
+          "limit"
+        ],
+        "type": "object"
+      },
+      "ManifestId": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[a-f0-9]{64}$(?![\\s\\S])",
+        "type": "string"
+      },
+      "Milliseconds": {
+        "format": "uint64",
+        "maximum": 86400000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "ObservedHealth": {
+        "enum": [
+          "unknown",
+          "reachable",
+          "unavailable",
+          "degraded"
+        ],
+        "type": "string"
+      },
+      "OperationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "OperationInspection": {
+        "additionalProperties": false,
+        "description": "Authorized operational view. Worker epochs, leases and physical incarnations stay private.",
+        "properties": {
+          "completed_units": {
+            "$ref": "#/components/schemas/CommitSequence"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/OperationId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OperationKind"
+          },
+          "owner_principal_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retry": {
+            "$ref": "#/components/schemas/RetryGuidance"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OperationState"
+          },
+          "total_units": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommitSequence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upload_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UploadId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "kind",
+          "state",
+          "completed_units",
+          "retry"
+        ],
+        "type": "object"
+      },
+      "OperationKind": {
+        "enum": [
+          "upload",
+          "namespace",
+          "policy_transition",
+          "purge",
+          "reclamation",
+          "deletion",
+          "repair"
+        ],
+        "type": "string"
+      },
+      "OperationState": {
+        "enum": [
+          "active",
+          "recovering",
+          "cleaning_up",
+          "completed",
+          "aborted",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "PageSize": {
+        "format": "uint64",
+        "maximum": 1000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "Placement": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "backend_id": {
+                "$ref": "#/components/schemas/BackendId"
+              },
+              "kind": {
+                "const": "single",
+                "type": "string"
+              },
+              "read_policy": {
+                "$ref": "#/components/schemas/ReadPolicy"
+              }
+            },
+            "required": [
+              "kind",
+              "backend_id",
+              "read_policy"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "backend_ids": {
+                "items": {
+                  "$ref": "#/components/schemas/BackendId"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "kind": {
+                "const": "mirror",
+                "type": "string"
+              },
+              "read_policy": {
+                "$ref": "#/components/schemas/ReadPolicy"
+              }
+            },
+            "required": [
+              "kind",
+              "backend_ids",
+              "read_policy"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "PolicyId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "PolicyPreview": {
+        "additionalProperties": false,
+        "description": "Apply must reject changed policy or scope state; counts are previews, not capacity promises.",
+        "properties": {
+          "expires_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PreviewId"
+          },
+          "policy_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "proposed": {
+            "$ref": "#/components/schemas/RetentionPolicy"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/PolicyScope"
+          },
+          "scope_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "versions_affected": {
+            "$ref": "#/components/schemas/CommitSequence"
+          }
+        },
+        "required": [
+          "id",
+          "scope",
+          "policy_revision",
+          "scope_revision",
+          "proposed",
+          "versions_affected",
+          "expires_at_ms"
+        ],
+        "type": "object"
+      },
+      "PolicyScope": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "root",
+                "type": "string"
+              },
+              "root_id": {
+                "$ref": "#/components/schemas/RootId"
+              }
+            },
+            "required": [
+              "kind",
+              "root_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entry_id": {
+                "$ref": "#/components/schemas/EntryId"
+              },
+              "kind": {
+                "const": "entry",
+                "type": "string"
+              },
+              "root_id": {
+                "$ref": "#/components/schemas/RootId"
+              }
+            },
+            "required": [
+              "kind",
+              "root_id",
+              "entry_id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "PoolId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "PoolInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "allocatable_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "allocated_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PoolId"
+          },
+          "reported_available_bytes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ByteCount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "allocatable_bytes",
+          "allocated_bytes"
+        ],
+        "type": "object"
+      },
+      "PreviewId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "PreviewPolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "proposed": {
+            "$ref": "#/components/schemas/RetentionPolicy"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/PolicyScope"
+          }
+        },
+        "required": [
+          "scope",
+          "expected_revision",
+          "proposed"
+        ],
+        "type": "object"
+      },
+      "PrincipalId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "ReadCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "backend_id": {
+            "$ref": "#/components/schemas/BackendId"
+          },
+          "connection_timeout_ms": {
+            "$ref": "#/components/schemas/Milliseconds"
+          },
+          "idle_timeout_ms": {
+            "$ref": "#/components/schemas/Milliseconds"
+          },
+          "initial_response_timeout_ms": {
+            "$ref": "#/components/schemas/Milliseconds"
+          },
+          "minimum_bytes_per_second": {
+            "$ref": "#/components/schemas/BytesPerSecond"
+          },
+          "startup_allowance_ms": {
+            "$ref": "#/components/schemas/Milliseconds"
+          },
+          "throughput_window_ms": {
+            "$ref": "#/components/schemas/Milliseconds"
+          }
+        },
+        "required": [
+          "backend_id",
+          "connection_timeout_ms",
+          "initial_response_timeout_ms",
+          "idle_timeout_ms",
+          "throughput_window_ms",
+          "minimum_bytes_per_second",
+          "startup_allowance_ms"
+        ],
+        "type": "object"
+      },
+      "ReadPolicy": {
+        "additionalProperties": false,
+        "description": "Sequential order is authoritative. Transfer progress budgets are distinct from connection budgets.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ReadCandidate"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "type": "array"
+          },
+          "overall_deadline_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Milliseconds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "candidates"
+        ],
+        "type": "object"
+      },
+      "RenameEntryRequest": {
+        "additionalProperties": false,
+        "description": "V1 foundation rejects moves across effective-policy or atomic-versioning boundaries.",
+        "properties": {
+          "destination_parent_id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "expected_destination_parent_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "expected_source_parent_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "name": {
+            "$ref": "#/components/schemas/EntryName"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "expected_source_parent_revision",
+          "destination_parent_id",
+          "expected_destination_parent_revision",
+          "name"
+        ],
+        "type": "object"
+      },
+      "RequestId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "RequestLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "max_chunk_batch": {
+            "$ref": "#/components/schemas/PageSize"
+          },
+          "max_manifest_page_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "max_manifest_page_entries": {
+            "$ref": "#/components/schemas/PageSize"
+          },
+          "max_metadata_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "max_page_size": {
+            "$ref": "#/components/schemas/PageSize"
+          },
+          "max_request_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "max_page_size",
+          "max_request_bytes",
+          "max_metadata_bytes",
+          "max_manifest_page_bytes",
+          "max_manifest_page_entries",
+          "max_chunk_batch"
+        ],
+        "type": "object"
+      },
+      "ResolvePathRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/RootPath"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "RetentionMode": {
+        "enum": [
+          "strict",
+          "relaxed"
+        ],
+        "type": "string"
+      },
+      "RetentionPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "keep_versions": {
+            "$ref": "#/components/schemas/VersionCount"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RetentionMode"
+          }
+        },
+        "required": [
+          "mode",
+          "keep_versions"
+        ],
+        "type": "object"
+      },
+      "RetryGuidance": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "never",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "delay_ms": {
+                "$ref": "#/components/schemas/Milliseconds"
+              },
+              "kind": {
+                "const": "after",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "delay_ms"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "refresh",
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/RevisionScope"
+              }
+            },
+            "required": [
+              "kind",
+              "scope"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "reconcile_upload",
+                "type": "string"
+              },
+              "upload_id": {
+                "$ref": "#/components/schemas/UploadId"
+              }
+            },
+            "required": [
+              "kind",
+              "upload_id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Revision": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "RevisionScope": {
+        "enum": [
+          "entry",
+          "directory",
+          "root",
+          "policy",
+          "grant"
+        ],
+        "type": "string"
+      },
+      "RootAllocationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pool_id": {
+            "$ref": "#/components/schemas/PoolId"
+          },
+          "retained_capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "pool_id",
+          "retained_capacity_bytes"
+        ],
+        "type": "object"
+      },
+      "RootId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "RootInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "default_policy": {
+            "$ref": "#/components/schemas/RetentionPolicy"
+          },
+          "display_name": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "mount_path": {
+            "$ref": "#/components/schemas/RootPath"
+          },
+          "owner_id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/Placement"
+          },
+          "quota_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RootState"
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "display_name",
+          "mount_path",
+          "revision",
+          "state",
+          "placement",
+          "quota_bytes",
+          "default_policy",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "RootPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RootInspection"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "RootPath": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "pattern": "^(?:/|/(?!(?:\\.{1,2})(?:/|$(?![\\s\\S])))[^/\\u0000]{1,255}(?:/(?!(?:\\.{1,2})(?:/|$(?![\\s\\S])))[^/\\u0000]{1,255})*)$(?![\\s\\S])",
+        "type": "string"
+      },
+      "RootState": {
+        "enum": [
+          "disabled",
+          "enabled",
+          "recovering"
+        ],
+        "type": "string"
+      },
+      "RootUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "logical_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "physical_copies": {
+            "items": {
+              "$ref": "#/components/schemas/DestinationUsage"
+            },
+            "type": "array"
+          },
+          "reclaimable_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "unique_retained_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "root_id",
+          "logical_bytes",
+          "unique_retained_bytes",
+          "reclaimable_bytes",
+          "physical_copies"
+        ],
+        "type": "object"
+      },
+      "SessionState": {
+        "enum": [
+          "open",
+          "ready",
+          "committed",
+          "aborted",
+          "expired"
+        ],
+        "type": "string"
+      },
+      "TimestampMs": {
+        "format": "uint64",
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "UpdateGrantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "UpdateRootRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/Placement"
+          },
+          "quota_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RootState"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "display_name",
+          "state",
+          "placement",
+          "quota_bytes"
+        ],
+        "type": "object"
+      },
+      "UploadId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "UploadInspection": {
+        "additionalProperties": false,
+        "description": "Extension point: acknowledgement is not independently certified durability.",
+        "properties": {
+          "copies": {
+            "items": {
+              "$ref": "#/components/schemas/CopyProgress"
+            },
+            "type": "array"
+          },
+          "expires_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "id": {
+            "$ref": "#/components/schemas/UploadId"
+          },
+          "operation_id": {
+            "$ref": "#/components/schemas/OperationId"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommitReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionState"
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "operation_id",
+          "state",
+          "expires_at_ms",
+          "copies"
+        ],
+        "type": "object"
+      },
+      "VersionCount": {
+        "format": "uint64",
+        "maximum": 1000000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "VersionId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "VersioningMode": {
+        "enum": [
+          "independent_files",
+          "atomic_directory"
+        ],
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "description": "Contract design only. No v1 application routes are implemented yet. Planned operations are recorded in x-sct-planned-operations and are not advertised in paths. Health endpoints are outside this application API.",
+    "title": "ScT v1 protocol foundations",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {},
+  "x-sct-planned-operations": [
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "capabilities",
+      "path": "/api/v1/capabilities",
+      "request_schema": null,
+      "response_schema": "Capabilities"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "list_roots",
+      "path": "/api/v1/roots",
+      "request_schema": "ListRequest",
+      "response_schema": "RootPage"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M1",
+      "operation_id": "create_root",
+      "path": "/api/v1/roots",
+      "request_schema": "CreateRootRequest",
+      "response_schema": "RootInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "inspect_root",
+      "path": "/api/v1/roots/{root}",
+      "request_schema": null,
+      "response_schema": "RootInspection"
+    },
+    {
+      "implemented": false,
+      "method": "PATCH",
+      "milestone": "M1",
+      "operation_id": "update_root",
+      "path": "/api/v1/roots/{root}",
+      "request_schema": "UpdateRootRequest",
+      "response_schema": "RootInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "list_entries",
+      "path": "/api/v1/roots/{root}/entries",
+      "request_schema": "ListEntriesRequest",
+      "response_schema": "EntryPage"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "resolve_path",
+      "path": "/api/v1/roots/{root}/resolve",
+      "request_schema": "ResolvePathRequest",
+      "response_schema": "EntryInspection"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M1",
+      "operation_id": "create_directory",
+      "path": "/api/v1/roots/{root}/entries",
+      "request_schema": "CreateDirectoryRequest",
+      "response_schema": "EntryInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "inspect_entry",
+      "path": "/api/v1/entries/{entry}",
+      "request_schema": null,
+      "response_schema": "EntryInspection"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M1",
+      "operation_id": "rename_entry",
+      "path": "/api/v1/entries/{entry}/rename",
+      "request_schema": "RenameEntryRequest",
+      "response_schema": "EntryInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "effective_policy",
+      "path": "/api/v1/policies",
+      "request_schema": "PolicyScope",
+      "response_schema": "EffectivePolicy"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M3",
+      "operation_id": "preview_policy",
+      "path": "/api/v1/policies/preview",
+      "request_schema": "PreviewPolicyRequest",
+      "response_schema": "PolicyPreview"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M3",
+      "operation_id": "apply_policy",
+      "path": "/api/v1/policies/apply",
+      "request_schema": "ApplyPolicyRequest",
+      "response_schema": "OperationInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "root_operation",
+      "path": "/api/v1/roots/{root}/operation",
+      "request_schema": null,
+      "response_schema": "OperationInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M2",
+      "operation_id": "inspect_usage",
+      "path": "/api/v1/roots/{root}/usage",
+      "request_schema": null,
+      "response_schema": "RootUsage"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "inspect_pool",
+      "path": "/api/v1/admin/pools/{pool}",
+      "request_schema": null,
+      "response_schema": "PoolInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "inspect_allocation",
+      "path": "/api/v1/admin/allocations/{allocation}",
+      "request_schema": null,
+      "response_schema": "AllocationInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "inspect_backend",
+      "path": "/api/v1/admin/backends/{backend}",
+      "request_schema": null,
+      "response_schema": "BackendInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "adapter_documentation",
+      "path": "/api/v1/admin/adapters/{kind}",
+      "request_schema": null,
+      "response_schema": "AdapterDocumentation"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "inspect_grant",
+      "path": "/api/v1/admin/grants/{grant}",
+      "request_schema": null,
+      "response_schema": "GrantInspection"
+    },
+    {
+      "implemented": false,
+      "method": "PATCH",
+      "milestone": "M1",
+      "operation_id": "update_grant",
+      "path": "/api/v1/admin/grants/{grant}",
+      "request_schema": "UpdateGrantRequest",
+      "response_schema": "GrantInspection"
+    },
+    {
+      "implemented": false,
+      "method": "DELETE",
+      "milestone": "M3",
+      "operation_id": "hide_entry",
+      "path": "/api/v1/entries/{entry}",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M3",
+      "operation_id": "purge_entry",
+      "path": "/api/v1/entries/{entry}/purge",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M3",
+      "operation_id": "list_versions",
+      "path": "/api/v1/entries/{entry}/versions",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M2",
+      "operation_id": "inspect_version",
+      "path": "/api/v1/versions/{version}",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M2",
+      "operation_id": "read_manifest",
+      "path": "/api/v1/versions/{version}/manifest",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M2",
+      "operation_id": "download_content",
+      "path": "/api/v1/versions/{version}/content",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M2",
+      "operation_id": "begin_upload",
+      "path": "/api/v1/uploads",
+      "request_schema": null,
+      "response_schema": "UploadInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M2",
+      "operation_id": "resolve_upload_key",
+      "path": "/api/v1/uploads/by-key/{key}",
+      "request_schema": null,
+      "response_schema": "UploadInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M2",
+      "operation_id": "inspect_upload",
+      "path": "/api/v1/uploads/{upload}",
+      "request_schema": null,
+      "response_schema": "UploadInspection"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M2",
+      "operation_id": "abort_upload",
+      "path": "/api/v1/uploads/{upload}/abort",
+      "request_schema": null,
+      "response_schema": "UploadInspection"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M2",
+      "operation_id": "negotiate_chunks",
+      "path": "/api/v1/uploads/{upload}/chunks",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "PUT",
+      "milestone": "M2",
+      "operation_id": "upload_chunk",
+      "path": "/api/v1/uploads/{upload}/chunks/{digest}",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M2",
+      "operation_id": "stage_manifest",
+      "path": "/api/v1/uploads/{upload}/manifest",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M2",
+      "operation_id": "commit_upload",
+      "path": "/api/v1/uploads/{upload}/commit",
+      "request_schema": null,
+      "response_schema": "CommitReceipt"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "list_principals",
+      "path": "/api/v1/admin/principals",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "create_principal",
+      "path": "/api/v1/admin/principals",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "create_credential",
+      "path": "/api/v1/admin/credentials",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "DELETE",
+      "milestone": "M4",
+      "operation_id": "revoke_credential",
+      "path": "/api/v1/admin/credentials/{credential}",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M1",
+      "operation_id": "create_grant",
+      "path": "/api/v1/admin/grants",
+      "request_schema": null,
+      "response_schema": "GrantInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M1",
+      "operation_id": "list_grants",
+      "path": "/api/v1/admin/grants",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "DELETE",
+      "milestone": "M1",
+      "operation_id": "revoke_grant",
+      "path": "/api/v1/admin/grants/{grant}",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "list_backends",
+      "path": "/api/v1/admin/backends",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "PUT",
+      "milestone": "M4",
+      "operation_id": "configure_backend",
+      "path": "/api/v1/admin/backends/{backend}",
+      "request_schema": null,
+      "response_schema": "BackendInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "list_pools",
+      "path": "/api/v1/admin/pools",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "PUT",
+      "milestone": "M4",
+      "operation_id": "configure_pool",
+      "path": "/api/v1/admin/pools/{pool}",
+      "request_schema": null,
+      "response_schema": "PoolInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "list_allocations",
+      "path": "/api/v1/admin/allocations",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "PUT",
+      "milestone": "M4",
+      "operation_id": "configure_allocation",
+      "path": "/api/v1/admin/allocations/{allocation}",
+      "request_schema": null,
+      "response_schema": "AllocationInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "list_jobs",
+      "path": "/api/v1/admin/jobs",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "inspect_job",
+      "path": "/api/v1/admin/jobs/{job}",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "start_integrity_scan",
+      "path": "/api/v1/admin/roots/{root}/integrity",
+      "request_schema": null,
+      "response_schema": "OperationInspection"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "start_repair",
+      "path": "/api/v1/admin/roots/{root}/repair",
+      "request_schema": null,
+      "response_schema": "OperationInspection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "list_audit",
+      "path": "/api/v1/admin/audit",
+      "request_schema": "ListRequest",
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "create_checkpoint",
+      "path": "/api/v1/admin/checkpoints",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "inspect_checkpoint",
+      "path": "/api/v1/admin/checkpoints/{checkpoint}",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "finish_checkpoint",
+      "path": "/api/v1/admin/checkpoints/{checkpoint}/finish",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "abandon_checkpoint",
+      "path": "/api/v1/admin/checkpoints/{checkpoint}/abandon",
+      "request_schema": null,
+      "response_schema": null
+    }
+  ],
+  "x-sct-request-id-header": "X-Request-Id",
+  "x-sct-reserved-storage-format-version": 1,
+  "x-sct-storage-format-status": "reserved, encoding not finalized"
+}

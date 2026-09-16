@@ -4,7 +4,7 @@ Architecture and implementation plan.
 
 The project is branded **ScT**, expanded as **Stipa ca Truova**. Use `sct` for the repository, directory, domain label, and code identifiers; Rust crates use the `sct-` prefix.
 
-Status: implementation started with the SCT-6 workspace and test scaffold; storage functionality is not implemented yet.
+Status: SCT-6 workspace/test scaffold and SCT-7 foundation protocol contracts are implemented; storage functionality is not implemented yet. See `contracts/README.md` for exact wire conventions and generation commands.
 
 Date: 2026-09-14. Backend abstraction revised: 2026-09-15.
 

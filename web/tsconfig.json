@@ -12,5 +12,11 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "*.ts", "e2e/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "*.ts",
+    "e2e/**/*.ts",
+    "contracts/**/*.ts"
+  ]
 }

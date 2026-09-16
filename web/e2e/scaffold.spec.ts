@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { ErrorResponse } from "../src/generated/api";
 
 test("built Vue application runs from the Rust server", async ({ page }) => {
   const errors: string[] = [];
@@ -26,5 +27,9 @@ test("liveness is available and storage endpoints are not advertised", async ({
     const response = await request.get(path);
     expect(response.status()).toBe(404);
     expect(response.headers()["content-type"] ?? "").not.toContain("text/html");
+    const error: ErrorResponse = await response.json();
+    expect(error.code).toBe("unsupported_operation");
+    expect(error.request_id).toBe(response.headers()["x-request-id"]);
+    expect(error.retry.kind).toBe("never");
   }
 });
