@@ -873,3 +873,88 @@ impl UploadInspection {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct CreateGrantRequest {
+    pub root_id: RootId,
+    pub principal_id: PrincipalId,
+    pub capabilities: Vec<Capability>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct GrantPage {
+    pub items: Vec<GrantInspection>,
+    pub next_cursor: Option<CursorToken>,
+}
+
+/// Foundation policy edits are restricted to scopes with no published content.
+/// Destructive previews and content transitions are M3 operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct SetPolicyRequest {
+    pub scope: PolicyScope,
+    pub expected_revision: Revision,
+    pub expected_scope_revision: Revision,
+    pub policy: RetentionPolicy,
+    pub versioning: VersioningMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct ListEntriesQuery {
+    pub directory_id: EntryId,
+    pub limit: PageSize,
+    pub cursor: Option<CursorToken>,
+    pub directory_revision: Option<Revision>,
+    #[serde(default)]
+    pub include_hidden: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct ListGrantsQuery {
+    pub root_id: RootId,
+    pub limit: PageSize,
+    pub cursor: Option<CursorToken>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct ExpectedRevision {
+    pub expected_revision: Revision,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct SessionInspection {
+    pub principal_id: PrincipalId,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct IssuedToken {
+    pub id: CredentialId,
+    pub secret: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct AllocationPage {
+    pub items: Vec<AllocationInspection>,
+    pub next_cursor: Option<CursorToken>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
+pub struct PolicyConstraintsRequest {
+    pub expected_revision: Revision,
+    pub min_versions: VersionCount,
+    pub max_versions: VersionCount,
+    pub allow_relaxed: bool,
+}

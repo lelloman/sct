@@ -9,4 +9,8 @@ pub mod catalog;
 pub mod auth;
 pub mod backend;
 pub mod error;
+mod grants;
 pub mod lease;
+pub mod operations;
+mod paging;
+pub mod roots;
