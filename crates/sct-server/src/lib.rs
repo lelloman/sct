@@ -44,3 +44,5 @@ async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {
         _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
+
+pub mod config;

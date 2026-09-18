@@ -1,0 +1,34 @@
+# M1 development configuration. The test adapter stores no payload bytes.
+bind = "127.0.0.1:8080"
+public_url = "http://127.0.0.1:8080"
+web_dir = "web/dist"
+database_url_env = "SCT_DATABASE_URL"
+development = true
+enable_test_adapter = true
+workers = 4
+session_expiry_seconds = 86400
+
+# Human login is optional; local recovery works without OIDC.
+# [oidc]
+# issuer = "https://auth.example.com"
+# client_id = "sct"
+# client_secret_env = "SCT_OIDC_CLIENT_SECRET"
+
+[[pools]]
+id = "development_pool"
+capacity_bytes = 10000000000
+# Subtract safety overhead before allocating; this example has no overhead.
+overhead_bytes = 0
+staging_bytes = 1000000000
+
+[[backends]]
+pool_id = "development_pool"
+[backends.settings]
+destination = "development_metadata_only"
+[backends.inspection]
+id = "development_backend"
+display_name = "Development test backend"
+adapter_kind = "test"
+observed_health = "unknown"
+[backends.inspection.hints]
+# Hints are optional and never reorder reads.

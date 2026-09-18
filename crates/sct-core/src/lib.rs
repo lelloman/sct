@@ -5,3 +5,7 @@
 //! settings and registration must not leak into namespace or retention rules.
 
 pub mod catalog;
+
+pub mod backend;
+pub mod error;
+pub mod lease;

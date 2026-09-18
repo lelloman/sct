@@ -79,4 +79,3 @@ async fn migrations_constraints_and_rollback() {
     catalog.close().await;
     pool.close().await;
 }
-

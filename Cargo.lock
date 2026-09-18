@@ -1789,6 +1789,8 @@ version = "0.1.0"
 dependencies = [
  "reqwest",
  "sct-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1819,6 +1821,8 @@ name = "sct-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
+ "chrono",
  "openidconnect",
  "reqwest",
  "sct-client",
@@ -1826,6 +1830,8 @@ dependencies = [
  "sct-protocol",
  "serde",
  "serde_json",
+ "sha2",
+ "sqlx",
  "tokio",
  "toml",
  "tower-http",
