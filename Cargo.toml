@@ -13,9 +13,14 @@ sct-client = { path = "crates/sct-client", version = "0.1.0" }
 sct-core = { path = "crates/sct-core", version = "0.1.0" }
 axum = "0.8.9"
 reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls"] }
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate"] }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 tower-http = { version = "0.6.11", features = ["fs"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1.26.0", features = ["v4"] }
+sha2 = "0.10"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

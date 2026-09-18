@@ -5,7 +5,7 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 /// Connection wiring only; migrations and authoritative catalog entities follow in SCT-8.
 #[derive(Clone)]
 pub struct Catalog {
-    pool: PgPool,
+    pub(crate) pool: PgPool,
 }
 
 impl Catalog {
@@ -17,6 +17,25 @@ impl Catalog {
                 .acquire_timeout(Duration::from_secs(3))
                 .connect_lazy(database_url)?,
         })
+    }
+
+    /// Forward-only embedded migrations; SQLx rejects modified or unknown migrations.
+    pub async fn migrate(&self) -> Result<(), sqlx::migrate::MigrateError> {
+        let migrations = vec![sqlx::migrate::Migration::new(
+            1,
+            "foundation".into(),
+            sqlx::migrate::MigrationType::Simple,
+            include_str!("../migrations/0001_foundation.sql").into(),
+            false,
+        )];
+        sqlx::migrate::Migrator {
+            migrations: migrations.into(),
+            ignore_missing: false,
+            locking: true,
+            no_tx: false,
+        }
+        .run(&self.pool)
+        .await
     }
 
     pub async fn ping(&self) -> Result<(), sqlx::Error> {
