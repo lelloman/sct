@@ -6,6 +6,7 @@
 
 pub mod catalog;
 
+pub mod auth;
 pub mod backend;
 pub mod error;
 pub mod lease;

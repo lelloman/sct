@@ -46,3 +46,4 @@ async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {
 }
 
 pub mod config;
+pub mod oidc;
