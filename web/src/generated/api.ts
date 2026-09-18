@@ -9,6 +9,8 @@ export type AllocationInspection = { id: AllocationId, pool_id: PoolId, owner: A
 
 export type AllocationOwner = { "kind": "root", root_id: RootId, } | { "kind": "server_staging" };
 
+export type AllocationPage = { items: Array<AllocationInspection>, next_cursor: CursorToken | null, };
+
 export type ApplyPolicyRequest = { preview_id: PreviewId, expected_revision: Revision, expected_scope_revision: Revision, acknowledge_retention_effect: boolean, };
 
 export type AvailabilityHint = "intermittent" | "normally_available";
@@ -40,6 +42,8 @@ export type CopyAcknowledgement = "pending" | "acknowledged" | "unavailable" | "
 export type CopyProgress = { backend_id: BackendId, acknowledged_bytes: ByteCount, state: CopyAcknowledgement, };
 
 export type CreateDirectoryRequest = { idempotency_key: IdempotencyKey, parent_id: EntryId, expected_parent_revision: Revision, name: EntryName, versioning: VersioningMode, };
+
+export type CreateGrantRequest = { root_id: RootId, principal_id: PrincipalId, capabilities: Array<Capability>, };
 
 export type CreateRootRequest = { idempotency_key: IdempotencyKey, owner_id: PrincipalId, display_name: EntryName, mount_path: RootPath, placement: Placement, quota_bytes: ByteCount, default_policy: RetentionPolicy, allocations: Array<RootAllocationRequest>, };
 
@@ -77,15 +81,25 @@ export type ErrorDetails = { "kind": "capacity", required_bytes: ByteCount, avai
 
 export type ErrorResponse = { request_id: RequestId, code: ErrorCode, message: string, retry: RetryGuidance, details: ErrorDetails | null, };
 
+export type ExpectedRevision = { expected_revision: Revision, };
+
 export type GrantId = string & { readonly __brand: "GrantId" };
 
 export type GrantInspection = { id: GrantId, root_id: RootId, principal_id: PrincipalId, revision: Revision, capabilities: Array<Capability>, };
+
+export type GrantPage = { items: Array<GrantInspection>, next_cursor: CursorToken | null, };
 
 export type IdempotencyKey = string & { readonly __brand: "IdempotencyKey" };
 
 export type InstanceHints = { expected_initial_response_ms: Milliseconds | null, expected_bytes_per_second: BytesPerSecond | null, expected_availability: AvailabilityHint | null, };
 
+export type IssuedToken = { id: CredentialId, secret: string, };
+
+export type ListEntriesQuery = { directory_id: EntryId, limit: PageSize, cursor: CursorToken | null, directory_revision: Revision | null, include_hidden: boolean, };
+
 export type ListEntriesRequest = { limit: PageSize, cursor: DirectoryCursor | null, include_hidden: boolean, };
+
+export type ListGrantsQuery = { root_id: RootId, limit: PageSize, cursor: CursorToken | null, };
 
 export type ListRequest = { limit: PageSize, cursor: CursorToken | null, };
 
@@ -106,6 +120,8 @@ export type OperationState = "active" | "recovering" | "cleaning_up" | "complete
 export type PageSize = number;
 
 export type Placement = { "kind": "single", backend_id: BackendId, read_policy: ReadPolicy, } | { "kind": "mirror", backend_ids: [BackendId, BackendId], read_policy: ReadPolicy, };
+
+export type PolicyConstraintsRequest = { expected_revision: Revision, min_versions: VersionCount, max_versions: VersionCount, allow_relaxed: boolean, };
 
 export type PolicyId = string & { readonly __brand: "PolicyId" };
 
@@ -159,7 +175,11 @@ export type RootState = "disabled" | "enabled" | "recovering";
 
 export type RootUsage = { root_id: RootId, logical_bytes: ByteCount, unique_retained_bytes: ByteCount, reclaimable_bytes: ByteCount, physical_copies: Array<DestinationUsage>, };
 
+export type SessionInspection = { principal_id: PrincipalId, };
+
 export type SessionState = "open" | "ready" | "committed" | "aborted" | "expired";
+
+export type SetPolicyRequest = { scope: PolicyScope, expected_revision: Revision, expected_scope_revision: Revision, policy: RetentionPolicy, versioning: VersioningMode, };
 
 export type TimestampMs = number;
 

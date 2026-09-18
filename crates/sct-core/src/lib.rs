@@ -11,6 +11,7 @@ pub mod backend;
 pub mod error;
 mod grants;
 pub mod lease;
+mod namespace;
 pub mod operations;
 mod paging;
 pub mod policy;

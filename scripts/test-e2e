@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+sct_e2e_pg=""
+sct_e2e_fixture="$(mktemp -d)"
+cleanup() {
+  if [[ -n "$sct_e2e_pg" ]]; then
+    docker rm -f "$sct_e2e_pg" >/dev/null
+  elif [[ -f "$sct_e2e_fixture/fixture.json" ]]; then
+    cargo run --locked --quiet -p sct-server --example foundation-fixture -- "$sct_e2e_fixture" cleanup
+  fi
+  rm -rf "$sct_e2e_fixture"
+}
+trap cleanup EXIT
+if [[ -z "${SCT_TEST_DATABASE_URL:-}" ]]; then
+  sct_e2e_pg="$(docker run --detach --rm -e POSTGRES_PASSWORD=sct-test -e POSTGRES_DB=sct_test -p 127.0.0.1::5432 postgres:17-alpine)"
+  for attempt in {1..60}; do
+    if docker exec "$sct_e2e_pg" pg_isready -h 127.0.0.1 -U postgres -d sct_test >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  docker exec "$sct_e2e_pg" pg_isready -h 127.0.0.1 -U postgres -d sct_test
+  sct_e2e_port="$(docker port "$sct_e2e_pg" 5432/tcp)"
+  export SCT_TEST_DATABASE_URL="postgres://postgres:sct-test@${sct_e2e_port}/sct_test"
+fi
+cargo run --locked --quiet -p sct-server --example foundation-fixture -- "$sct_e2e_fixture"
+export SCT_CONFIG="$sct_e2e_fixture/config.toml"
+export SCT_E2E_DATABASE_URL="$(jq -r .database_url "$sct_e2e_fixture/fixture.json")"
+export SCT_E2E_ADMIN_TOKEN="$(jq -r .admin "$sct_e2e_fixture/fixture.json")"
+export SCT_E2E_ALICE_TOKEN="$(jq -r .alice "$sct_e2e_fixture/fixture.json")"
+export SCT_E2E_BOB_TOKEN="$(jq -r .bob "$sct_e2e_fixture/fixture.json")"
+(cd web && npx playwright test "$@")

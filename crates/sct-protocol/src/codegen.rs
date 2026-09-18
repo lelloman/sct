@@ -109,7 +109,17 @@ fn register_types(
         DraftMode,
         DraftEntryIdentity,
         DirectoryDraftBase,
-        DraftEntryReference
+        DraftEntryReference,
+        CreateGrantRequest,
+        GrantPage,
+        SetPolicyRequest,
+        ListEntriesQuery,
+        ListGrantsQuery,
+        ExpectedRevision,
+        SessionInspection,
+        IssuedToken,
+        AllocationPage,
+        PolicyConstraintsRequest
     );
     schemas
 }
@@ -129,9 +139,10 @@ pub fn artifacts() -> Result<BTreeMap<&'static str, String>, serde_json::Error> 
     let operations = operations();
     let openapi = json!({
         "openapi": "3.1.0",
-        "info": {"title": "ScT v1 protocol foundations", "version": "0.1.0", "description": "Contract design only. No v1 application routes are implemented yet. Planned operations are recorded in x-sct-planned-operations and are not advertised in paths. Health endpoints are outside this application API."},
-        "paths": {},
-        "components": {"schemas": schemas.definitions()},
+        "info": {"title": "ScT v1 protocol foundations", "version": "0.1.0", "description": "Foundation application API. Only implemented routes appear in paths. Payload transfer and storage formats remain planned. Health and OIDC/session endpoints are outside the versioned application API."},
+        "paths": implemented_paths(&operations, schemas.definitions()),
+        "components": {"schemas": schemas.definitions(), "securitySchemes": {"bearer": {"type":"http","scheme":"bearer"}, "session": {"type":"apiKey","in":"cookie","name":"__Host-sct_session"}}},
+        "security": [{"bearer": []}, {"session": []}],
         "x-sct-planned-operations": operations,
         "x-sct-request-id-header": "X-Request-Id",
         "x-sct-reserved-storage-format-version": 1,
@@ -145,17 +156,18 @@ pub fn artifacts() -> Result<BTreeMap<&'static str, String>, serde_json::Error> 
         typescript.push_str("\n\n");
     }
     let mut markdown = String::from(
-        "# Planned v1 operation map\n\nGenerated from `sct-protocol`. **None of these application routes is implemented yet.**\nThe scaffold returns a structured 404. Foundation types are contracts, not services.\n\n| Operation | Method | Path | Request | Response | Milestone |\n| --- | --- | --- | --- | --- | --- |\n",
+        "# v1 operation map\n\nGenerated from `sct-protocol`. Foundation routes require the configured database-backed service.\nUnimplemented routes return a structured 404 and are absent from OpenAPI paths and capabilities.\n\n| Operation | Method | Path | Request | Response | Milestone | Implemented |\n| --- | --- | --- | --- | --- | --- | --- |\n",
     );
     for op in &operations {
         markdown.push_str(&format!(
-            "| {} | {} | `{}` | {} | {} | {} |\n",
+            "| {} | {} | `{}` | {} | {} | {} | {} |\n",
             op["operation_id"].as_str().unwrap(),
             op["method"].as_str().unwrap(),
             op["path"].as_str().unwrap(),
             op["request_schema"].as_str().unwrap_or("reserved"),
             op["response_schema"].as_str().unwrap_or("reserved"),
-            op["milestone"].as_str().unwrap()
+            op["milestone"].as_str().unwrap(),
+            op["implemented"].as_bool().unwrap()
         ));
     }
     Ok(BTreeMap::from([
@@ -180,7 +192,7 @@ pub fn operations() -> Vec<Value> {
     let mut result = Vec::new();
     macro_rules! op {
         ($id:literal, $method:literal, $path:literal, $request:expr, $response:expr, $milestone:literal) => {
-            result.push(json!({"operation_id": $id, "method": $method, "path": concat!("/api/v1", $path), "request_schema": $request, "response_schema": $response, "milestone": $milestone, "implemented": false}));
+            result.push(json!({"operation_id": $id, "method": $method, "path": concat!("/api/v1", $path), "request_schema": $request, "response_schema": $response, "milestone": $milestone, "implemented": FOUNDATION_OPERATIONS.contains(&$id)}));
         };
     }
     op!(
@@ -227,7 +239,7 @@ pub fn operations() -> Vec<Value> {
         "list_entries",
         "GET",
         "/roots/{root}/entries",
-        "ListEntriesRequest",
+        "ListEntriesQuery",
         "EntryPage",
         "M1"
     );
@@ -499,7 +511,7 @@ pub fn operations() -> Vec<Value> {
         "create_grant",
         "POST",
         "/admin/grants",
-        None::<&str>,
+        "CreateGrantRequest",
         "GrantInspection",
         "M1"
     );
@@ -507,15 +519,15 @@ pub fn operations() -> Vec<Value> {
         "list_grants",
         "GET",
         "/admin/grants",
-        "ListRequest",
-        None::<&str>,
+        "ListGrantsQuery",
+        "GrantPage",
         "M1"
     );
     op!(
         "revoke_grant",
         "DELETE",
         "/admin/grants/{grant}",
-        None::<&str>,
+        "ExpectedRevision",
         None::<&str>,
         "M1"
     );
@@ -556,8 +568,8 @@ pub fn operations() -> Vec<Value> {
         "GET",
         "/admin/allocations",
         "ListRequest",
-        None::<&str>,
-        "M4"
+        "AllocationPage",
+        "M1"
     );
     op!(
         "configure_allocation",
@@ -639,5 +651,70 @@ pub fn operations() -> Vec<Value> {
         None::<&str>,
         "M4"
     );
+    op!(
+        "set_policy",
+        "PATCH",
+        "/policies",
+        "SetPolicyRequest",
+        "EffectivePolicy",
+        "M1"
+    );
+    op!(
+        "policy_constraints",
+        "PATCH",
+        "/admin/roots/{root}/policy-constraints",
+        "PolicyConstraintsRequest",
+        "RootInspection",
+        "M1"
+    );
     result
+}
+
+fn implemented_paths(operations: &[Value], definitions: &serde_json::Map<String, Value>) -> Value {
+    let mut paths = serde_json::Map::<String, Value>::new();
+    for op in operations.iter().filter(|op| op["implemented"] == true) {
+        let method = op["method"].as_str().unwrap();
+        let path = op["path"].as_str().unwrap();
+        let mut parameters = Vec::new();
+        for segment in path.split('/') {
+            if let Some(name) = segment.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+                parameters.push(json!({"name":name,"in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}));
+            }
+        }
+        let mut entry = json!({"operationId":op["operation_id"],"responses":{}});
+        if let Some(request) = op["request_schema"].as_str() {
+            if method == "GET" || method == "DELETE" {
+                if request == "PolicyScope" {
+                    parameters.extend([
+                        json!({"name":"kind","in":"query","required":true,"schema":{"type":"string","enum":["root","entry"]}}),
+                        json!({"name":"root_id","in":"query","required":true,"schema":{"$ref":"#/components/schemas/RootId"}}),
+                        json!({"name":"entry_id","in":"query","required":false,"schema":{"$ref":"#/components/schemas/EntryId"}}),
+                    ]);
+                } else if let Some(properties) = definitions[request]["properties"].as_object() {
+                    let required = definitions[request]["required"].as_array();
+                    for (name, schema) in properties {
+                        parameters.push(json!({"name":name,"in":"query","required":required.is_some_and(|r|r.contains(&json!(name))),"schema":schema}));
+                    }
+                }
+            } else {
+                entry["requestBody"] = json!({"required":true,"content":{"application/json":{"schema":{"$ref":format!("#/components/schemas/{request}")}}}});
+            }
+        }
+        if !matches!(method, "GET" | "HEAD") {
+            parameters.push(json!({"name":"X-CSRF-Token","in":"header","required":false,"description":"Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).","schema":{"type":"string"}}));
+        }
+        entry["parameters"] = json!(parameters);
+        if let Some(response) = op["response_schema"].as_str() {
+            entry["responses"]["200"] = json!({"description":"Success","content":{"application/json":{"schema":{"$ref":format!("#/components/schemas/{response}")}}}});
+        } else {
+            entry["responses"]["204"] = json!({"description":"Success without body"});
+        }
+        for status in [
+            "400", "401", "403", "404", "409", "429", "500", "503", "507",
+        ] {
+            entry["responses"][status] = json!({"description":"Structured error with X-Request-Id; retryable failures include Retry-After.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorResponse"}}}});
+        }
+        paths.entry(path.to_owned()).or_insert_with(|| json!({}))[method.to_lowercase()] = entry;
+    }
+    Value::Object(paths)
 }

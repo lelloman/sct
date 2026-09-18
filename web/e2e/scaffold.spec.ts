@@ -13,7 +13,7 @@ test("built Vue application runs from the Rust server", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("liveness is available and storage endpoints are not advertised", async ({
+test("liveness is available, foundation endpoints require authentication, and uploads remain unavailable", async ({
   request,
 }) => {
   const live = await request.get("/health/live");
@@ -25,10 +25,11 @@ test("liveness is available and storage endpoints are not advertised", async ({
     "/api/v1/capabilities",
   ]) {
     const response = await request.get(path);
-    expect(response.status()).toBe(404);
+    const pending = path === "/api/v1/uploads";
+    expect(response.status()).toBe(pending ? 404 : 401);
     expect(response.headers()["content-type"] ?? "").not.toContain("text/html");
     const error: ErrorResponse = await response.json();
-    expect(error.code).toBe("unsupported_operation");
+    expect(error.code).toBe(pending ? "unsupported_operation" : "unauthorized");
     expect(error.request_id).toBe(response.headers()["x-request-id"]);
     expect(error.retry.kind).toBe("never");
   }

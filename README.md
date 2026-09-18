@@ -2,9 +2,13 @@
 
 # ScT — Stipa ca Truova
 
-Self-hosted versioned storage. Implementation has started with the SCT-6 development
-scaffold and SCT-7 protocol contracts. Storage operations, authentication, retention and administration are not
-implemented yet; all five milestones remain required.
+Self-hosted versioned storage. **Milestone 1 (foundation) is implemented**: PostgreSQL
+catalog/migrations, fenced configuration/runtime, OIDC and application credentials,
+roots/grants/capacity allocations, policies, and directory namespace operations.
+Uploads/downloads, real payload adapters, retention execution, and the complete
+administration UI remain milestones 2–5.
+
+See [foundation setup, API behavior and verification](docs/foundation.md).
 
 The primary repository is hosted on Fucina. The public
 [GitHub mirror](https://github.com/lelloman/sct) updates automatically on pushes
@@ -13,7 +17,7 @@ and every ten minutes. Maintainers push to Fucina through `origin`.
 ## Development
 
 Prerequisites: Rust 1.96.0 (installed by rustup from `rust-toolchain.toml`), Node.js
-24.13+ (`nvm use` reads `.nvmrc`), npm, Bash, ripgrep, and Docker for disposable PostgreSQL
+24.13+ (`nvm use` reads `.nvmrc`), npm, Bash, ripgrep, jq, and Docker for disposable PostgreSQL
 integration tests. Dependency versions are captured in `Cargo.lock` and
 `web/package-lock.json`. The check scripts target Linux development/CI hosts.
 
@@ -40,12 +44,13 @@ passing acceptance. To require complete product acceptance, use:
 npm --prefix web run test:acceptance
 ```
 
-The second command **currently fails intentionally** because the five milestone
-acceptance scenarios are pending. These gates must be expanded into the detailed
+The second command **currently fails intentionally** because the four M2–M5 milestone
+acceptance scenarios are pending; the M1 browser scenario is executable. These gates must be expanded into the detailed
 workflows in [the acceptance matrix](ARCHITECTURE_PLAN.md#16-test-and-acceptance-matrix),
 not simply removed to obtain a green result.
 
-Run the scaffold:
+Run the frontend-only scaffold (for the database-backed service, follow
+[the foundation setup](docs/foundation.md)):
 
 ```sh
 npm --prefix web run build
@@ -54,21 +59,23 @@ cargo run --locked -p sct-server
 
 Open <http://127.0.0.1:8080>. The server serves `web/dist` from the same origin.
 For web hot reload, run `npm --prefix web run dev` alongside the Rust server;
-Vite proxies `/api` and `/health` to port 8080.
+Vite proxies `/api`, `/auth`, and `/health` to port 8080. When testing cookie
+authentication through Vite, set `SCT_PUBLIC_URL` to its loopback origin.
 
 | Environment variable | Scaffold behavior |
 | --- | --- |
 | `SCT_BIND` | Socket address; defaults to `127.0.0.1:8080` |
 | `SCT_WEB_DIR` | Built assets directory relative to the process working directory; defaults to `web/dist` |
-| `SCT_DATABASE_URL` | Optional PostgreSQL URL; absent means no database connection |
+| `SCT_CONFIG` | TOML configuration path; required for the database-backed foundation service |
+| `SCT_DATABASE_URL` | PostgreSQL secret referenced by the example configuration |
 | `SCT_TEST_DATABASE_URL` | Optional **dedicated test database** for `scripts/test-integration`; otherwise the script owns and removes a disposable Docker container |
 | `SCT_E2E_PORT` | Browser test server port; defaults to `18080` |
 
 `GET /health/live` checks process liveness. `GET /health/database` returns 204
-after a successful PostgreSQL query or 503 if unconfigured/unavailable. Neither
-claims that storage is ready. `/api/v1/*` operations are not implemented. Full
-validated TOML configuration, migrations and the single-writer lease follow in
-SCT-8/SCT-9; this scaffold is not a production storage service.
+after a successful PostgreSQL query or 503 if unconfigured/unavailable. `GET /health/ready` additionally checks the writer lease in configured service mode.
+None claims payload storage is ready. The configured service implements the M1
+[operation map](contracts/operations.md); the frontend-only scaffold keeps returning
+structured 404 responses for application routes.
 
 Useful focused checks:
 
@@ -76,7 +83,7 @@ Useful focused checks:
 cargo test --locked --workspace
 ./scripts/test-integration
 ./scripts/check-client
-npm --prefix web run test:e2e   # requires built server and web assets
+npm --prefix web run test:e2e   # disposable PostgreSQL + real server/Chromium; requires builds
 ```
 
 For formatting, run `cargo fmt --all` and `npm --prefix web run format`.
@@ -86,10 +93,10 @@ For formatting, run `cargo fmt --all` and `npm --prefix web run format`.
 | Component | Responsibility |
 | --- | --- |
 | `sct-protocol` | Public Rust-owned contracts with generated OpenAPI, JSON Schema and TypeScript |
-| `sct-client` | Standalone HTTP transport and later transfer/chunking operations; depends on protocol, never core/server |
-| `sct-core` | Application rules and catalog; later backend registration, byte adapters and a separate placement coordinator |
+| `sct-client` | Standalone authenticated foundation API client; transfer/chunking follows in M2; depends on protocol, never core/server |
+| `sct-core` | Authorization, catalog, roots, policies, namespace and operation fencing; payload coordination follows in M2 |
 | `sct-server` | Axum routes, Tokio runtime, configuration and worker wiring |
-| `web` | Vue 3/TypeScript UI; generated wire models will come from Rust contracts |
+| `web` | Vue 3/TypeScript UI; wire models are generated from Rust contracts |
 
 The external sample is a template copied to a temporary directory by
 `scripts/check-client`. It builds against packaged client/protocol crates with no
@@ -104,8 +111,9 @@ repository is needed.
 - [Approved icon and shared palette](docs/branding.md)
 - [Protocol contracts, generation and wire conventions](contracts/README.md)
 
-Next: SCT-8 PostgreSQL catalog, followed by configuration/authentication,
-root provisioning, policies and namespace according to the recorded dependency graph.
+Next: refine and implement M2 immutable transfer and real storage adapters, resolving
+its capacity-ledger, immutable-format and crash-recovery design prerequisites.
+M2–M5 still need implementation-ticket decomposition beyond their existing epics.
 
 Technical references: [Axum serving](https://docs.rs/axum/0.8.9/axum/fn.serve.html),
 [SQLx PostgreSQL wiring](https://docs.rs/crate/sqlx/0.8.6/source/README.md),

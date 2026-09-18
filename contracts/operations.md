@@ -1,64 +1,66 @@
-# Planned v1 operation map
+# v1 operation map
 
-Generated from `sct-protocol`. **None of these application routes is implemented yet.**
-The scaffold returns a structured 404. Foundation types are contracts, not services.
+Generated from `sct-protocol`. Foundation routes require the configured database-backed service.
+Unimplemented routes return a structured 404 and are absent from OpenAPI paths and capabilities.
 
-| Operation | Method | Path | Request | Response | Milestone |
-| --- | --- | --- | --- | --- | --- |
-| capabilities | GET | `/api/v1/capabilities` | reserved | Capabilities | M1 |
-| list_roots | GET | `/api/v1/roots` | ListRequest | RootPage | M1 |
-| create_root | POST | `/api/v1/roots` | CreateRootRequest | RootInspection | M1 |
-| inspect_root | GET | `/api/v1/roots/{root}` | reserved | RootInspection | M1 |
-| update_root | PATCH | `/api/v1/roots/{root}` | UpdateRootRequest | RootInspection | M1 |
-| list_entries | GET | `/api/v1/roots/{root}/entries` | ListEntriesRequest | EntryPage | M1 |
-| resolve_path | GET | `/api/v1/roots/{root}/resolve` | ResolvePathRequest | EntryInspection | M1 |
-| create_directory | POST | `/api/v1/roots/{root}/entries` | CreateDirectoryRequest | EntryInspection | M1 |
-| inspect_entry | GET | `/api/v1/entries/{entry}` | reserved | EntryInspection | M1 |
-| rename_entry | POST | `/api/v1/entries/{entry}/rename` | RenameEntryRequest | EntryInspection | M1 |
-| effective_policy | GET | `/api/v1/policies` | PolicyScope | EffectivePolicy | M1 |
-| preview_policy | POST | `/api/v1/policies/preview` | PreviewPolicyRequest | PolicyPreview | M3 |
-| apply_policy | POST | `/api/v1/policies/apply` | ApplyPolicyRequest | OperationInspection | M3 |
-| root_operation | GET | `/api/v1/roots/{root}/operation` | reserved | OperationInspection | M1 |
-| inspect_usage | GET | `/api/v1/roots/{root}/usage` | reserved | RootUsage | M2 |
-| inspect_pool | GET | `/api/v1/admin/pools/{pool}` | reserved | PoolInspection | M1 |
-| inspect_allocation | GET | `/api/v1/admin/allocations/{allocation}` | reserved | AllocationInspection | M1 |
-| inspect_backend | GET | `/api/v1/admin/backends/{backend}` | reserved | BackendInspection | M1 |
-| adapter_documentation | GET | `/api/v1/admin/adapters/{kind}` | reserved | AdapterDocumentation | M1 |
-| inspect_grant | GET | `/api/v1/admin/grants/{grant}` | reserved | GrantInspection | M1 |
-| update_grant | PATCH | `/api/v1/admin/grants/{grant}` | UpdateGrantRequest | GrantInspection | M1 |
-| hide_entry | DELETE | `/api/v1/entries/{entry}` | reserved | reserved | M3 |
-| purge_entry | POST | `/api/v1/entries/{entry}/purge` | reserved | reserved | M3 |
-| list_versions | GET | `/api/v1/entries/{entry}/versions` | ListRequest | reserved | M3 |
-| inspect_version | GET | `/api/v1/versions/{version}` | reserved | reserved | M2 |
-| read_manifest | GET | `/api/v1/versions/{version}/manifest` | ListRequest | reserved | M2 |
-| download_content | GET | `/api/v1/versions/{version}/content` | reserved | reserved | M2 |
-| begin_upload | POST | `/api/v1/uploads` | reserved | UploadInspection | M2 |
-| resolve_upload_key | GET | `/api/v1/uploads/by-key/{key}` | reserved | UploadInspection | M2 |
-| inspect_upload | GET | `/api/v1/uploads/{upload}` | reserved | UploadInspection | M2 |
-| abort_upload | POST | `/api/v1/uploads/{upload}/abort` | reserved | UploadInspection | M2 |
-| negotiate_chunks | POST | `/api/v1/uploads/{upload}/chunks` | reserved | reserved | M2 |
-| upload_chunk | PUT | `/api/v1/uploads/{upload}/chunks/{digest}` | reserved | reserved | M2 |
-| stage_manifest | POST | `/api/v1/uploads/{upload}/manifest` | reserved | reserved | M2 |
-| commit_upload | POST | `/api/v1/uploads/{upload}/commit` | reserved | CommitReceipt | M2 |
-| list_principals | GET | `/api/v1/admin/principals` | ListRequest | reserved | M4 |
-| create_principal | POST | `/api/v1/admin/principals` | reserved | reserved | M4 |
-| create_credential | POST | `/api/v1/admin/credentials` | reserved | reserved | M4 |
-| revoke_credential | DELETE | `/api/v1/admin/credentials/{credential}` | reserved | reserved | M4 |
-| create_grant | POST | `/api/v1/admin/grants` | reserved | GrantInspection | M1 |
-| list_grants | GET | `/api/v1/admin/grants` | ListRequest | reserved | M1 |
-| revoke_grant | DELETE | `/api/v1/admin/grants/{grant}` | reserved | reserved | M1 |
-| list_backends | GET | `/api/v1/admin/backends` | ListRequest | reserved | M4 |
-| configure_backend | PUT | `/api/v1/admin/backends/{backend}` | reserved | BackendInspection | M4 |
-| list_pools | GET | `/api/v1/admin/pools` | ListRequest | reserved | M4 |
-| configure_pool | PUT | `/api/v1/admin/pools/{pool}` | reserved | PoolInspection | M4 |
-| list_allocations | GET | `/api/v1/admin/allocations` | ListRequest | reserved | M4 |
-| configure_allocation | PUT | `/api/v1/admin/allocations/{allocation}` | reserved | AllocationInspection | M4 |
-| list_jobs | GET | `/api/v1/admin/jobs` | ListRequest | reserved | M4 |
-| inspect_job | GET | `/api/v1/admin/jobs/{job}` | reserved | reserved | M4 |
-| start_integrity_scan | POST | `/api/v1/admin/roots/{root}/integrity` | reserved | OperationInspection | M4 |
-| start_repair | POST | `/api/v1/admin/roots/{root}/repair` | reserved | OperationInspection | M4 |
-| list_audit | GET | `/api/v1/admin/audit` | ListRequest | reserved | M4 |
-| create_checkpoint | POST | `/api/v1/admin/checkpoints` | reserved | reserved | M4 |
-| inspect_checkpoint | GET | `/api/v1/admin/checkpoints/{checkpoint}` | reserved | reserved | M4 |
-| finish_checkpoint | POST | `/api/v1/admin/checkpoints/{checkpoint}/finish` | reserved | reserved | M4 |
-| abandon_checkpoint | POST | `/api/v1/admin/checkpoints/{checkpoint}/abandon` | reserved | reserved | M4 |
+| Operation | Method | Path | Request | Response | Milestone | Implemented |
+| --- | --- | --- | --- | --- | --- | --- |
+| capabilities | GET | `/api/v1/capabilities` | reserved | Capabilities | M1 | true |
+| list_roots | GET | `/api/v1/roots` | ListRequest | RootPage | M1 | true |
+| create_root | POST | `/api/v1/roots` | CreateRootRequest | RootInspection | M1 | true |
+| inspect_root | GET | `/api/v1/roots/{root}` | reserved | RootInspection | M1 | true |
+| update_root | PATCH | `/api/v1/roots/{root}` | UpdateRootRequest | RootInspection | M1 | true |
+| list_entries | GET | `/api/v1/roots/{root}/entries` | ListEntriesQuery | EntryPage | M1 | true |
+| resolve_path | GET | `/api/v1/roots/{root}/resolve` | ResolvePathRequest | EntryInspection | M1 | true |
+| create_directory | POST | `/api/v1/roots/{root}/entries` | CreateDirectoryRequest | EntryInspection | M1 | true |
+| inspect_entry | GET | `/api/v1/entries/{entry}` | reserved | EntryInspection | M1 | true |
+| rename_entry | POST | `/api/v1/entries/{entry}/rename` | RenameEntryRequest | EntryInspection | M1 | true |
+| effective_policy | GET | `/api/v1/policies` | PolicyScope | EffectivePolicy | M1 | true |
+| preview_policy | POST | `/api/v1/policies/preview` | PreviewPolicyRequest | PolicyPreview | M3 | false |
+| apply_policy | POST | `/api/v1/policies/apply` | ApplyPolicyRequest | OperationInspection | M3 | false |
+| root_operation | GET | `/api/v1/roots/{root}/operation` | reserved | OperationInspection | M1 | true |
+| inspect_usage | GET | `/api/v1/roots/{root}/usage` | reserved | RootUsage | M2 | false |
+| inspect_pool | GET | `/api/v1/admin/pools/{pool}` | reserved | PoolInspection | M1 | true |
+| inspect_allocation | GET | `/api/v1/admin/allocations/{allocation}` | reserved | AllocationInspection | M1 | true |
+| inspect_backend | GET | `/api/v1/admin/backends/{backend}` | reserved | BackendInspection | M1 | true |
+| adapter_documentation | GET | `/api/v1/admin/adapters/{kind}` | reserved | AdapterDocumentation | M1 | true |
+| inspect_grant | GET | `/api/v1/admin/grants/{grant}` | reserved | GrantInspection | M1 | true |
+| update_grant | PATCH | `/api/v1/admin/grants/{grant}` | UpdateGrantRequest | GrantInspection | M1 | true |
+| hide_entry | DELETE | `/api/v1/entries/{entry}` | reserved | reserved | M3 | false |
+| purge_entry | POST | `/api/v1/entries/{entry}/purge` | reserved | reserved | M3 | false |
+| list_versions | GET | `/api/v1/entries/{entry}/versions` | ListRequest | reserved | M3 | false |
+| inspect_version | GET | `/api/v1/versions/{version}` | reserved | reserved | M2 | false |
+| read_manifest | GET | `/api/v1/versions/{version}/manifest` | ListRequest | reserved | M2 | false |
+| download_content | GET | `/api/v1/versions/{version}/content` | reserved | reserved | M2 | false |
+| begin_upload | POST | `/api/v1/uploads` | reserved | UploadInspection | M2 | false |
+| resolve_upload_key | GET | `/api/v1/uploads/by-key/{key}` | reserved | UploadInspection | M2 | false |
+| inspect_upload | GET | `/api/v1/uploads/{upload}` | reserved | UploadInspection | M2 | false |
+| abort_upload | POST | `/api/v1/uploads/{upload}/abort` | reserved | UploadInspection | M2 | false |
+| negotiate_chunks | POST | `/api/v1/uploads/{upload}/chunks` | reserved | reserved | M2 | false |
+| upload_chunk | PUT | `/api/v1/uploads/{upload}/chunks/{digest}` | reserved | reserved | M2 | false |
+| stage_manifest | POST | `/api/v1/uploads/{upload}/manifest` | reserved | reserved | M2 | false |
+| commit_upload | POST | `/api/v1/uploads/{upload}/commit` | reserved | CommitReceipt | M2 | false |
+| list_principals | GET | `/api/v1/admin/principals` | ListRequest | reserved | M4 | false |
+| create_principal | POST | `/api/v1/admin/principals` | reserved | reserved | M4 | false |
+| create_credential | POST | `/api/v1/admin/credentials` | reserved | reserved | M4 | false |
+| revoke_credential | DELETE | `/api/v1/admin/credentials/{credential}` | reserved | reserved | M4 | false |
+| create_grant | POST | `/api/v1/admin/grants` | CreateGrantRequest | GrantInspection | M1 | true |
+| list_grants | GET | `/api/v1/admin/grants` | ListGrantsQuery | GrantPage | M1 | true |
+| revoke_grant | DELETE | `/api/v1/admin/grants/{grant}` | ExpectedRevision | reserved | M1 | true |
+| list_backends | GET | `/api/v1/admin/backends` | ListRequest | reserved | M4 | false |
+| configure_backend | PUT | `/api/v1/admin/backends/{backend}` | reserved | BackendInspection | M4 | false |
+| list_pools | GET | `/api/v1/admin/pools` | ListRequest | reserved | M4 | false |
+| configure_pool | PUT | `/api/v1/admin/pools/{pool}` | reserved | PoolInspection | M4 | false |
+| list_allocations | GET | `/api/v1/admin/allocations` | ListRequest | AllocationPage | M1 | true |
+| configure_allocation | PUT | `/api/v1/admin/allocations/{allocation}` | reserved | AllocationInspection | M4 | false |
+| list_jobs | GET | `/api/v1/admin/jobs` | ListRequest | reserved | M4 | false |
+| inspect_job | GET | `/api/v1/admin/jobs/{job}` | reserved | reserved | M4 | false |
+| start_integrity_scan | POST | `/api/v1/admin/roots/{root}/integrity` | reserved | OperationInspection | M4 | false |
+| start_repair | POST | `/api/v1/admin/roots/{root}/repair` | reserved | OperationInspection | M4 | false |
+| list_audit | GET | `/api/v1/admin/audit` | ListRequest | reserved | M4 | false |
+| create_checkpoint | POST | `/api/v1/admin/checkpoints` | reserved | reserved | M4 | false |
+| inspect_checkpoint | GET | `/api/v1/admin/checkpoints/{checkpoint}` | reserved | reserved | M4 | false |
+| finish_checkpoint | POST | `/api/v1/admin/checkpoints/{checkpoint}/finish` | reserved | reserved | M4 | false |
+| abandon_checkpoint | POST | `/api/v1/admin/checkpoints/{checkpoint}/abandon` | reserved | reserved | M4 | false |
+| set_policy | PATCH | `/api/v1/policies` | SetPolicyRequest | EffectivePolicy | M1 | true |
+| policy_constraints | PATCH | `/api/v1/admin/roots/{root}/policy-constraints` | PolicyConstraintsRequest | RootInspection | M1 | true |

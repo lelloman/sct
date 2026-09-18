@@ -10,6 +10,7 @@ pub use sct_protocol as protocol;
 pub struct Client {
     http: reqwest::Client,
     origin: reqwest::Url,
+    token: Option<String>,
 }
 
 impl Client {
@@ -29,7 +30,11 @@ impl Client {
             .timeout(Duration::from_secs(10))
             .build()
             .map_err(|_| "could not initialize HTTP transport")?;
-        Ok(Self { http, origin })
+        Ok(Self {
+            http,
+            origin,
+            token: None,
+        })
     }
 
     /// Check process liveness; this does not imply storage readiness.
@@ -59,5 +64,216 @@ mod tests {
         ] {
             assert!(Client::new(origin.parse().unwrap()).is_err());
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Transport(reqwest::Error),
+    Server(protocol::ErrorResponse),
+    UnexpectedStatus(u16),
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Transport(_) => f.write_str("HTTP transport failed"),
+            Self::Server(e) => write!(f, "{} (request {})", e.message, e.request_id.as_str()),
+            Self::UnexpectedStatus(status) => write!(f, "unexpected HTTP status {status}"),
+        }
+    }
+}
+impl std::error::Error for Error {}
+impl Client {
+    pub fn with_token(mut self, token: String) -> Result<Self, &'static str> {
+        if token.len() != 64 || !token.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return Err("invalid application token");
+        }
+        self.token = Some(token);
+        Ok(self)
+    }
+    async fn request<T: serde::de::DeserializeOwned>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: Vec<(&str, String)>,
+        body: Option<serde_json::Value>,
+    ) -> Result<T, Error> {
+        let mut url = self.origin.clone();
+        url.set_path(path);
+        let mut request = self.http.request(method, url).query(&query);
+        if let Some(token) = &self.token {
+            request = request.bearer_auth(token);
+        }
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+        let response = request.send().await.map_err(Error::Transport)?;
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            return Err(match response.json::<protocol::ErrorResponse>().await {
+                Ok(error) => Error::Server(error),
+                Err(_) => Error::UnexpectedStatus(status),
+            });
+        }
+        response.json().await.map_err(Error::Transport)
+    }
+    pub async fn capabilities(&self) -> Result<protocol::Capabilities, Error> {
+        self.request(reqwest::Method::GET, "/api/v1/capabilities", vec![], None)
+            .await
+    }
+    pub async fn list_roots(
+        &self,
+        request: &protocol::ListRequest,
+    ) -> Result<protocol::RootPage, Error> {
+        let mut query = vec![("limit", request.limit.get().to_string())];
+        if let Some(cursor) = &request.cursor {
+            query.push(("cursor", cursor.as_str().into()));
+        }
+        self.request(reqwest::Method::GET, "/api/v1/roots", query, None)
+            .await
+    }
+    pub async fn create_root(
+        &self,
+        request: &protocol::CreateRootRequest,
+    ) -> Result<protocol::RootInspection, Error> {
+        self.request(
+            reqwest::Method::POST,
+            "/api/v1/roots",
+            vec![],
+            Some(serde_json::to_value(request).expect("wire DTO")),
+        )
+        .await
+    }
+    pub async fn inspect_root(
+        &self,
+        root: &protocol::RootId,
+    ) -> Result<protocol::RootInspection, Error> {
+        self.request(
+            reqwest::Method::GET,
+            &format!("/api/v1/roots/{}", root.as_str()),
+            vec![],
+            None,
+        )
+        .await
+    }
+    pub async fn update_root(
+        &self,
+        root: &protocol::RootId,
+        request: &protocol::UpdateRootRequest,
+    ) -> Result<protocol::RootInspection, Error> {
+        self.request(
+            reqwest::Method::PATCH,
+            &format!("/api/v1/roots/{}", root.as_str()),
+            vec![],
+            Some(serde_json::to_value(request).expect("wire DTO")),
+        )
+        .await
+    }
+    pub async fn resolve_path(
+        &self,
+        root: &protocol::RootId,
+        path: &protocol::RootPath,
+    ) -> Result<protocol::EntryInspection, Error> {
+        self.request(
+            reqwest::Method::GET,
+            &format!("/api/v1/roots/{}/resolve", root.as_str()),
+            vec![("path", path.as_str().into())],
+            None,
+        )
+        .await
+    }
+    pub async fn inspect_entry(
+        &self,
+        entry: &protocol::EntryId,
+    ) -> Result<protocol::EntryInspection, Error> {
+        self.request(
+            reqwest::Method::GET,
+            &format!("/api/v1/entries/{}", entry.as_str()),
+            vec![],
+            None,
+        )
+        .await
+    }
+    pub async fn create_directory(
+        &self,
+        root: &protocol::RootId,
+        request: &protocol::CreateDirectoryRequest,
+    ) -> Result<protocol::EntryInspection, Error> {
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/v1/roots/{}/entries", root.as_str()),
+            vec![],
+            Some(serde_json::to_value(request).expect("wire DTO")),
+        )
+        .await
+    }
+    pub async fn list_entries(
+        &self,
+        root: &protocol::RootId,
+        directory: &protocol::EntryId,
+        request: &protocol::ListEntriesRequest,
+    ) -> Result<protocol::EntryPage, Error> {
+        let mut query = vec![
+            ("directory_id", directory.as_str().into()),
+            ("limit", request.limit.get().to_string()),
+            ("include_hidden", request.include_hidden.to_string()),
+        ];
+        if let Some(cursor) = &request.cursor {
+            query.push(("cursor", cursor.token.as_str().into()));
+            query.push((
+                "directory_revision",
+                cursor.directory_revision.as_str().into(),
+            ));
+        }
+        self.request(
+            reqwest::Method::GET,
+            &format!("/api/v1/roots/{}/entries", root.as_str()),
+            query,
+            None,
+        )
+        .await
+    }
+    pub async fn rename_entry(
+        &self,
+        entry: &protocol::EntryId,
+        request: &protocol::RenameEntryRequest,
+    ) -> Result<protocol::EntryInspection, Error> {
+        self.request(
+            reqwest::Method::POST,
+            &format!("/api/v1/entries/{}/rename", entry.as_str()),
+            vec![],
+            Some(serde_json::to_value(request).expect("wire DTO")),
+        )
+        .await
+    }
+    pub async fn effective_policy(
+        &self,
+        scope: &protocol::PolicyScope,
+    ) -> Result<protocol::EffectivePolicy, Error> {
+        let query = match scope {
+            protocol::PolicyScope::Root { root_id } => vec![
+                ("kind", "root".into()),
+                ("root_id", root_id.as_str().into()),
+            ],
+            protocol::PolicyScope::Entry { root_id, entry_id } => vec![
+                ("kind", "entry".into()),
+                ("root_id", root_id.as_str().into()),
+                ("entry_id", entry_id.as_str().into()),
+            ],
+        };
+        self.request(reqwest::Method::GET, "/api/v1/policies", query, None)
+            .await
+    }
+    pub async fn set_policy(
+        &self,
+        request: &protocol::SetPolicyRequest,
+    ) -> Result<protocol::EffectivePolicy, Error> {
+        self.request(
+            reqwest::Method::PATCH,
+            "/api/v1/policies",
+            vec![],
+            Some(serde_json::to_value(request).expect("wire DTO")),
+        )
+        .await
     }
 }

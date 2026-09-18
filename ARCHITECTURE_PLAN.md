@@ -4,7 +4,7 @@ Architecture and implementation plan.
 
 The project is branded **ScT**, expanded as **Stipa ca Truova**. Use `sct` for the repository, directory, domain label, and code identifiers; Rust crates use the `sct-` prefix.
 
-Status: SCT-6 workspace/test scaffold and SCT-7 foundation protocol contracts are implemented; storage functionality is not implemented yet. See `contracts/README.md` for exact wire conventions and generation commands.
+Status: M1 foundation (SCT-6–13) is implemented. Payload storage functionality and M2–M5 remain pending. See `docs/foundation.md` for implemented behavior and `contracts/README.md` for wire conventions.
 
 Date: 2026-09-14. Backend abstraction revised: 2026-09-15.
 
@@ -662,3 +662,22 @@ Primary technical references:
 The implementation is complete when a fresh installation can provision users and roots, accept files and atomic directory versions through the standalone SDK, enforce the agreed retention and placement guarantees, serve verified current/historical downloads, and administer those capabilities through the web UI, with the failure, scale, and operator recovery tests above passing.
 
 No existing application integration, personal-library feature, Android app, deployment migration, or remote service restoration is required for that completion.
+
+
+## Foundation implementation decisions — 2026-09-18
+
+M1 uses PostgreSQL-enforced root/parent identity, pool allocation limits and short
+fenced metadata transactions. Server and root-worker leases are separate. Durable
+operations retain ownership through recovery; short namespace/policy metadata edits
+commit atomically while excluding durable owners. Directory pagination uses opaque
+server-held, expiring tokens bound to the principal and query snapshot.
+
+Foundation policy editing is restricted to roots without published content and
+ordinary namespace mutation is disabled within atomic scopes. M3 preview/apply and
+snapshot operations remain required for content-bearing changes. Administrator
+policy constraints and bounded allocation listing are exposed in M1 to make its
+provisioning and authorization model usable without the M4 administration UI.
+
+See `docs/foundation.md` for exact runtime defaults and test coverage. These choices
+do not resolve the M2/M3 shared-graph ledger, immutable encoding or physical-I/O
+reconciliation prerequisites recorded in the readiness review.

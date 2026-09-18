@@ -45,5 +45,27 @@ async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {
     }
 }
 
+pub mod api;
 pub mod config;
 pub mod oidc;
+
+pub fn application(app: api::App, web_directory: PathBuf) -> Router {
+    router(Some(app.writer.catalog().clone()), web_directory).merge(api::routes(app))
+}
+pub fn capabilities() -> sct_protocol::Capabilities {
+    use sct_protocol::*;
+    Capabilities {
+        protocol_version: 1,
+        supported_operations: FOUNDATION_OPERATIONS.iter().map(|s| (*s).into()).collect(),
+        storage_format_versions: vec![],
+        chunk_profiles: vec![],
+        limits: RequestLimits {
+            max_page_size: 1000.try_into().unwrap(),
+            max_request_bytes: 65536.try_into().unwrap(),
+            max_metadata_bytes: 0.try_into().unwrap(),
+            max_manifest_page_bytes: 0.try_into().unwrap(),
+            max_manifest_page_entries: 1.try_into().unwrap(),
+            max_chunk_batch: 1.try_into().unwrap(),
+        },
+    }
+}

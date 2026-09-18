@@ -1,8 +1,8 @@
 # Implementation readiness — 2026-09-16
 
-SCT-6 can proceed without another product decision. Its scope is development wiring,
-component boundaries and an executable test harness. The full product is not yet
-implementation-complete or acceptance-ready.
+Update, 2026-09-18: M1 (SCT-6–13) is implemented and has executable acceptance.
+The remaining design prerequisites below still apply before their dependent M2–M4
+features. The full product is not yet implementation-complete or acceptance-ready.
 
 The following are design prerequisites for later features, not reasons to delay the
 scaffold. Resolve them in the architecture and relevant task before implementing
@@ -26,6 +26,6 @@ accounting. These cannot all wait for M3 despite the short milestone summary. M3
 extends them with full retention, atomic trees and reclamation. The shared-staging
 amendments in TICKET_PLAN.md already establish this dependency.
 
-Remote ticket descriptions may lag local amendments. The SCT-6 implementation includes
-the early acceptance harness required by the local delivery decision. It does not
-implement the subsequent protocol, registry, ownership or allocation models.
+Remote ticket descriptions may lag local amendments. The foundation now includes protocol, registry, ownership and allocation models
+and an executable M1 browser scenario. Detailed physical-I/O and shared-graph
+accounting behavior is deliberately left to its dependent milestones.

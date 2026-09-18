@@ -1,5 +1,10 @@
 # Initial Crumbles ticket migration
 
+Implementation update, 2026-09-18: the repository now implements the full M1 foundation
+(SCT-6–13). See `docs/foundation.md` and `WORK_LOG.md` for behavior and verification.
+This is a repository status update; remote ticket states/descriptions have not been
+changed by this implementation. M2–M5 remain roadmap epics requiring decomposition.
+
 Source: `ARCHITECTURE_PLAN.md`, dated 2026-09-14. Crumbles project: https://crumbles.lelloman.com/w/LLPR/SCT
 
 Review amendment, 2026-09-15: all five milestone epics and eight implementation tasks were read from Crumbles and reviewed against the provider-independent adapter trust model in architecture §8. The revised task bodies below and epic amendments at the end are the local proposed ticket updates. Remote descriptions remain unchanged: the connected Crumbles tools do not expose an existing-ticket description editor. All 13 tickets were Open at resource version 1 when reviewed; all 18 dependency edges remain applicable. No new tickets or dependency changes are needed for this decision.

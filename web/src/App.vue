@@ -10,8 +10,8 @@
       <span class="badge">In development</span>
       <h2 id="status-heading">Your storage starts here.</h2>
       <p>
-        File storage and account access are being built. Uploads and downloads
-        aren’t available yet.
+        The storage foundation is in place. Uploads and downloads aren’t
+        available yet.
       </p>
     </section>
   </main>

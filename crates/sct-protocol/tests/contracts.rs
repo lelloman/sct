@@ -156,12 +156,17 @@ fn generation_is_deterministic_and_does_not_advertise_planned_routes() {
     let a = sct_protocol::codegen::artifacts().unwrap();
     assert_eq!(a, sct_protocol::codegen::artifacts().unwrap());
     let openapi: Value = serde_json::from_str(&a["contracts/openapi.json"]).unwrap();
-    assert!(openapi["paths"].as_object().unwrap().is_empty());
+    assert!(!openapi["paths"].as_object().unwrap().is_empty());
     assert!(openapi["components"]["schemas"].as_object().unwrap().len() > 60);
     let mut ids = std::collections::BTreeSet::new();
     let mut paths = std::collections::BTreeSet::new();
     for operation in openapi["x-sct-planned-operations"].as_array().unwrap() {
-        assert_eq!(operation["implemented"], false);
+        let implemented =
+            FOUNDATION_OPERATIONS.contains(&operation["operation_id"].as_str().unwrap());
+        assert_eq!(operation["implemented"], implemented);
+        let path = operation["path"].as_str().unwrap();
+        let method = operation["method"].as_str().unwrap().to_lowercase();
+        assert_eq!(openapi["paths"][path].get(&method).is_some(), implemented);
         assert!(operation["path"].as_str().unwrap().starts_with("/api/v1/"));
         assert!(ids.insert(operation["operation_id"].as_str().unwrap()));
         assert!(paths.insert((

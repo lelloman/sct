@@ -11,8 +11,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "check": "prettier --check . && eslint . && vue-tsc --noEmit",
     "format": "prettier --write .",
-    "test:e2e": "playwright test",
-    "test:acceptance": "SCT_FULL_ACCEPTANCE=1 playwright test",
+    "test:e2e": "../scripts/test-e2e",
+    "test:acceptance": "SCT_FULL_ACCEPTANCE=1 ../scripts/test-e2e",
     "test:contracts": "node --test contracts/fixtures.test.ts"
   },
   "dependencies": {

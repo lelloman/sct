@@ -117,6 +117,31 @@
         }
       ]
     },
+    "AllocationPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/AllocationInspection"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
     "ApplyPolicyRequest": {
       "additionalProperties": false,
       "properties": {
@@ -358,6 +383,29 @@
         "expected_parent_revision",
         "name",
         "versioning"
+      ],
+      "type": "object"
+    },
+    "CreateGrantRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/Capability"
+          },
+          "type": "array"
+        },
+        "principal_id": {
+          "$ref": "#/$defs/PrincipalId"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        }
+      },
+      "required": [
+        "root_id",
+        "principal_id",
+        "capabilities"
       ],
       "type": "object"
     },
@@ -848,6 +896,18 @@
       ],
       "type": "object"
     },
+    "ExpectedRevision": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "expected_revision"
+      ],
+      "type": "object"
+    },
     "GrantId": {
       "maxLength": 128,
       "minLength": 1,
@@ -882,6 +942,31 @@
         "principal_id",
         "revision",
         "capabilities"
+      ],
+      "type": "object"
+    },
+    "GrantPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/GrantInspection"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items"
       ],
       "type": "object"
     },
@@ -928,6 +1013,62 @@
       },
       "type": "object"
     },
+    "IssuedToken": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/CredentialId"
+        },
+        "secret": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "secret"
+      ],
+      "type": "object"
+    },
+    "ListEntriesQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "directory_id": {
+          "$ref": "#/$defs/EntryId"
+        },
+        "directory_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "include_hidden": {
+          "default": false,
+          "type": "boolean"
+        },
+        "limit": {
+          "$ref": "#/$defs/PageSize"
+        }
+      },
+      "required": [
+        "directory_id",
+        "limit"
+      ],
+      "type": "object"
+    },
     "ListEntriesRequest": {
       "additionalProperties": false,
       "properties": {
@@ -951,6 +1092,32 @@
       "required": [
         "limit",
         "include_hidden"
+      ],
+      "type": "object"
+    },
+    "ListGrantsQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "$ref": "#/$defs/PageSize"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        }
+      },
+      "required": [
+        "root_id",
+        "limit"
       ],
       "type": "object"
     },
@@ -1155,6 +1322,30 @@
           "type": "object"
         }
       ]
+    },
+    "PolicyConstraintsRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_relaxed": {
+          "type": "boolean"
+        },
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "max_versions": {
+          "$ref": "#/$defs/VersionCount"
+        },
+        "min_versions": {
+          "$ref": "#/$defs/VersionCount"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "min_versions",
+        "max_versions",
+        "allow_relaxed"
+      ],
+      "type": "object"
     },
     "PolicyId": {
       "maxLength": 128,
@@ -1707,6 +1898,18 @@
       ],
       "type": "object"
     },
+    "SessionInspection": {
+      "additionalProperties": false,
+      "properties": {
+        "principal_id": {
+          "$ref": "#/$defs/PrincipalId"
+        }
+      },
+      "required": [
+        "principal_id"
+      ],
+      "type": "object"
+    },
     "SessionState": {
       "enum": [
         "open",
@@ -1716,6 +1919,35 @@
         "expired"
       ],
       "type": "string"
+    },
+    "SetPolicyRequest": {
+      "additionalProperties": false,
+      "description": "Foundation policy edits are restricted to scopes with no published content.\nDestructive previews and content transitions are M3 operations.",
+      "properties": {
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "expected_scope_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "policy": {
+          "$ref": "#/$defs/RetentionPolicy"
+        },
+        "scope": {
+          "$ref": "#/$defs/PolicyScope"
+        },
+        "versioning": {
+          "$ref": "#/$defs/VersioningMode"
+        }
+      },
+      "required": [
+        "scope",
+        "expected_revision",
+        "expected_scope_revision",
+        "policy",
+        "versioning"
+      ],
+      "type": "object"
     },
     "TimestampMs": {
       "format": "uint64",

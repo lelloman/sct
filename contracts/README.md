@@ -17,23 +17,28 @@ generation in separate processes and deliberately corrupt/remove outputs.
 
 ## What is implemented
 
-This delivery provides DTOs, scalar parsing, self-contained validation, generation,
-fixtures and the HTTP error envelope. It does **not** implement the planned root,
-namespace, policy, upload or administration operations.
+The foundation provides DTOs, validation, deterministic generation, fixtures, and
+implemented M1 HTTP operations for authenticated roots/grants, namespace, policies,
+allocation/backend inspection and root operation status. The generated operation
+map records each operation's implementation status. OpenAPI `paths` and runtime
+capabilities include only implemented routes; payload operations remain absent.
 
-`openapi.json` is OpenAPI 3.1 with an empty `paths` object. Its schemas describe
-the foundation DTOs; `x-sct-planned-operations` contains the complete operation
-map with milestone and implementation status. `operations.md` is generated from
-that same Rust map. A null request/response schema means its shape is reserved;
-it does not authorize accepting arbitrary JSON. GET request DTOs describe query
-parameters, not GET bodies. Future handlers must promote operations into `paths`
-only when implemented, register their request/response schemas, and expose them
-in capability discovery.
+The configured service requires a database and a valid writer lease. The frontend
+scaffold (without `SCT_CONFIG`) returns `404 unsupported_operation` for application
+routes. Both modes reserve API paths so unimplemented operations never return HTML.
+Errors and successful application responses have `X-Request-Id` and
+`Cache-Control: no-store`; errors use the matching ID in their envelope.
 
-The scaffold returns `404 unsupported_operation` for all `/api` and `/api/*`
-methods. Errors have JSON content, a server-generated `X-Request-Id` matching
-the envelope, and `Cache-Control: no-store`. Health endpoints remain outside v1.
-No capabilities endpoint is advertised as working.
+Directory listing uses flat `ListEntriesQuery` query parameters: `directory_id`,
+`limit`, `include_hidden`, and the optional pair `cursor`/`directory_revision`.
+Policy lookup uses the tagged `PolicyScope` query (`kind`, `root_id`, `entry_id`
+when applicable). Grant listing requires `root_id`. Grant deletion requires the
+`expected_revision` query parameter. Cookie mutations also require Origin and CSRF;
+see [foundation authentication](../docs/foundation.md).
+
+`PATCH /policies` is a foundation-only metadata edit using `SetPolicyRequest`; roots
+with published content must use the future M3 preview/apply workflow. Administrator
+policy constraints and allocation listing complete the foundation control API.
 
 ## Wire conventions
 

@@ -35,3 +35,31 @@ impl std::fmt::Display for ValidationError {
     }
 }
 impl std::error::Error for ValidationError {}
+
+/// Implemented application operations; storage formats and transfers remain absent.
+pub const FOUNDATION_OPERATIONS: &[&str] = &[
+    "capabilities",
+    "list_roots",
+    "create_root",
+    "inspect_root",
+    "update_root",
+    "list_entries",
+    "resolve_path",
+    "create_directory",
+    "inspect_entry",
+    "rename_entry",
+    "effective_policy",
+    "set_policy",
+    "root_operation",
+    "inspect_pool",
+    "inspect_allocation",
+    "inspect_backend",
+    "adapter_documentation",
+    "inspect_grant",
+    "update_grant",
+    "create_grant",
+    "list_grants",
+    "revoke_grant",
+    "list_allocations",
+    "policy_constraints",
+];
