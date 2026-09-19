@@ -229,7 +229,7 @@ pub fn operations() -> Vec<Value> {
     let mut result = Vec::new();
     macro_rules! op {
         ($id:literal, $method:literal, $path:literal, $request:expr, $response:expr, $milestone:literal) => {
-            result.push(json!({"operation_id": $id, "method": $method, "path": concat!("/api/v1", $path), "request_schema": $request, "response_schema": $response, "milestone": $milestone, "implemented": (FOUNDATION_OPERATIONS.contains(&$id) || TRANSFER_OPERATIONS.contains(&$id))}));
+            result.push(json!({"operation_id": $id, "method": $method, "path": concat!("/api/v1", $path), "request_schema": $request, "response_schema": $response, "milestone": $milestone, "implemented": (FOUNDATION_OPERATIONS.contains(&$id) || TRANSFER_OPERATIONS.contains(&$id) || TREE_OPERATIONS.contains(&$id))}));
         };
     }
     op!(
@@ -321,22 +321,6 @@ pub fn operations() -> Vec<Value> {
         "M1"
     );
     op!(
-        "preview_policy",
-        "POST",
-        "/policies/preview",
-        "PreviewPolicyRequest",
-        "PolicyPreview",
-        "M3"
-    );
-    op!(
-        "apply_policy",
-        "POST",
-        "/policies/apply",
-        "ApplyPolicyRequest",
-        "OperationInspection",
-        "M3"
-    );
-    op!(
         "root_operation",
         "GET",
         "/roots/{root}/operation",
@@ -399,22 +383,6 @@ pub fn operations() -> Vec<Value> {
         "UpdateGrantRequest",
         "GrantInspection",
         "M1"
-    );
-    op!(
-        "hide_entry",
-        "DELETE",
-        "/entries/{entry}",
-        None::<&str>,
-        None::<&str>,
-        "M3"
-    );
-    op!(
-        "purge_entry",
-        "POST",
-        "/entries/{entry}/purge",
-        None::<&str>,
-        None::<&str>,
-        "M3"
     );
     op!(
         "list_versions",
@@ -704,6 +672,206 @@ pub fn operations() -> Vec<Value> {
         "RootInspection",
         "M1"
     );
+    op!(
+        "create_tree_draft",
+        "POST",
+        "/roots/{root}/tree-drafts",
+        "CreateTreeDraftRequest",
+        "TreeDraftStatus",
+        "M3"
+    );
+    op!(
+        "tree_draft",
+        "GET",
+        "/roots/{root}/tree-drafts/{draft}",
+        None::<&str>,
+        "TreeDraftStatus",
+        "M3"
+    );
+    op!(
+        "allocate_tree_identities",
+        "POST",
+        "/roots/{root}/tree-drafts/{draft}/identities",
+        "AllocateDraftIdentitiesRequest",
+        "DraftIdentities",
+        "M3"
+    );
+    op!(
+        "mutate_tree_draft",
+        "POST",
+        "/roots/{root}/tree-drafts/{draft}/mutations",
+        "DraftMutationPage",
+        "TreeDraftStatus",
+        "M3"
+    );
+    op!(
+        "tree_draft_page",
+        "PUT",
+        "/roots/{root}/tree-drafts/{draft}/pages/{manifest}",
+        "ManifestPage",
+        None::<&str>,
+        "M3"
+    );
+    op!(
+        "current_snapshot",
+        "GET",
+        "/roots/{root}/entries/{entry}/snapshot",
+        None::<&str>,
+        "VersionId",
+        "M3"
+    );
+    op!(
+        "snapshot_entries",
+        "GET",
+        "/roots/{root}/snapshots/{version}/entries",
+        "SnapshotListQuery",
+        "SnapshotEntryPage",
+        "M3"
+    );
+    op!(
+        "snapshot_entry",
+        "GET",
+        "/roots/{root}/snapshots/{version}/entry",
+        "SnapshotPathQuery",
+        "DirectoryEntry",
+        "M3"
+    );
+    op!(
+        "snapshot_manifest",
+        "GET",
+        "/roots/{root}/snapshots/{version}/manifest",
+        "SnapshotPathQuery",
+        "FileManifest",
+        "M3"
+    );
+    op!(
+        "download_snapshot",
+        "GET",
+        "/roots/{root}/snapshots/{version}/content",
+        "SnapshotPathQuery",
+        None::<&str>,
+        "M3"
+    );
+    op!(
+        "hide_entry",
+        "POST",
+        "/roots/{root}/entries/{entry}/hide",
+        "HideEntryRequest",
+        "EntryInspection",
+        "M3"
+    );
+    op!(
+        "preview_change",
+        "POST",
+        "/roots/{root}/policy-previews",
+        "PreviewChangeRequest",
+        "ChangePreview",
+        "M3"
+    );
+    op!(
+        "inspect_preview",
+        "GET",
+        "/roots/{root}/policy-previews/{preview}",
+        None::<&str>,
+        "ChangePreview",
+        "M3"
+    );
+    op!(
+        "advance_preview",
+        "POST",
+        "/roots/{root}/policy-previews/{preview}/advance",
+        None::<&str>,
+        "ChangePreview",
+        "M3"
+    );
+    op!(
+        "preview_versions",
+        "GET",
+        "/roots/{root}/policy-previews/{preview}/versions",
+        "ListRequest",
+        "PreviewVersionPage",
+        "M3"
+    );
+    op!(
+        "apply_change",
+        "POST",
+        "/roots/{root}/policy-jobs",
+        "ApplyChangeRequest",
+        "LifecycleJob",
+        "M3"
+    );
+    op!(
+        "purge",
+        "POST",
+        "/roots/{root}/purge-jobs",
+        "PurgeRequest",
+        "LifecycleJob",
+        "M3"
+    );
+    op!(
+        "lifecycle_job",
+        "GET",
+        "/roots/{root}/jobs/{job}",
+        None::<&str>,
+        "LifecycleJob",
+        "M3"
+    );
+    op!(
+        "advance_tree_draft",
+        "POST",
+        "/roots/{root}/tree-drafts/{draft}/advance",
+        None::<&str>,
+        "TreeDraftStatus",
+        "M3"
+    );
+    op!(
+        "freeze_tree_draft",
+        "POST",
+        "/roots/{root}/tree-drafts/{draft}/freeze",
+        None::<&str>,
+        "TreeDraftStatus",
+        "M3"
+    );
+    op!(
+        "abort_tree_draft",
+        "POST",
+        "/roots/{root}/tree-drafts/{draft}/abort",
+        None::<&str>,
+        "TreeDraftStatus",
+        "M3"
+    );
+    op!(
+        "admit_tree_draft",
+        "POST",
+        "/roots/{root}/tree-drafts/{draft}/admit",
+        None::<&str>,
+        "TreeDraftStatus",
+        "M3"
+    );
+    op!(
+        "commit_tree_draft",
+        "POST",
+        "/roots/{root}/tree-drafts/{draft}/commit",
+        None::<&str>,
+        "CommitReceipt",
+        "M3"
+    );
+    op!(
+        "advance_lifecycle_job",
+        "POST",
+        "/roots/{root}/jobs/{job}/advance",
+        None::<&str>,
+        "LifecycleJob",
+        "M3"
+    );
+    op!(
+        "resume_lifecycle_job",
+        "POST",
+        "/roots/{root}/jobs/{job}/resume",
+        None::<&str>,
+        "LifecycleJob",
+        "M3"
+    );
     result
 }
 
@@ -744,13 +912,13 @@ fn implemented_paths(operations: &[Value], definitions: &serde_json::Map<String,
         if matches!(id, "list_versions" | "missing_chunks") {
             parameters.push(json!({"name":"cursor","in":"query","required":false,"schema":{"$ref":"#/components/schemas/CursorToken"}}));
         }
-        if id == "download_content" {
+        if matches!(id, "download_content" | "download_snapshot") {
             parameters.push(json!({"name":"Range","in":"header","required":false,"description":"One bytes range, inclusive/open-ended/suffix","schema":{"type":"string"}}));
         }
         if id == "upload_chunk" {
             entry["requestBody"] = json!({"required":true,"content":{"application/octet-stream":{"schema":{"type":"string","format":"binary","maxLength":CHUNK_MAX}}}});
         }
-        if id == "upload_page" {
+        if matches!(id, "upload_page" | "tree_draft_page") {
             entry["requestBody"] = json!({"required":true,"description":"Canonical JSON bytes; hash must match path digest","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ManifestPage"}}}});
         }
         entry["parameters"] = json!(parameters);
@@ -762,7 +930,7 @@ fn implemented_paths(operations: &[Value], definitions: &serde_json::Map<String,
         if matches!(id, "admit_upload" | "seal_upload") {
             entry["responses"]["202"] = entry["responses"]["200"].clone();
         }
-        if id == "download_content" {
+        if matches!(id, "download_content" | "download_snapshot") {
             entry["responses"].as_object_mut().unwrap().remove("204");
             for code in ["200", "206"] {
                 entry["responses"][code] = json!({"description":"Verified streaming bytes; a late failure aborts the body. Check Content-Length.","headers":{"Content-Length":{"schema":{"type":"integer"}},"Content-Range":{"schema":{"type":"string"}}},"content":{"application/octet-stream":{"schema":{"type":"string","format":"binary"}}}});

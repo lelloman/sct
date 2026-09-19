@@ -83,3 +83,32 @@ pub const TRANSFER_OPERATIONS: &[&str] = &[
     "seal_upload",
     "commit_upload",
 ];
+
+/// Implemented atomic tree and lifecycle operations (M3).
+pub const TREE_OPERATIONS: &[&str] = &[
+    "create_tree_draft",
+    "tree_draft",
+    "allocate_tree_identities",
+    "mutate_tree_draft",
+    "tree_draft_page",
+    "current_snapshot",
+    "snapshot_entries",
+    "snapshot_entry",
+    "snapshot_manifest",
+    "download_snapshot",
+    "hide_entry",
+    "preview_change",
+    "inspect_preview",
+    "advance_preview",
+    "preview_versions",
+    "apply_change",
+    "purge",
+    "lifecycle_job",
+    "advance_tree_draft",
+    "freeze_tree_draft",
+    "abort_tree_draft",
+    "admit_tree_draft",
+    "commit_tree_draft",
+    "advance_lifecycle_job",
+    "resume_lifecycle_job",
+];

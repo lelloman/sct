@@ -122,3 +122,41 @@ S3 write-timeout adjustment passed focused real MinIO conformance and workspace
 Clippy. `git diff --check` is clean. Integration output is recorded locally in
 `/tmp/sct-m2-final-check.log`; durable methodology/results are in the qualification
 and test guides.
+
+# M3 implementation
+
+Approved scope: SCT-28–41 (14 tasks, 15 dependency edges), delivered through HTTP
+and the standalone Rust SDK. Existing M1/M2 behavior remains covered. Local history
+was rebased onto the shared server lifecycle work during implementation; current
+M3 commits are:
+
+- SCT-28 `fc30767`: canonical trees and lifecycle contracts.
+- SCT-29 `4638d72`: snapshot and durable work catalog.
+- SCT-30 `6f3a98b`: durable draft edits and identity validation.
+- SCT-31 `5f9ae10`: shared, bounded graph reclamation.
+- SCT-32 `bc6b448`: complete-tree building and pre-payload admission.
+- SCT-33 `625ff42`: atomic publication and snapshot rotation.
+- SCT-34 `641c983`: historical traversal and pinned descendant reads.
+- SCT-35 `a851d96`: inherited namespace hiding and retained history.
+- SCT-36 `61b2d04`: bounded destructive policy previews.
+- SCT-37 `9ccc6a1`: forward-only, authorized lifecycle recovery.
+- SCT-38 `9bbf979`: acknowledged independent-policy moves.
+- SCT-39 `ce7b5c9`: separately authorized purge and pin-safe cleanup.
+- SCT-40 `8ea27d0`: standalone SDK tree plans and lifecycle calls.
+- SCT-41: real-placement and million-entry qualification, active M3 acceptance,
+  advertised contracts and operational documentation; its scoped commit carries
+  the ticket link.
+
+The million-entry metadata preview completed in 7,814 bounded batches, including
+a writer restart after batch 25. Measured preview time was 84.808 seconds, with
+14,792 KiB baseline and 14,936 KiB peak sampled worker RSS. The entire preview was
+then applied. See `docs/m3-qualification.md` for fixture and measurement limits.
+M4 UI/checkpoints and M5 release qualification remain pending. Task handoffs use
+Review; this does not close the parent epic or imply deployment.
+
+Final M3 validation: `./scripts/check` exited 0 with 5 passing acceptance cases
+and exactly 2 pending M4/M5 gates. All five M3 placements also assert pre-payload
+capacity rejection creates zero physical copies. The separate million-entry
+qualification passed. `git diff --check` is clean. Logs are local artifacts at
+`/tmp/sct-m3-final-check.log` and `/tmp/sct-m3-scale.log`; durable results and
+reproduction instructions are in `docs/m3-qualification.md`.

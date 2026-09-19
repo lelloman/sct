@@ -59,6 +59,7 @@ pub fn capabilities() -> sct_protocol::Capabilities {
         supported_operations: FOUNDATION_OPERATIONS
             .iter()
             .chain(TRANSFER_OPERATIONS)
+            .chain(TREE_OPERATIONS)
             .map(|s| (*s).into())
             .collect(),
         storage_format_versions: vec![1],

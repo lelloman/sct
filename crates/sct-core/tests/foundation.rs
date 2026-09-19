@@ -1809,3 +1809,6 @@ async fn verified_download_ranges_fallback_and_pin_expiry() {
 
 #[path = "support/purge_tests.rs"]
 mod purge_tests;
+
+#[path = "support/scale_tests.rs"]
+mod scale_tests;

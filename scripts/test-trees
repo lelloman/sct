@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+SCT_QUALIFY_TREES=1 ./scripts/test-transfers

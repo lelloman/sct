@@ -2,14 +2,15 @@
 
 # ScT — Stipa ca Truova
 
-Self-hosted versioned storage. **M1 and M2 are implemented**: authenticated roots,
+Self-hosted versioned storage. **M1–M3 are implemented**: authenticated roots,
 namespace/policies, metadata-first file upload admission, immutable local/S3/mirrored
 storage, resumable Rust SDK jobs, keep-N history and verified full/range downloads.
-Atomic trees and broader deletion/policy transitions remain M3; the administration
-UI and checkpoints remain M4; broader release qualification remains M5.
+Atomic snapshots, hide/purge and acknowledged policy transitions are available through
+the HTTP API and standalone Rust SDK. Administration UI and checkpoints remain M4;
+broader release qualification remains M5.
 
 See [service setup](docs/foundation.md), [transfer operations](docs/transfers.md),
-[the Rust SDK](docs/rust-sdk.md), and [qualification](docs/m2-qualification.md).
+[the Rust SDK](docs/rust-sdk.md), [M2 qualification](docs/m2-qualification.md) and [M3 qualification](docs/m3-qualification.md).
 
 The primary repository is hosted on Fucina. The public
 [GitHub mirror](https://github.com/lelloman/sct) updates automatically on pushes
@@ -45,8 +46,8 @@ passing acceptance. To require complete product acceptance, use:
 npm --prefix web run test:acceptance
 ```
 
-The second command **currently fails intentionally** because the three M3–M5 milestone
-acceptance scenarios remain pending; M1 browser and M2 HTTP/SDK scenarios execute. These gates must be expanded into the detailed
+The second command **currently fails intentionally** because the two M4–M5 milestone
+acceptance scenarios remain pending; M1 browser and M2/M3 HTTP/SDK scenarios execute. These gates must be expanded into the detailed
 workflows in [the acceptance matrix](ARCHITECTURE_PLAN.md#16-test-and-acceptance-matrix),
 not simply removed to obtain a green result.
 
@@ -115,8 +116,8 @@ repository is needed.
 - [Approved icon and shared palette](docs/branding.md)
 - [Protocol contracts, generation and wire conventions](contracts/README.md)
 
-Next: refine M3 atomic trees, delete/purge and broader policy transitions.
-M3–M5 still need implementation-ticket decomposition beyond their existing epics.
+Next: refine M4 administration controls and checkpoint creation/recovery.
+M3 tasks SCT-28–41 are implemented; browser tree/lifecycle controls remain part of M4.
 
 Technical references: [Axum serving](https://docs.rs/axum/0.8.9/axum/fn.serve.html),
 [SQLx PostgreSQL wiring](https://docs.rs/crate/sqlx/0.8.6/source/README.md),

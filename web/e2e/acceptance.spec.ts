@@ -3,7 +3,6 @@ import { expect, test } from "@playwright/test";
 // Milestone gates, not passing tests. Expand these into real API/SDK/browser
 // workflows using ARCHITECTURE_PLAN.md §16 as each capability lands.
 for (const scenario of [
-  "M3: publish atomic trees and enforce retention with shared staging limits",
   "M4: administer storage in the browser and recover an isolated checkpoint",
   "M5: qualify scale, real backend failures and independent SDK distribution",
 ]) {
@@ -24,5 +23,16 @@ test("M2: resume real mirrored transfers and verify retained/downloaded bytes", 
   const result = await run("../scripts/test-transfers", [], {
     timeout: 170_000,
   });
+  expect(result.stdout).toContain("test result: ok");
+});
+
+test("M3: publish atomic trees and enforce retention with shared staging limits", async () => {
+  test.setTimeout(360_000);
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const result = await promisify(execFile)("../scripts/test-trees", [], {
+    timeout: 350_000,
+  });
+  expect(result.stdout.match(/M3 tree lifecycle passed/g)).toHaveLength(5);
   expect(result.stdout).toContain("test result: ok");
 });

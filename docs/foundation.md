@@ -1,9 +1,10 @@
-# Service foundation (M1/M2)
+# Service foundation (M1–M3)
 
 SCT-8–13 implement the database-backed foundation; SCT-14–27 add independent-file
 transfers, local/S3/mirrored payloads, basic retention and history. See
-[transfer operations](transfers.md). Destructive policy jobs, atomic trees,
-deletion/purge, checkpoints and the administration UI remain M3–M5.
+[transfer operations](transfers.md). SCT-28–41 implement atomic trees, explicit
+purge and policy jobs; see [tree lifecycle](tree-lifecycle.md). Checkpoints and
+the administration UI remain M4; release qualification remains M5.
 The landing page is still a development page.
 
 ## Starting a development installation
@@ -116,14 +117,15 @@ management separate. Delegation cannot exceed the grantor's own capabilities.
 Namespace operations preserve case-sensitive Unicode names and stable entry IDs,
 reject cross-root parents/moves and cycles, and compare entry/parent revisions.
 A rename across effective policy scopes or atomic scopes is rejected, including
-moves between equal-valued but independently managed policy scopes. Hidden-entry mutation remains M3; M2 publication is described in the transfer guide.
+moves between equal-valued but independently managed policy scopes. Acknowledged independent-policy moves and hidden-entry operations use the
+M3 lifecycle APIs; see the tree lifecycle guide.
 
 Policies default to strict keep-one. The nearest explicit policy applies, with file
 overrides supported by the catalog/core model. Atomic directories have a single
 policy and do not permit independent descendant policies or ordinary namespace
 writes; populated mode changes and nested atomic scopes are rejected. M1 policy
 editing is metadata-only and rejected once the root contains published content.
-M3 will provide destructive previews and resumable content transitions. Increasing
+M3 provides destructive previews and resumable content transitions. Increasing
 a count changes the requirement, never manufactures historical versions.
 Administrator bounds are set using the revision-checked policy-constraints endpoint.
 
@@ -157,5 +159,5 @@ creates/lists/renames a directory, checks policy revisions and authorization, an
 rejects traversal. HTTP tests additionally run a signed mock OIDC provider, invalid
 claim cases, CSRF, revocation, safe error envelopes and SDK calls. Process tests
 cover writer exclusion, SIGTERM release, crash fencing and local recovery with
-an unavailable identity provider. M3–M5 remain pending and the full-product
+an unavailable identity provider. M4/M5 remain pending and the full-product
 `npm --prefix web run test:acceptance` command must continue to fail until they land.

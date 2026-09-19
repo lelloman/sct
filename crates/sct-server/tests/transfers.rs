@@ -1,5 +1,7 @@
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
+#[path = "support/tree_workflow.rs"]
+mod tree_workflow;
 use sct_client::{Client, UploadJob};
 use sct_core::{
     backend::Registry,
@@ -339,6 +341,136 @@ async fn real_transfer_placements() {
                 .download_to(&root.id, &latest.version_id, None, &mut Vec::new())
                 .await;
             assert_eq!(result.is_ok(), names.len() > 1);
+        }
+
+        if std::env::var_os("SCT_QUALIFY_TREES").is_some() {
+            let mut tree_request = request.clone();
+            tree_request.idempotency_key = format!("tree-{index}").parse().unwrap();
+            tree_request.mount_path = format!("/tree-{index}").parse().unwrap();
+            tree_request.default_policy.keep_versions = 3.try_into().unwrap();
+            let tree = client.create_root(&tree_request).await.unwrap();
+            let tree = client
+                .update_root(
+                    &tree.id,
+                    &UpdateRootRequest {
+                        expected_revision: tree.revision,
+                        display_name: tree.display_name,
+                        state: RootState::Enabled,
+                        placement: tree.placement,
+                        quota_bytes: tree.quota_bytes,
+                    },
+                )
+                .await
+                .unwrap();
+            // Whole-tree quota rejection occurs before any physical copy exists.
+            let parent = client
+                .resolve_path(&tree.id, &"/".parse().unwrap())
+                .await
+                .unwrap();
+            let capacity = client
+                .create_directory(
+                    &tree.id,
+                    &CreateDirectoryRequest {
+                        idempotency_key: format!("capacity-{index}").parse().unwrap(),
+                        parent_id: parent.id,
+                        expected_parent_revision: parent.revision,
+                        name: "capacity".parse().unwrap(),
+                        versioning: VersioningMode::AtomicDirectory,
+                    },
+                )
+                .await
+                .unwrap();
+            let current = client.inspect_root(&tree.id).await.unwrap();
+            client
+                .update_root(
+                    &tree.id,
+                    &UpdateRootRequest {
+                        expected_revision: current.revision,
+                        display_name: current.display_name,
+                        state: RootState::Enabled,
+                        placement: current.placement,
+                        quota_bytes: 1.try_into().unwrap(),
+                    },
+                )
+                .await
+                .unwrap();
+            let policy = client
+                .effective_policy(&PolicyScope::Entry {
+                    root_id: tree.id.clone(),
+                    entry_id: capacity.id.clone(),
+                })
+                .await
+                .unwrap();
+            let request = CreateTreeDraftRequest {
+                idempotency_key: format!("capacity-draft-{index}").parse().unwrap(),
+                base: DirectoryDraftBase {
+                    root_id: tree.id.clone(),
+                    directory_id: capacity.id.clone(),
+                    expected_revision: capacity.revision,
+                    base_version_id: None,
+                    mode: DraftMode::CompleteReplacement,
+                },
+                expected_policy_revision: policy.revision,
+            };
+            let draft = client.create_tree_draft(&tree.id, &request).await.unwrap();
+            let ids = client
+                .allocate_tree_identities(
+                    &tree.id,
+                    &draft.id,
+                    &AllocateDraftIdentitiesRequest {
+                        idempotency_key: "capacity-ids".parse().unwrap(),
+                        count: 1.try_into().unwrap(),
+                    },
+                )
+                .await
+                .unwrap();
+            let plan = sct_client::TreeJob::prepare(
+                &directory.join(format!("capacity-{index}")),
+                request,
+                [Ok(vec![sct_client::TreeMutation::File {
+                    identity: DraftEntryIdentity::New {
+                        entry_id: ids.entry_ids[0].clone(),
+                    },
+                    parent_id: capacity.id.clone(),
+                    name: "file".parse().unwrap(),
+                    source: source.clone(),
+                }])],
+            )
+            .unwrap();
+            assert!(matches!(client.upload_tree(&plan).await,
+                Err(sct_client::Error::Server(ref error)) if error.code==ErrorCode::QuotaExhausted));
+            assert!(
+                client
+                    .current_snapshot(&tree.id, &capacity.id)
+                    .await
+                    .is_err()
+            );
+            let copies: i64 =
+                sqlx::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
+                    .bind(tree.id.as_str())
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(copies, 0);
+            for _ in 0..10 {
+                engine.tick().await.unwrap();
+            }
+            let current = client.inspect_root(&tree.id).await.unwrap();
+            client
+                .update_root(
+                    &tree.id,
+                    &UpdateRootRequest {
+                        expected_revision: current.revision,
+                        display_name: current.display_name,
+                        state: RootState::Enabled,
+                        placement: current.placement,
+                        quota_bytes: tree.quota_bytes,
+                    },
+                )
+                .await
+                .unwrap();
+            tree_workflow::run(&client, &tree.id, &directory.join(format!("tree-{index}"))).await;
+            println!("M3 tree lifecycle passed for {:?}", names);
         }
 
         let mut small_request = request.clone();

@@ -230,7 +230,7 @@ Namespace/version mutations advance a separate generation for preview invalidati
 this does not change M1 revision tokens returned during root creation. Snapshot
 lookup checks authorization, retained-version membership, canonical hashes and
 bounded page height at every path component. Runtime workers and HTTP lifecycle
-routes are supplied by the subsequent implementation tickets.
+routes resume these persisted frontiers after writer recovery.
 
 Each implementation task carries focused tests and its ticket-linked commit.
 M3 qualification includes real local/S3/mirrored operations, late generation deletion,

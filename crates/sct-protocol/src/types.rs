@@ -636,7 +636,7 @@ pub enum DraftEntryIdentity {
     New { entry_id: EntryId },
 }
 
-/// Draft/page encoding and deletion/purge semantics are reserved for M3, not implemented here.
+/// Atomic draft/page encoding and explicit lifecycle requests are defined in tree.rs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
@@ -891,7 +891,7 @@ pub struct GrantPage {
 }
 
 /// Foundation policy edits are restricted to scopes with no published content.
-/// Destructive previews and content transitions are M3 operations.
+/// Legacy policy planning DTO; implemented M3 uses PreviewChangeRequest and ApplyChangeRequest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]

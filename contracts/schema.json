@@ -665,7 +665,7 @@
     },
     "DirectoryDraftBase": {
       "additionalProperties": false,
-      "description": "Draft/page encoding and deletion/purge semantics are reserved for M3, not implemented here.",
+      "description": "Atomic draft/page encoding and explicit lifecycle requests are defined in tree.rs.",
       "properties": {
         "base_version_id": {
           "anyOf": [
@@ -2855,7 +2855,7 @@
     },
     "SetPolicyRequest": {
       "additionalProperties": false,
-      "description": "Foundation policy edits are restricted to scopes with no published content.\nDestructive previews and content transitions are M3 operations.",
+      "description": "Foundation policy edits are restricted to scopes with no published content.\nLegacy policy planning DTO; implemented M3 uses PreviewChangeRequest and ApplyChangeRequest.",
       "properties": {
         "expected_revision": {
           "$ref": "#/$defs/Revision"
