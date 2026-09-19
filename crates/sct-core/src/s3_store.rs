@@ -289,8 +289,10 @@ impl ObjectStore for S3Store {
     fn delete<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, DeleteOutcome> {
         Box::pin(async move {
             self.bucket().await?;
+            // An empty immutable-key tombstone is a physical write fence. Unlike
+            // DELETE, it prevents an older conditional PUT finishing afterward.
             let r = self
-                .request(reqwest::Method::DELETE, Some(key), "", vec![], false)
+                .request(reqwest::Method::PUT, Some(key), "", vec![], false)
                 .await?;
             require(r.status().is_success(), ErrorCode::DestinationUnavailable)?;
             Ok(DeleteOutcome::Confirmed)

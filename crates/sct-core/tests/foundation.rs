@@ -893,3 +893,95 @@ async fn transfer_graph_reservations_and_pin_retirement_orders() {
     writer.release_unused_reservations(&fence).await.unwrap();
     writer.finish_operation(&fence, true).await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn physical_copy_lost_response_and_recovery_preserve_charges() {
+    use sct_core::{
+        payload::{Fault, MemoryStore, ObjectStore},
+        transfer_io::TransferEngine,
+    };
+    use std::collections::BTreeMap;
+    let (writer, actor, pool) = setup().await;
+    let root = root(&writer, &actor, "/copies", 4000).await;
+    let fence = writer
+        .begin_operation(&actor, &root.id, OperationKind::Upload)
+        .await
+        .unwrap();
+    let chunk: ChunkDigest = digest(b"abc").parse().unwrap();
+    let page = ManifestPage::Chunks {
+        format: 1,
+        chunks: vec![ChunkReference {
+            digest: chunk.clone(),
+            length: 3.try_into().unwrap(),
+        }],
+    };
+    let bytes = canonical(&page).unwrap();
+    writer
+        .store_manifest_page(&fence, &digest(&bytes).parse().unwrap(), &bytes)
+        .await
+        .unwrap();
+    writer
+        .reserve_transfer(
+            &fence,
+            &BTreeMap::from([("pool".parse().unwrap(), 3.try_into().unwrap())]),
+        )
+        .await
+        .unwrap();
+    let memory = Arc::new(MemoryStore::default());
+    let engine = TransferEngine::new(
+        writer.clone(),
+        BTreeMap::from([("one".into(), memory.clone() as Arc<dyn ObjectStore>)]),
+        2,
+        86400,
+    )
+    .unwrap();
+    memory.fault(Fault::LostWriteResponse).await;
+    assert!(
+        engine
+            .write_copy(&fence, &chunk, &"one".parse().unwrap(), b"abc".to_vec())
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        3
+    );
+    assert!(writer.finish_operation(&fence, false).await.is_err());
+    // A new worker uses the existing operation, not a competing root owner.
+    sqlx::query("UPDATE operations SET worker_expires_at=clock_timestamp()-interval '1 second'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let recovered = writer.recover_operation(&fence.id()).await.unwrap();
+    assert!(engine.reconcile_writes(&fence).await.is_err());
+    memory.fault(Fault::CorruptRead).await;
+    engine.reconcile_writes(&recovered).await.unwrap();
+    memory.fault(Fault::UnknownDelete).await;
+    assert_eq!(engine.cleanup_copies(&recovered).await.unwrap(), 0);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        3
+    );
+    memory.fault(Fault::None).await;
+    assert_eq!(engine.cleanup_copies(&recovered).await.unwrap(), 1);
+    assert_eq!(engine.cleanup_copies(&recovered).await.unwrap(), 0);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    writer
+        .release_unused_reservations(&recovered)
+        .await
+        .unwrap();
+    writer.finish_operation(&recovered, true).await.unwrap();
+}

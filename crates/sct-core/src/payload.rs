@@ -33,6 +33,8 @@ pub trait ObjectStore: Send + Sync {
     fn put<'a>(&'a self, key: &'a ObjectKey, length: u64, body: Reader) -> IoFuture<'a, ()>;
     fn read<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Reader>;
     fn stat<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Option<u64>>;
+    /// Remove payload and retain a zero-byte generation tombstone so late conditional
+    /// writes cannot resurrect deleted bytes. Tombstone metadata uses pool overhead.
     fn delete<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, DeleteOutcome>;
     /// Additional physical-space bound; None still requires a catalog budget.
     fn available(&self) -> IoFuture<'_, Option<u64>>;
@@ -41,7 +43,10 @@ pub type Stores = BTreeMap<String, Arc<dyn ObjectStore>>;
 /// At most one immutable chunk is buffered. Read one extra byte to detect a
 /// lying Content-Length; never trust provider checksums, stat or ETag for data.
 pub async fn verified(mut body: Reader, key: &ObjectKey, length: u64) -> Result<Vec<u8>> {
-    require(length <= u64::from(CHUNK_MAX), ErrorCode::InvalidRequest)?;
+    require(
+        (1..=u64::from(CHUNK_MAX)).contains(&length),
+        ErrorCode::InvalidRequest,
+    )?;
     let mut bytes = Vec::with_capacity(length as usize);
     (&mut body)
         .take(length + 1)
@@ -116,6 +121,7 @@ impl ObjectStore for MemoryStore {
                 .lock()
                 .await
                 .get(key)
+                .filter(|v| !v.is_empty())
                 .cloned()
                 .ok_or(Error(ErrorCode::NotFound))?;
             match f {
@@ -135,7 +141,13 @@ impl ObjectStore for MemoryStore {
     fn stat<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Option<u64>> {
         Box::pin(async move {
             self.before().await?;
-            Ok(self.objects.lock().await.get(key).map(|v| v.len() as u64))
+            Ok(self
+                .objects
+                .lock()
+                .await
+                .get(key)
+                .filter(|v| !v.is_empty())
+                .map(|v| v.len() as u64))
         })
     }
     fn delete<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, DeleteOutcome> {
@@ -143,7 +155,7 @@ impl ObjectStore for MemoryStore {
             if matches!(self.before().await?, Fault::UnknownDelete) {
                 return Ok(DeleteOutcome::Unknown);
             }
-            self.objects.lock().await.remove(key);
+            self.objects.lock().await.insert(key.clone(), Vec::new());
             Ok(DeleteOutcome::Confirmed)
         })
     }
@@ -190,6 +202,12 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert_eq!(store.delete(&k).await.unwrap(), DeleteOutcome::Confirmed);
+        assert!(
+            store
+                .put(&k, bytes.len() as u64, reader(bytes.clone()))
+                .await
+                .is_err()
+        );
         assert_eq!(store.delete(&k).await.unwrap(), DeleteOutcome::Confirmed);
         assert_eq!(
             verified(store.read(&next).await.unwrap(), &next, bytes.len() as u64)

@@ -155,7 +155,7 @@ impl ObjectStore for LocalStore {
     fn stat<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Option<u64>> {
         Box::pin(async move {
             match tokio::fs::metadata(self.path(key)).await {
-                Ok(m) => Ok(Some(m.len())),
+                Ok(m) => Ok((m.len() > 0).then_some(m.len())),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(io(e)),
             }
@@ -165,7 +165,17 @@ impl ObjectStore for LocalStore {
         Box::pin(async move {
             let path = self.path(key);
             tokio::task::spawn_blocking(move || {
-                for p in [&path, &path.with_extension("pending")] {
+                let parent = path.parent().unwrap();
+                std::fs::create_dir_all(parent).map_err(io)?;
+                let tombstone = path.with_extension(format!("delete-{}", uuid::Uuid::new_v4()));
+                let file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&tombstone)
+                    .map_err(io)?;
+                file.sync_all().map_err(io)?;
+                std::fs::rename(&tombstone, &path).map_err(io)?;
+                for p in [&path.with_extension("pending")] {
                     match std::fs::remove_file(p) {
                         Ok(()) => {}
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -214,6 +224,7 @@ mod tests {
         std::fs::write(path.with_extension("pending"), b"ret").unwrap();
         assert!(store.put(&key, 5, reader(b"retry".to_vec())).await.is_err());
         store.delete(&key).await.unwrap();
+        let key = crate::payload::tests::key(b"retry", "retry-new-generation");
         store.put(&key, 5, reader(b"retry".to_vec())).await.unwrap();
         let reopened = LocalStore::new(&directory, 0).unwrap();
         assert_eq!(

@@ -31,3 +31,10 @@ qualification, not a claim of testing AWS infrastructure.
 
 Protocol references: [AWS conditional writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)
 and [SigV4 signing](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv-create-signed-request.html).
+
+Recovery fencing: deleting a generation replaces its payload with a durable empty
+object tombstone instead of removing the key. Late conditional writes then fail
+rather than resurrecting payload after capacity was released. These zero-payload
+markers and catalog copy tombstones are never reused; their metadata belongs to
+the configured pool overhead. A recovery retry uses a new generation. Local
+storage syncs the replacement and directory; S3 uses a zero-byte PUT.

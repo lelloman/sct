@@ -76,7 +76,7 @@ impl Writer {
     pub async fn finish_operation(&self, fence: &OperationFence, aborted: bool) -> Result<()> {
         let mut tx = self.transaction().await?;
         check_fence(&mut tx, fence, self.epoch).await?;
-        let obligations:bool=sqlx::query_scalar("SELECT uncertain_io OR EXISTS(SELECT 1 FROM reservations WHERE operation_id=$1) FROM operations WHERE id=$1").bind(&fence.id).fetch_one(&mut *tx).await?;
+        let obligations:bool=sqlx::query_scalar("SELECT uncertain_io OR EXISTS(SELECT 1 FROM reservations WHERE operation_id=$1) OR EXISTS(SELECT 1 FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE c.operation_id=$1 AND c.state<>'deleted' AND (a.root_id IS NULL OR c.state IN ('writing','deleting'))) FROM operations WHERE id=$1").bind(&fence.id).fetch_one(&mut *tx).await?;
         require(!obligations, ErrorCode::RootBusy)?;
         sqlx::query("UPDATE operations SET state=$2,worker_expires_at=NULL WHERE id=$1")
             .bind(&fence.id)
