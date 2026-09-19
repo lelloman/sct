@@ -1,6 +1,8 @@
 //! Standalone transport foundation. Storage operations follow their protocol contracts.
 
 use std::time::Duration;
+mod transfer;
+pub use transfer::UploadJob;
 
 pub use sct_protocol as protocol;
 
@@ -27,7 +29,8 @@ impl Client {
         }
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(10))
+            .connect_timeout(Duration::from_secs(10))
+            .read_timeout(Duration::from_secs(60))
             .build()
             .map_err(|_| "could not initialize HTTP transport")?;
         Ok(Self {
@@ -70,12 +73,24 @@ mod tests {
 #[derive(Debug)]
 pub enum Error {
     Transport(reqwest::Error),
-    Server(protocol::ErrorResponse),
+    Io(std::io::Error),
+    Json(serde_json::Error),
+    Local(String),
+    Integrity,
+    SourceChanged,
+    Server(Box<protocol::ErrorResponse>),
     UnexpectedStatus(u16),
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Io(e) => write!(f, "local I/O: {e}"),
+            Self::Json(e) => write!(f, "invalid JSON: {e}"),
+            Self::Local(e) => f.write_str(e),
+            Self::Integrity => f.write_str("incomplete or invalid transfer"),
+            Self::SourceChanged => f.write_str(
+                "source changed since planning; capture a stable source and create a new job",
+            ),
             Self::Transport(_) => f.write_str("HTTP transport failed"),
             Self::Server(e) => write!(f, "{} (request {})", e.message, e.request_id.as_str()),
             Self::UnexpectedStatus(status) => write!(f, "unexpected HTTP status {status}"),
@@ -111,7 +126,7 @@ impl Client {
         if !response.status().is_success() {
             let status = response.status().as_u16();
             return Err(match response.json::<protocol::ErrorResponse>().await {
-                Ok(error) => Error::Server(error),
+                Ok(error) => Error::Server(Box::new(error)),
                 Err(_) => Error::UnexpectedStatus(status),
             });
         }
@@ -275,5 +290,16 @@ impl Client {
             Some(serde_json::to_value(request).expect("wire DTO")),
         )
         .await
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
+}
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Json(e)
     }
 }
