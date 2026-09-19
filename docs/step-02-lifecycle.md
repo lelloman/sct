@@ -1,8 +1,7 @@
 # Step 02: lifecycle and main
 
-Implemented on the isolated `simple-server-step01` branch in `sct-step01`.
-The original `sct` checkout and ongoing storage work are untouched; this branch
-must be reconciled with that work before merging.
+Originally implemented on `simple-server-step01`; local `master` was rebased
+onto that branch on 2026-09-19, preserving subsequent storage and tree work.
 
 The foundation service coordinates HTTP and writer-lease renewal with shared
 `Signals`, `Lifecycle`, and HTTP adapters. SIGINT/SIGTERM stop accepting requests;
@@ -18,6 +17,11 @@ On failure or deadline expiry the application exits nonzero explicitly, rather
 than waiting indefinitely for runtime teardown. The helper does not forcibly
 terminate blocking jobs or supervise future storage workers.
 
+Transfer heartbeats run alongside writer-lease renewal. The existing transfer
+recovery task is aborted and joined during cleanup before writer release and
+catalog closure; its retry policy remains unchanged. New transfer, tree and
+policy routes use the shared Axum re-export.
+
 The workspace uses sibling `../simple-server` with the `lifecycle` feature.
 `simple-server.rev` records reviewed source commit
 `c5359079ff4fad0b4b0359e8c88880dbbbc4eeb5`; run
@@ -26,7 +30,7 @@ published. The helper refuses to replace an existing different/dirty checkout.
 The coordinated local checkout can include later documentation commits with the
 same source. No publication or deployment is part of this migration.
 
-Validation (2026-09-19):
+Original migration validation (2026-09-19, before the master rebase):
 
 - Full `CARGO_BUILD_JOBS=2 SCT_E2E_PORT=19083 CARGO_PROFILE_DEV_DEBUG=0
   CARGO_PROFILE_TEST_DEBUG=0 scripts/check`: strict Clippy, formatting, Rust tests,
@@ -37,3 +41,10 @@ Validation (2026-09-19):
 - `scripts/test-lifecycle.py`: real binaries, both signals, an 8 MiB HTTP response
   completing during drain, foundation restart immediately after writer release,
   and writer-lease loss causing nonzero exit. Uses disposable Postgres and files.
+
+Rebase validation (2026-09-19): workspace/all-feature tests passed (28 tests,
+32 explicitly ignored), PostgreSQL integration passed (31 tests), strict
+all-target/all-feature Clippy and workspace build passed, and the real-process
+signal/drain/restart/lease-loss script passed. Concurrent namespace-move work
+was present during integration validation and is excluded from this commit.
+Browser, real-S3 and transfer-placement qualifications were not rerun for the rebase.

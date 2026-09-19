@@ -1,12 +1,12 @@
 use crate::api::{ApiError, App, Auth};
-use axum::{
+use sct_core::transfer_io::TransferEngine;
+use sct_protocol::*;
+use simple_server::axum::{
     Json, Router,
     extract::{Path, Query, Request, State},
     http::StatusCode,
     routing::{get, post, put},
 };
-use sct_core::transfer_io::TransferEngine;
-use sct_protocol::*;
 
 fn engine(app: &App) -> Result<&TransferEngine, ApiError> {
     app.transfer
@@ -75,7 +75,7 @@ async fn hide(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, entry)): Path<(String, String)>,
-    body: Result<Json<HideEntryRequest>, axum::extract::rejection::JsonRejection>,
+    body: Result<Json<HideEntryRequest>, simple_server::axum::extract::rejection::JsonRejection>,
 ) -> Result<Json<EntryInspection>, ApiError> {
     let body = body.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
     Ok(Json(
@@ -99,7 +99,10 @@ async fn entries(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, version)): Path<(String, String)>,
-    query: Result<Query<SnapshotListQuery>, axum::extract::rejection::QueryRejection>,
+    query: Result<
+        Query<SnapshotListQuery>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<SnapshotEntryPage>, ApiError> {
     let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
     Ok(Json(
@@ -112,7 +115,10 @@ async fn entry(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, version)): Path<(String, String)>,
-    query: Result<Query<SnapshotPathQuery>, axum::extract::rejection::QueryRejection>,
+    query: Result<
+        Query<SnapshotPathQuery>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<DirectoryEntry>, ApiError> {
     let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
     let path: Vec<EntryName> = query.path.as_str()[1..]
@@ -129,7 +135,10 @@ async fn manifest(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, version)): Path<(String, String)>,
-    query: Result<Query<SnapshotPathQuery>, axum::extract::rejection::QueryRejection>,
+    query: Result<
+        Query<SnapshotPathQuery>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<FileManifest>, ApiError> {
     let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
     Ok(Json(
@@ -142,9 +151,12 @@ async fn content(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, version)): Path<(String, String)>,
-    query: Result<Query<SnapshotPathQuery>, axum::extract::rejection::QueryRejection>,
-    headers: axum::http::HeaderMap,
-) -> Result<axum::response::Response, ApiError> {
+    query: Result<
+        Query<SnapshotPathQuery>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
+    headers: simple_server::axum::http::HeaderMap,
+) -> Result<simple_server::axum::response::Response, ApiError> {
     let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
     crate::transfer_api::content_response(
         engine(&app)?,
@@ -160,7 +172,10 @@ async fn create(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(root): Path<String>,
-    body: Result<Json<CreateTreeDraftRequest>, axum::extract::rejection::JsonRejection>,
+    body: Result<
+        Json<CreateTreeDraftRequest>,
+        simple_server::axum::extract::rejection::JsonRejection,
+    >,
 ) -> Result<Json<TreeDraftStatus>, ApiError> {
     Ok(Json(
         engine(&app)?
@@ -187,7 +202,10 @@ async fn identities(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, draft)): Path<(String, String)>,
-    body: Result<Json<AllocateDraftIdentitiesRequest>, axum::extract::rejection::JsonRejection>,
+    body: Result<
+        Json<AllocateDraftIdentitiesRequest>,
+        simple_server::axum::extract::rejection::JsonRejection,
+    >,
 ) -> Result<Json<DraftIdentities>, ApiError> {
     Ok(Json(
         engine(&app)?
@@ -200,10 +218,10 @@ async fn identities(
             .await?,
     ))
 }
-async fn bounded_body(request: Request) -> Result<axum::body::Bytes, ApiError> {
+async fn bounded_body(request: Request) -> Result<simple_server::axum::body::Bytes, ApiError> {
     tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        axum::body::to_bytes(request.into_body(), MANIFEST_BYTES),
+        simple_server::axum::body::to_bytes(request.into_body(), MANIFEST_BYTES),
     )
     .await
     .map_err(|_| ApiError(ErrorCode::DestinationUnavailable))?

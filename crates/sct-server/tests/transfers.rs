@@ -169,7 +169,7 @@ async fn real_transfer_placements() {
         transfer: Some(engine.clone()),
     };
     let server = tokio::spawn(async move {
-        axum::serve(listener, sct_server::application(app, "nonexistent".into()))
+        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
             .await
             .unwrap()
     });

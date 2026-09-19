@@ -5,11 +5,10 @@ The server and its tests use public `simple-server` Git revision
 Axum remains exactly 0.8.9; the client/protocol crates retain their independent
 distribution boundary.
 
-This migration is on branch `simple-server-step01` in the isolated `sct-step01`
-worktree, based on 5cffda9. The main checkout had active uncommitted S3 work in
-core, server configuration and the lockfile. That work was left untouched.
-This branch is not merged; reconcile any new Axum imports and lockfile changes
-when integrating with ongoing development.
+The migration was developed on `simple-server-step01` from `5cffda9`.
+Local `master` was rebased onto it on 2026-09-19, preserving subsequent storage
+and tree development and adapting newly added Axum imports. The validation
+below records the original migration before that integration.
 
 Validation on 2026-09-19, Rust 1.96 and Node 24.13:
 

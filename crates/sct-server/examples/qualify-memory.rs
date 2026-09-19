@@ -79,7 +79,7 @@ async fn main() {
         transfer: Some(engine),
     };
     let server = tokio::spawn(async move {
-        axum::serve(listener, sct_server::application(app, "nonexistent".into()))
+        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
             .await
             .unwrap()
     });
