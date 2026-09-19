@@ -477,7 +477,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1234,7 +1234,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.21.7",
  "chrono",
  "getrandom 0.2.17",
  "http",
@@ -1496,7 +1496,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1715,7 +1715,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1848,7 +1848,6 @@ dependencies = [
 name = "sct-server"
 version = "0.1.0"
 dependencies = [
- "axum",
  "base64 0.22.1",
  "chrono",
  "openidconnect",
@@ -1859,6 +1858,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "simple-server",
  "sqlx",
  "tokio",
  "toml",
@@ -2068,6 +2068,14 @@ checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "digest",
  "rand_core 0.6.4",
+]
+
+[[package]]
+name = "simple-server"
+version = "0.1.0"
+source = "git+https://github.com/lelloman/simple-server?rev=46a36391ccca522f3ec9aa24206f2b231162dd96#46a36391ccca522f3ec9aa24206f2b231162dd96"
+dependencies = [
+ "axum",
 ]
 
 [[package]]
@@ -2911,7 +2919,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

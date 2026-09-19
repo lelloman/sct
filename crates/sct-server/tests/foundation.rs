@@ -1,12 +1,5 @@
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
-use axum::{
-    Json, Router,
-    extract::{Form, Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Redirect, Response},
-    routing::{get, post},
-};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use openidconnect::{
     AccessToken, Audience, EmptyAdditionalClaims, IssuerUrl, JsonWebKeyId, Nonce,
@@ -24,6 +17,13 @@ use sct_server::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use simple_server::axum::{
+    Json, Router,
+    extract::{Form, Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Redirect, Response},
+    routing::{get, post},
+};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -167,7 +167,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         codes: Arc::new(Mutex::new(HashMap::new())),
     };
     let provider_task = tokio::spawn(async move {
-        axum::serve(
+        simple_server::axum::serve(
             provider_listener,
             Router::new()
                 .route("/.well-known/openid-configuration", get(discovery))
@@ -211,7 +211,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         secure_cookies: false,
     };
     let server = tokio::spawn(async move {
-        axum::serve(
+        simple_server::axum::serve(
             listener,
             sct_server::application(app, PathBuf::from("nonexistent")),
         )

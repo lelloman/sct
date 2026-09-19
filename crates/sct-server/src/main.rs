@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let listener = tokio::net::TcpListener::bind(config.bind).await?;
         println!("ScT listening on {}", listener.local_addr()?);
         let lease = writer.clone();
-        axum::serve(listener,sct_server::application(app,config.web_dir)).with_graceful_shutdown(async move {
+        simple_server::axum::serve(listener,sct_server::application(app,config.web_dir)).with_graceful_shutdown(async move {
             tokio::select!{
                 _=shutdown()=>{},
                 _=async{loop{tokio::time::sleep(std::time::Duration::from_secs(10)).await;if lease.renew().await.is_err(){eprintln!("writer lease lost; stopping server");break;}}}=>{}
@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "ScT development scaffold listening on {} (set SCT_CONFIG for foundation service)",
         listener.local_addr()?
     );
-    axum::serve(listener, sct_server::router(None, web))
+    simple_server::axum::serve(listener, sct_server::router(None, web))
         .with_graceful_shutdown(shutdown())
         .await?;
     Ok(())

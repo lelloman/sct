@@ -1,5 +1,7 @@
 use crate::oidc::Oidc;
-use axum::{
+use sct_core::{auth::Actor, backend::Registry, error::Error, lease::Writer};
+use sct_protocol::*;
+use simple_server::axum::{
     Json, Router,
     extract::Request,
     extract::{FromRequestParts, Path, Query, State, rejection::JsonRejection},
@@ -8,8 +10,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
 };
-use sct_core::{auth::Actor, backend::Registry, error::Error, lease::Writer};
-use sct_protocol::*;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -65,7 +65,9 @@ impl FromRequestParts<App> for Auth {
             cookie(&parts.headers, session_name(state)).ok_or(ApiError(ErrorCode::Unauthorized))?;
         let mutation = !matches!(
             parts.method,
-            axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
+            simple_server::axum::http::Method::GET
+                | simple_server::axum::http::Method::HEAD
+                | simple_server::axum::http::Method::OPTIONS
         );
         let csrf = if mutation {
             let origin = parts
@@ -142,7 +144,7 @@ fn body<T>(value: std::result::Result<Json<T>, JsonRejection>) -> Result<T> {
         .map_err(|_| ApiError(ErrorCode::InvalidRequest))
 }
 fn query<T>(
-    value: std::result::Result<Query<T>, axum::extract::rejection::QueryRejection>,
+    value: std::result::Result<Query<T>, simple_server::axum::extract::rejection::QueryRejection>,
 ) -> Result<T> {
     value
         .map(|q| q.0)
@@ -183,13 +185,13 @@ pub fn routes(state: App) -> Router {
         .route("/api/v1/admin/allocations", get(list_allocations))
         .route(
             "/api/v1/admin/roots/{root}/policy-constraints",
-            axum::routing::patch(policy_constraints),
+            simple_server::axum::routing::patch(policy_constraints),
         )
         .route("/api/v1/admin/pools/{pool}", get(pool))
         .route("/api/v1/admin/allocations/{allocation}", get(allocation))
         .route("/api/v1/admin/backends/{backend}", get(backend))
         .route("/api/v1/admin/adapters/{kind}", get(adapter))
-        .layer(axum::extract::DefaultBodyLimit::max(65536))
+        .layer(simple_server::axum::extract::DefaultBodyLimit::max(65536))
         .layer(middleware::from_fn(response_headers))
         .with_state(state)
 }
@@ -240,7 +242,10 @@ async fn capabilities(Auth(_): Auth) -> Json<Capabilities> {
 async fn list_roots(
     State(s): State<App>,
     Auth(a): Auth,
-    q: std::result::Result<Query<ListRequest>, axum::extract::rejection::QueryRejection>,
+    q: std::result::Result<
+        Query<ListRequest>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<RootPage>> {
     Ok(Json(s.writer.list_roots(&a, &query(q)?).await?))
 }
@@ -283,7 +288,10 @@ async fn resolve(
     State(s): State<App>,
     Auth(a): Auth,
     Path(root): Path<String>,
-    q: std::result::Result<Query<ResolvePathRequest>, axum::extract::rejection::QueryRejection>,
+    q: std::result::Result<
+        Query<ResolvePathRequest>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<EntryInspection>> {
     Ok(Json(
         s.writer
@@ -307,7 +315,10 @@ async fn list_entries(
     State(s): State<App>,
     Auth(a): Auth,
     Path(root): Path<String>,
-    q: std::result::Result<Query<ListEntriesQuery>, axum::extract::rejection::QueryRejection>,
+    q: std::result::Result<
+        Query<ListEntriesQuery>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<EntryPage>> {
     let q = query(q)?;
     let cursor = match (q.cursor, q.directory_revision) {
@@ -358,7 +369,10 @@ async fn rename(
 async fn effective_policy(
     State(s): State<App>,
     Auth(a): Auth,
-    q: std::result::Result<Query<PolicyScope>, axum::extract::rejection::QueryRejection>,
+    q: std::result::Result<
+        Query<PolicyScope>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<EffectivePolicy>> {
     Ok(Json(s.writer.effective_policy(&a, &query(q)?).await?))
 }
@@ -401,7 +415,10 @@ async fn revoke_grant(
     State(s): State<App>,
     Auth(a): Auth,
     Path(grant): Path<String>,
-    q: std::result::Result<Query<ExpectedRevision>, axum::extract::rejection::QueryRejection>,
+    q: std::result::Result<
+        Query<ExpectedRevision>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<StatusCode> {
     s.writer
         .revoke_grant(&a, &identifier(&grant)?, &query(q)?.expected_revision)
@@ -411,7 +428,10 @@ async fn revoke_grant(
 async fn list_grants(
     State(s): State<App>,
     Auth(a): Auth,
-    q: std::result::Result<Query<ListGrantsQuery>, axum::extract::rejection::QueryRejection>,
+    q: std::result::Result<
+        Query<ListGrantsQuery>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<GrantPage>> {
     let q = query(q)?;
     Ok(Json(
@@ -487,7 +507,10 @@ struct Callback {
 async fn callback(
     State(s): State<App>,
     headers: HeaderMap,
-    q: std::result::Result<Query<Callback>, axum::extract::rejection::QueryRejection>,
+    q: std::result::Result<
+        Query<Callback>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Response> {
     let q = query(q)?;
     let oidc = s
@@ -558,7 +581,10 @@ async fn revoke_token(
 async fn list_allocations(
     State(s): State<App>,
     Auth(a): Auth,
-    q: std::result::Result<Query<ListRequest>, axum::extract::rejection::QueryRejection>,
+    q: std::result::Result<
+        Query<ListRequest>,
+        simple_server::axum::extract::rejection::QueryRejection,
+    >,
 ) -> Result<Json<AllocationPage>> {
     Ok(Json(s.writer.list_allocations(&a, &query(q)?).await?))
 }

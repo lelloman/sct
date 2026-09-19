@@ -2,15 +2,15 @@
 
 use std::path::PathBuf;
 
-use axum::{
+use sct_core::catalog::Catalog;
+use sct_protocol::{ErrorCode, ErrorResponse};
+use simple_server::axum::{
     Json, Router,
     extract::State,
     http::StatusCode,
     response::IntoResponse,
     routing::{any, get},
 };
-use sct_core::catalog::Catalog;
-use sct_protocol::{ErrorCode, ErrorResponse};
 use tower_http::services::ServeDir;
 
 pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {

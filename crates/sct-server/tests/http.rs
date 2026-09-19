@@ -6,7 +6,7 @@ async fn sdk_reaches_live_server_without_advertising_unimplemented_storage() {
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let server = tokio::spawn(async move {
-        axum::serve(
+        simple_server::axum::serve(
             listener,
             sct_server::router(None, PathBuf::from("nonexistent-web")),
         )

@@ -11,7 +11,7 @@ rust-version = "1.96"
 sct-protocol = { path = "crates/sct-protocol", version = "0.1.0" }
 sct-client = { path = "crates/sct-client", version = "0.1.0" }
 sct-core = { path = "crates/sct-core", version = "0.1.0" }
-axum = "0.8.9"
+simple-server = { git = "https://github.com/lelloman/simple-server", rev = "46a36391ccca522f3ec9aa24206f2b231162dd96" }
 reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls"] }
 sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate"] }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
