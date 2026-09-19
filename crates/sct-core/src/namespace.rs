@@ -81,7 +81,48 @@ impl Writer {
             .bind(root.as_str())
             .fetch_one(&mut *tx)
             .await?;
-        for component in path.as_str().split('/').filter(|s| !s.is_empty()) {
+        let components: Vec<String> = path
+            .as_str()
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let mut components = components.into_iter();
+        while let Some(component) = components.next() {
+            if entry.get::<String, _>("versioning") == "atomic_directory" {
+                let version = entry
+                    .get::<Option<String>, _>("current_version_id")
+                    .ok_or(Error(ErrorCode::NotFound))?;
+                let mut manifest =
+                    crate::tree_catalog::version_manifest(&mut tx, root.as_str(), &version).await?;
+                let mut parent: EntryId = entry.get::<String, _>("id").parse()?;
+                let mut components = std::iter::once(component).chain(components).peekable();
+                while let Some(component) = components.next() {
+                    let child = crate::tree_catalog::child(
+                        &mut tx,
+                        root.as_str(),
+                        &manifest,
+                        &component.parse()?,
+                    )
+                    .await?;
+                    if components.peek().is_none() {
+                        return Ok(EntryInspection {
+                            id: child.id,
+                            root_id: root.clone(),
+                            parent_id: Some(parent),
+                            name: child.name,
+                            kind: child.kind,
+                            revision: version.parse()?,
+                            hidden: false,
+                            current_version_id: None,
+                        });
+                    }
+                    require(child.kind == EntryKind::Directory, ErrorCode::NotFound)?;
+                    parent = child.id;
+                    manifest = child.manifest.as_str().to_owned();
+                }
+                unreachable!();
+            }
             entry=sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id=$2 AND name=$3 AND NOT hidden").bind(root.as_str()).bind(entry.get::<String,_>("id")).bind(component).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         }
         inspect(&entry)

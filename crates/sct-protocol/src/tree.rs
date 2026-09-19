@@ -67,6 +67,12 @@ dto! {
         pub entries: Vec<DirectoryEntry>,
         pub next_cursor: Option<CursorToken>,
     }
+    pub struct SnapshotListQuery {
+        pub path: RootPath,
+        pub limit: PageSize,
+        pub cursor: Option<CursorToken>,
+    }
+    pub struct SnapshotPathQuery { pub path: RootPath }
     pub struct HideEntryRequest {
         pub idempotency_key: IdempotencyKey,
         pub expected_revision: Revision,

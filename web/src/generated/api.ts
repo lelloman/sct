@@ -243,6 +243,10 @@ export type SetPolicyRequest = { scope: PolicyScope, expected_revision: Revision
 
 export type SnapshotEntryPage = { version_id: VersionId, entries: Array<DirectoryEntry>, next_cursor: CursorToken | null, };
 
+export type SnapshotListQuery = { path: RootPath, limit: PageSize, cursor: CursorToken | null, };
+
+export type SnapshotPathQuery = { path: RootPath, };
+
 export type TimestampMs = number;
 
 export type TransferStatus = { upload: UploadInspection, admission: AdmissionState, failure: ErrorCode | null, };

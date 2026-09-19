@@ -236,10 +236,32 @@ async fn content(
     Path((root, version)): Path<(String, String)>,
     headers: axum::http::HeaderMap,
 ) -> Result<Response, ApiError> {
-    let engine = engine(&app)?;
-    let root = id(&root)?;
-    let version = id(&version)?;
-    let manifest = engine.file_manifest(&actor, &root, &version).await?;
+    content_response(
+        engine(&app)?,
+        &actor,
+        id(&root)?,
+        id(&version)?,
+        None,
+        headers,
+    )
+    .await
+}
+
+pub(crate) async fn content_response(
+    engine: &TransferEngine,
+    actor: &sct_core::auth::Actor,
+    root: RootId,
+    version: VersionId,
+    path: Option<RootPath>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    let manifest = if let Some(path) = &path {
+        engine
+            .snapshot_file_manifest(actor, &root, &version, path)
+            .await?
+    } else {
+        engine.file_manifest(actor, &root, &version).await?
+    };
     let length = manifest.length.get();
     let range = if let Some(header) = headers.get("range") {
         let range = header
@@ -278,7 +300,13 @@ async fn content(
     } else {
         None
     };
-    let download = engine.download(&actor, &root, &version, range).await?;
+    let download = if let Some(path) = &path {
+        engine
+            .download_snapshot_file(actor, &root, &version, path, range)
+            .await?
+    } else {
+        engine.download(actor, &root, &version, range).await?
+    };
     let start = download.start;
     let end = download.end;
     let stream = futures_util::stream::try_unfold(download, |mut d| async move {

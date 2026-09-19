@@ -9,6 +9,8 @@ mod tree_catalog_tests;
 mod tree_draft_tests;
 #[path = "support/tree_publication_tests.rs"]
 mod tree_publication_tests;
+#[path = "support/tree_read_tests.rs"]
+mod tree_read_tests;
 use sct_core::{
     auth::Actor,
     backend::{Registry, TestAdapter},

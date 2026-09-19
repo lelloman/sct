@@ -55,7 +55,7 @@ impl TransferEngine {
     ) -> Result<FileManifest> {
         let mut tx = self.writer.transaction().await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
-        let r=sqlx::query("SELECT o.body,o.digest FROM file_versions v JOIN content_objects o ON o.root_id=v.root_id AND o.digest=v.manifest WHERE v.id=$1 AND v.root_id=$2 AND NOT v.retired").bind(version.as_str()).bind(root.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+        let r=sqlx::query("SELECT o.body,o.digest FROM file_versions v JOIN content_objects o ON o.root_id=v.root_id AND o.digest=v.manifest WHERE v.id=$1 AND v.root_id=$2 AND v.kind='file' AND NOT v.retired").bind(version.as_str()).bind(root.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         let bytes: Vec<u8> = r.get("body");
         require(
             digest(&bytes) == r.get::<String, _>("digest"),
@@ -72,6 +72,50 @@ impl TransferEngine {
         version: &VersionId,
         range: Option<(u64, u64)>,
     ) -> Result<Download> {
+        self.download_inner(actor, root, version, None, range).await
+    }
+    pub async fn snapshot_file_manifest(
+        &self,
+        actor: &Actor,
+        root: &RootId,
+        version: &VersionId,
+        path: &RootPath,
+    ) -> Result<FileManifest> {
+        let parts = crate::tree_catalog::path_parts(path)?;
+        let entry = self
+            .writer
+            .snapshot_entry(actor, root, version, &parts)
+            .await?;
+        require(entry.kind == EntryKind::File, ErrorCode::InvalidRequest)?;
+        let mut tx = self.writer.transaction().await?;
+        authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
+        let manifest: FileManifest =
+            crate::tree_catalog::metadata(&mut tx, root.as_str(), entry.manifest.as_str(), "file")
+                .await?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+    pub async fn download_snapshot_file(
+        &self,
+        actor: &Actor,
+        root: &RootId,
+        version: &VersionId,
+        path: &RootPath,
+        range: Option<(u64, u64)>,
+    ) -> Result<Download> {
+        let parts = crate::tree_catalog::path_parts(path)?;
+        require(!parts.is_empty(), ErrorCode::InvalidRequest)?;
+        self.download_inner(actor, root, version, Some(&parts), range)
+            .await
+    }
+    async fn download_inner(
+        &self,
+        actor: &Actor,
+        root: &RootId,
+        version: &VersionId,
+        path: Option<&[EntryName]>,
+        range: Option<(u64, u64)>,
+    ) -> Result<Download> {
         let permit = self
             .slots
             .clone()
@@ -83,8 +127,15 @@ impl TransferEngine {
             let mut tx=self.writer.transaction().await?;authorize(&mut tx,actor,root.as_str(),Capability::ListRead).await?;
             // Pin acquisition already fixed this identity, even if rotation has
             // since retired it. No new pin can be acquired after that retirement.
-            let row=sqlx::query("SELECT o.body,r.placement FROM file_versions v JOIN content_objects o ON o.root_id=v.root_id AND o.digest=v.manifest JOIN roots r ON r.id=v.root_id WHERE v.id=$1 AND v.root_id=$2").bind(version.as_str()).bind(root.as_str()).fetch_one(&mut *tx).await?;
-            let bytes:Vec<u8>=row.get("body");let manifest:FileManifest=parse_canonical(&bytes)?;manifest.validate()?;
+            let row=sqlx::query("SELECT v.kind,v.manifest,r.placement FROM file_versions v JOIN roots r ON r.id=v.root_id WHERE v.id=$1 AND v.root_id=$2").bind(version.as_str()).bind(root.as_str()).fetch_one(&mut *tx).await?;
+            let manifest:String=row.get("manifest");
+            let manifest=if let Some(path)=path {
+                require(row.get::<String,_>("kind")=="directory",ErrorCode::NotFound)?;
+                let entry=crate::tree_catalog::resolve(&mut tx,root.as_str(),&manifest,path).await?;
+                require(entry.kind==EntryKind::File,ErrorCode::InvalidRequest)?;
+                entry.manifest.as_str().to_owned()
+            } else { require(row.get::<String,_>("kind")=="file",ErrorCode::NotFound)?;manifest };
+            let manifest:FileManifest=crate::tree_catalog::metadata(&mut tx,root.as_str(),&manifest,"file").await?;manifest.validate()?;
             let placement:Placement=serde_json::from_value(row.get("placement"))?;
             let policy=match placement{Placement::Single{read_policy,..}|Placement::Mirror{read_policy,..}=>read_policy};
             let length=manifest.length.get();let(start,end)=range.unwrap_or((0,length));

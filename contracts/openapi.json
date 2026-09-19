@@ -2912,6 +2912,44 @@
         ],
         "type": "object"
       },
+      "SnapshotListQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "$ref": "#/components/schemas/PageSize"
+          },
+          "path": {
+            "$ref": "#/components/schemas/RootPath"
+          }
+        },
+        "required": [
+          "path",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "SnapshotPathQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/RootPath"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
       "TimestampMs": {
         "format": "uint64",
         "maximum": 9007199254740991,

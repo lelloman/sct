@@ -1,7 +1,7 @@
 use crate::api::{ApiError, App, Auth};
 use axum::{
     Json, Router,
-    extract::{Path, Request, State},
+    extract::{Path, Query, Request, State},
     http::StatusCode,
     routing::{get, post, put},
 };
@@ -18,6 +18,23 @@ fn id<T: std::str::FromStr>(s: &str) -> Result<T, ApiError> {
 }
 pub fn routes() -> Router<App> {
     Router::new()
+        .route(
+            "/api/v1/roots/{root}/entries/{entry}/snapshot",
+            get(current),
+        )
+        .route(
+            "/api/v1/roots/{root}/snapshots/{version}/entries",
+            get(entries),
+        )
+        .route("/api/v1/roots/{root}/snapshots/{version}/entry", get(entry))
+        .route(
+            "/api/v1/roots/{root}/snapshots/{version}/manifest",
+            get(manifest),
+        )
+        .route(
+            "/api/v1/roots/{root}/snapshots/{version}/content",
+            get(content),
+        )
         .route("/api/v1/roots/{root}/tree-drafts", post(create))
         .route("/api/v1/roots/{root}/tree-drafts/{draft}", get(inspect))
         .route(
@@ -52,6 +69,78 @@ pub fn routes() -> Router<App> {
             "/api/v1/roots/{root}/tree-drafts/{draft}/commit",
             post(commit),
         )
+}
+async fn current(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, entry)): Path<(String, String)>,
+) -> Result<Json<VersionId>, ApiError> {
+    Ok(Json(
+        app.writer
+            .current_snapshot(&actor, &id(&root)?, &id(&entry)?)
+            .await?,
+    ))
+}
+async fn entries(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, version)): Path<(String, String)>,
+    query: Result<Query<SnapshotListQuery>, axum::extract::rejection::QueryRejection>,
+) -> Result<Json<SnapshotEntryPage>, ApiError> {
+    let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
+    Ok(Json(
+        app.writer
+            .snapshot_entries(&actor, &id(&root)?, &id(&version)?, &query)
+            .await?,
+    ))
+}
+async fn entry(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, version)): Path<(String, String)>,
+    query: Result<Query<SnapshotPathQuery>, axum::extract::rejection::QueryRejection>,
+) -> Result<Json<DirectoryEntry>, ApiError> {
+    let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
+    let path: Vec<EntryName> = query.path.as_str()[1..]
+        .split('/')
+        .map(id)
+        .collect::<Result<_, _>>()?;
+    Ok(Json(
+        app.writer
+            .snapshot_entry(&actor, &id(&root)?, &id(&version)?, &path)
+            .await?,
+    ))
+}
+async fn manifest(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, version)): Path<(String, String)>,
+    query: Result<Query<SnapshotPathQuery>, axum::extract::rejection::QueryRejection>,
+) -> Result<Json<FileManifest>, ApiError> {
+    let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
+    Ok(Json(
+        engine(&app)?
+            .snapshot_file_manifest(&actor, &id(&root)?, &id(&version)?, &query.path)
+            .await?,
+    ))
+}
+async fn content(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, version)): Path<(String, String)>,
+    query: Result<Query<SnapshotPathQuery>, axum::extract::rejection::QueryRejection>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::response::Response, ApiError> {
+    let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
+    crate::transfer_api::content_response(
+        engine(&app)?,
+        &actor,
+        id(&root)?,
+        id(&version)?,
+        Some(query.path),
+        headers,
+    )
+    .await
 }
 async fn create(
     State(app): State<App>,

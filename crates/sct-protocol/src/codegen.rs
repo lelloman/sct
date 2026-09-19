@@ -33,6 +33,8 @@ fn register_types(
         DraftIdentities,
         TreeDraftStatus,
         SnapshotEntryPage,
+        SnapshotListQuery,
+        SnapshotPathQuery,
         HideEntryRequest,
         PurgeRequest,
         LifecycleJob,

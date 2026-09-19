@@ -9,7 +9,7 @@ use sct_core::{
 };
 use std::collections::BTreeMap;
 
-async fn seal(e: &TransferEngine, a: &Actor, r: &RootId, draft: &UploadId) {
+pub(super) async fn seal(e: &TransferEngine, a: &Actor, r: &RootId, draft: &UploadId) {
     for _ in 0..30 {
         if e.seal_upload(a, r, draft).await.unwrap().upload.state == SessionState::Ready {
             return;
@@ -17,7 +17,7 @@ async fn seal(e: &TransferEngine, a: &Actor, r: &RootId, draft: &UploadId) {
     }
     panic!("seal did not finish");
 }
-async fn patch(
+pub(super) async fn patch(
     e: &TransferEngine,
     w: &Writer,
     a: &Actor,

@@ -127,6 +127,20 @@ move atomically before bounded policy reconciliation, without partial subtree mo
 
 ## Qualification boundaries
 
+Snapshot reads are rooted in an explicit directory version. Get the current ID
+from `GET /roots/{root}/entries/{entry}/snapshot`; the existing entry-version
+history route lists retained file or directory versions. Under
+`/roots/{root}/snapshots/{version}`, `GET /entries?path=/&limit=...` pages directory
+children, `/entry?path=/relative/name` resolves an entry, `/manifest?path=...`
+returns a descendant file manifest, and `/content?path=...` streams verified bytes
+with the same single-range and mirror-fallback behavior as file downloads. Paths
+are relative to the snapshot boundary. Cursors bind the root, version, path and
+page size; unrelated current-tree changes do not invalidate them. Newly retired
+snapshots reject new reads, while an already pinned download can finish.
+Normal root path resolution crosses atomic boundaries without materializing
+descendants. Such results have the snapshot ID as their revision and no independent
+`current_version_id`; use snapshot reads for their contents and nested listing.
+
 Reclamation uses one reusable root/object mark table and a persisted scan cursor.
 Each pass seeds at most 64 roots from each reference class, expands at most 64
 objects with bounded adjacency, and examines at most 64 physical copies. Catalog
