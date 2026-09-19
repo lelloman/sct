@@ -196,8 +196,10 @@ impl TransferEngine {
         let mut tx = self.writer.transaction().await?;
         lock_content_root(&mut tx, &fence.root).await?;
         check_fence(&mut tx, fence, self.writer.epoch).await?;
-        let r=sqlx::query("UPDATE object_copies SET state='deleting',operation_id=$3 WHERE generation=$1 AND root_id=$2 AND state IN ('writing','available') RETURNING allocation_id,bytes").bind(generation).bind(&fence.root).bind(&fence.id).fetch_optional(&mut *tx).await?;
-        if let Some(r) = r {
+        let r=sqlx::query("WITH previous AS (SELECT generation,allocation_id,bytes,pending_charge FROM object_copies WHERE generation=$1 AND root_id=$2 AND state IN ('writing','available') FOR UPDATE), changed AS (UPDATE object_copies c SET state='deleting',operation_id=$3,pending_charge=true FROM previous p WHERE c.generation=p.generation RETURNING p.allocation_id,p.bytes,p.pending_charge) SELECT * FROM changed").bind(generation).bind(&fence.root).bind(&fence.id).fetch_optional(&mut *tx).await?;
+        if let Some(r) = r
+            && !r.get::<bool, _>("pending_charge")
+        {
             sqlx::query("UPDATE allocations SET pending_cleanup=pending_cleanup+$2 WHERE id=$1")
                 .bind(r.get::<String, _>("allocation_id"))
                 .bind(r.get::<i64, _>("bytes"))
@@ -232,7 +234,7 @@ impl TransferEngine {
             let mut tx = self.writer.transaction().await?;
             lock_content_root(&mut tx, &fence.root).await?;
             check_fence(&mut tx, fence, self.writer.epoch).await?;
-            let r=sqlx::query("UPDATE object_copies SET state='deleted',uncertain=false WHERE generation=$1 AND state='deleting' RETURNING allocation_id,bytes").bind(&generation).fetch_optional(&mut *tx).await?;
+            let r=sqlx::query("UPDATE object_copies SET state='deleted',uncertain=false,pending_charge=false WHERE generation=$1 AND state='deleting' RETURNING allocation_id,bytes").bind(&generation).fetch_optional(&mut *tx).await?;
             if let Some(r) = r {
                 let allocation: String = r.get("allocation_id");
                 let bytes: i64 = r.get("bytes");

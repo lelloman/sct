@@ -1352,3 +1352,334 @@ async fn mirrored_ingestion_retries_completed_copies_and_seals_only_verified_gra
         0
     );
 }
+
+async fn plan_bytes(
+    engine: &sct_core::transfer_io::TransferEngine,
+    writer: &Writer,
+    actor: &Actor,
+    root: &RootId,
+    name: &str,
+    bytes: &[u8],
+) -> sct_core::error::Result<UploadId> {
+    let parent = writer
+        .resolve_path(actor, root, &"/".parse().unwrap())
+        .await?;
+    let existing = writer
+        .resolve_path(actor, root, &format!("/{name}").parse().unwrap())
+        .await;
+    let (target, policy_entry) = match existing {
+        Ok(e) => (
+            FileTarget::Replace {
+                entry_id: e.id.clone(),
+                expected_revision: e.revision,
+            },
+            e.id,
+        ),
+        Err(_) => (
+            FileTarget::Create {
+                parent_id: parent.id.clone(),
+                expected_parent_revision: parent.revision,
+                name: name.parse().unwrap(),
+            },
+            parent.id,
+        ),
+    };
+    let policy = writer
+        .effective_policy(
+            actor,
+            &PolicyScope::Entry {
+                root_id: root.clone(),
+                entry_id: policy_entry,
+            },
+        )
+        .await?;
+    let page = ManifestPage::Chunks {
+        format: 1,
+        chunks: vec![ChunkReference {
+            digest: digest(bytes).parse().unwrap(),
+            length: (bytes.len() as u64).try_into().unwrap(),
+        }],
+    };
+    let page_bytes = canonical(&page)?;
+    let hash: ManifestId = digest(&page_bytes).parse()?;
+    let request = CreateUploadRequest {
+        idempotency_key: uuid::Uuid::new_v4().simple().to_string().parse()?,
+        target,
+        expected_policy_revision: policy.revision,
+        manifest: FileManifest {
+            format: 1,
+            profile: CHUNK_PROFILE.into(),
+            length: (bytes.len() as u64).try_into()?,
+            chunks: if bytes.is_empty() { 0 } else { 1 }.try_into()?,
+            height: 0,
+            tree: (!bytes.is_empty()).then_some(hash.clone()),
+        },
+    };
+    let upload = engine.create_upload(actor, root, &request).await?.upload.id;
+    if !bytes.is_empty() {
+        engine
+            .upload_page(actor, root, &upload, &hash, &page_bytes)
+            .await?;
+    }
+    Ok(upload)
+}
+async fn ready_bytes(
+    engine: &sct_core::transfer_io::TransferEngine,
+    writer: &Writer,
+    actor: &Actor,
+    root: &RootId,
+    name: &str,
+    bytes: &[u8],
+) -> sct_core::error::Result<UploadId> {
+    let upload = plan_bytes(engine, writer, actor, root, name, bytes).await?;
+    let mut admitted = false;
+    for _ in 0..20 {
+        if engine.admit_upload(actor, root, &upload).await?.admission == AdmissionState::Admitted {
+            admitted = true;
+            break;
+        }
+    }
+    assert!(admitted);
+    if !bytes.is_empty() {
+        engine
+            .upload_chunk(
+                actor,
+                root,
+                &upload,
+                &digest(bytes).parse()?,
+                bytes.to_vec(),
+            )
+            .await?;
+    }
+    let mut sealed = false;
+    for _ in 0..20 {
+        if engine.seal_upload(actor, root, &upload).await?.upload.state == SessionState::Ready {
+            sealed = true;
+            break;
+        }
+    }
+    assert!(sealed);
+    Ok(upload)
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn publication_keep_one_receipts_and_pinned_outgoing_accounting() {
+    use sct_core::{
+        payload::{MemoryStore, ObjectStore},
+        transfer_io::TransferEngine,
+    };
+    use std::collections::BTreeMap;
+    let (writer, actor, pool) = setup().await;
+    let root = root(&writer, &actor, "/publish", 4000).await;
+    let engine = TransferEngine::new(
+        writer.clone(),
+        BTreeMap::from([(
+            "one".into(),
+            Arc::new(MemoryStore::default()) as Arc<dyn ObjectStore>,
+        )]),
+        2,
+        86400,
+    )
+    .unwrap();
+    let first = ready_bytes(&engine, &writer, &actor, &root.id, "file", b"first")
+        .await
+        .unwrap();
+    let receipt = engine
+        .commit_upload(&actor, &root.id, &first)
+        .await
+        .unwrap();
+    let pin = writer
+        .pin_version(&actor, &root.id, &receipt.version_id)
+        .await
+        .unwrap();
+    let second = ready_bytes(&engine, &writer, &actor, &root.id, "file", b"second")
+        .await
+        .unwrap();
+    let newest = engine
+        .commit_upload(&actor, &root.id, &second)
+        .await
+        .unwrap();
+    assert_ne!(newest.version_id, receipt.version_id);
+    engine.tick().await.unwrap();
+    let pending: i64 =
+        sqlx::query_scalar("SELECT pending_cleanup FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(pending > 0);
+    assert_eq!(
+        engine
+            .commit_upload(&actor, &root.id, &first)
+            .await
+            .unwrap(),
+        receipt
+    );
+    assert!(
+        writer
+            .pin_version(&actor, &root.id, &receipt.version_id)
+            .await
+            .is_err()
+    );
+    writer.renew_read_pin(&actor, &root.id, &pin).await.unwrap();
+    writer.release_read_pin(&actor, &pin).await.unwrap();
+    engine.tick().await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    let entry = writer
+        .resolve_path(&actor, &root.id, &"/file".parse().unwrap())
+        .await
+        .unwrap();
+    let history = engine
+        .file_history(&actor, &root.id, &entry.id, None)
+        .await
+        .unwrap();
+    assert_eq!(history.versions.len(), 1);
+    assert_eq!(history.versions[0].id, newest.version_id);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM transfer_audit WHERE event='publication'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        2
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn relaxed_admission_prunes_before_bytes_and_survives_later_abort() {
+    use sct_core::{
+        payload::{MemoryStore, ObjectStore},
+        transfer_io::TransferEngine,
+    };
+    use std::collections::BTreeMap;
+    let (writer, actor, pool) = setup().await;
+    let mut request = request(actor.principal_id(), "/relaxed", 4000);
+    request.quota_bytes = 10.try_into().unwrap();
+    request.default_policy = RetentionPolicy {
+        mode: RetentionMode::Relaxed,
+        keep_versions: 3.try_into().unwrap(),
+    };
+    let root = writer.create_root(&actor, &request).await.unwrap();
+    let root = writer
+        .update_root(
+            &actor,
+            &root.id,
+            &UpdateRootRequest {
+                expected_revision: root.revision,
+                display_name: root.display_name,
+                state: RootState::Enabled,
+                placement: root.placement,
+                quota_bytes: root.quota_bytes,
+            },
+        )
+        .await
+        .unwrap();
+    let engine = TransferEngine::new(
+        writer.clone(),
+        BTreeMap::from([(
+            "one".into(),
+            Arc::new(MemoryStore::default()) as Arc<dyn ObjectStore>,
+        )]),
+        2,
+        86400,
+    )
+    .unwrap();
+    let first = ready_bytes(&engine, &writer, &actor, &root.id, "file", b"1111")
+        .await
+        .unwrap();
+    let oldest = engine
+        .commit_upload(&actor, &root.id, &first)
+        .await
+        .unwrap();
+    let second = ready_bytes(&engine, &writer, &actor, &root.id, "file", b"2222")
+        .await
+        .unwrap();
+    let latest = engine
+        .commit_upload(&actor, &root.id, &second)
+        .await
+        .unwrap();
+    let pin = writer
+        .pin_version(&actor, &root.id, &oldest.version_id)
+        .await
+        .unwrap();
+    let blocked = plan_bytes(&engine, &writer, &actor, &root.id, "file", b"3333")
+        .await
+        .unwrap();
+    let mut failed = false;
+    for _ in 0..20 {
+        if let Err(e) = engine.admit_upload(&actor, &root.id, &blocked).await {
+            assert_eq!(e.0, ErrorCode::QuotaExhausted);
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    engine
+        .abort_upload(&actor, &root.id, &blocked)
+        .await
+        .unwrap();
+    writer.release_read_pin(&actor, &pin).await.unwrap();
+    let third = plan_bytes(&engine, &writer, &actor, &root.id, "file", b"3333")
+        .await
+        .unwrap();
+    let mut admitted = false;
+    for _ in 0..20 {
+        if engine
+            .admit_upload(&actor, &root.id, &third)
+            .await
+            .unwrap()
+            .admission
+            == AdmissionState::Admitted
+        {
+            admitted = true;
+            break;
+        }
+    }
+    assert!(admitted);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM transfer_audit WHERE event='admission_retirement'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        1
+    );
+    let entry = writer
+        .resolve_path(&actor, &root.id, &"/file".parse().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(entry.current_version_id, Some(latest.version_id.clone()));
+    // No third payload has been uploaded, but old relaxed history was reclaimed.
+    let history = engine
+        .file_history(&actor, &root.id, &entry.id, None)
+        .await
+        .unwrap();
+    assert_eq!(history.versions.len(), 1);
+    assert_eq!(history.versions[0].id, latest.version_id);
+    engine.abort_upload(&actor, &root.id, &third).await.unwrap();
+    assert_eq!(
+        engine
+            .file_history(&actor, &root.id, &entry.id, None)
+            .await
+            .unwrap()
+            .versions
+            .len(),
+        1
+    );
+    assert_eq!(
+        engine
+            .commit_upload(&actor, &root.id, &first)
+            .await
+            .unwrap(),
+        oldest
+    );
+}

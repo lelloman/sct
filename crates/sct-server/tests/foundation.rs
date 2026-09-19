@@ -103,8 +103,14 @@ async fn token(State(p): State<Provider>, Form(form): Form<HashMap<String, Strin
     .unwrap();
     let mut signed = token.to_string();
     if mode == "signature" {
-        let last = signed.pop().unwrap();
-        signed.push(if last == 'a' { 'b' } else { 'a' });
+        // Flip the first encoded signature character, not trailing padding bits.
+        let start = signed.rfind('.').unwrap() + 1;
+        let replacement = if &signed[start..start + 1] == "a" {
+            "b"
+        } else {
+            "a"
+        };
+        signed.replace_range(start..start + 1, replacement);
     }
     Json(json!({"access_token":if mode=="access_hash"{"substituted"}else{access.secret()},"token_type":"Bearer","id_token":signed})).into_response()
 }

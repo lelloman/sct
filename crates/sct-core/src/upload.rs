@@ -47,6 +47,11 @@ pub(crate) async fn check_target(
     )?;
     revision(&row, expected)?;
     if let FileTarget::Create { name, .. } = &request.target {
+        let length:i64=sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,name FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.name FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(sum(char_length(name)+1) FILTER(WHERE parent_id IS NOT NULL),0)::bigint FROM a").bind(entry).fetch_one(&mut *db).await?;
+        require(
+            length + (name.as_str().chars().count() as i64) < 4096,
+            ErrorCode::InvalidPath,
+        )?;
         let exists:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM entries WHERE root_id=$1 AND parent_id=$2 AND name=$3 AND NOT hidden)").bind(root).bind(entry).bind(name.as_str()).fetch_one(&mut *db).await?;
         require(!exists, ErrorCode::RevisionConflict)?;
     }

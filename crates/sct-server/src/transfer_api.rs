@@ -27,6 +27,11 @@ fn status(s: TransferStatus) -> Response {
 }
 pub fn routes() -> Router<App> {
     Router::new()
+        .route("/api/v1/roots/{root}/uploads/{upload}/commit", post(commit))
+        .route(
+            "/api/v1/roots/{root}/entries/{entry}/versions",
+            get(history),
+        )
         .route("/api/v1/roots/{root}/uploads/{upload}/chunks", get(missing))
         .route(
             "/api/v1/roots/{root}/uploads/{upload}/chunks/{digest}",
@@ -160,4 +165,28 @@ async fn seal(
         StatusCode::ACCEPTED
     };
     Ok((code, Json(status)).into_response())
+}
+
+async fn commit(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, upload)): Path<(String, String)>,
+) -> Result<Json<CommitReceipt>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .commit_upload(&actor, &id(&root)?, &id(&upload)?)
+            .await?,
+    ))
+}
+async fn history(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, entry)): Path<(String, String)>,
+    Query(query): Query<MissingQuery>,
+) -> Result<Json<VersionPage>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .file_history(&actor, &id(&root)?, &id(&entry)?, query.cursor.as_ref())
+            .await?,
+    ))
 }

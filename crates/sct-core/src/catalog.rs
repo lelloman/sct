@@ -43,6 +43,13 @@ impl Catalog {
                 include_str!("../migrations/0003_admission.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                4,
+                "publication".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0004_publication.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

@@ -34,3 +34,5 @@ mod upload;
 mod admission;
 
 mod ingest;
+
+mod publication;
