@@ -1683,3 +1683,91 @@ async fn relaxed_admission_prunes_before_bytes_and_survives_later_abort() {
         oldest
     );
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn verified_download_ranges_fallback_and_pin_expiry() {
+    use sct_core::{
+        payload::{Fault, MemoryStore, ObjectStore},
+        transfer_io::TransferEngine,
+    };
+    use std::collections::BTreeMap;
+    let (writer, actor, pool) = setup().await;
+    let root = root(&writer, &actor, "/download", 4000).await;
+    let placement: Placement = serde_json::from_value(json!({"kind":"mirror","backend_ids":["one","two"],"read_policy":{"candidates":[{"backend_id":"one","connection_timeout_ms":100,"initial_response_timeout_ms":100,"idle_timeout_ms":1000,"throughput_window_ms":1000,"minimum_bytes_per_second":1,"startup_allowance_ms":1000},{"backend_id":"two","connection_timeout_ms":100,"initial_response_timeout_ms":100,"idle_timeout_ms":1000,"throughput_window_ms":1000,"minimum_bytes_per_second":1,"startup_allowance_ms":1000}],"overall_deadline_ms":null}})).unwrap();
+    let root = writer
+        .update_root(
+            &actor,
+            &root.id,
+            &UpdateRootRequest {
+                expected_revision: root.revision,
+                display_name: root.display_name,
+                state: RootState::Enabled,
+                placement,
+                quota_bytes: 2000.try_into().unwrap(),
+            },
+        )
+        .await
+        .unwrap();
+    let one = Arc::new(MemoryStore::default());
+    let two = Arc::new(MemoryStore::default());
+    let engine = TransferEngine::new(
+        writer.clone(),
+        BTreeMap::from([
+            ("one".into(), one.clone() as Arc<dyn ObjectStore>),
+            ("two".into(), two.clone() as Arc<dyn ObjectStore>),
+        ]),
+        4,
+        86400,
+    )
+    .unwrap();
+    let upload = ready_bytes(&engine, &writer, &actor, &root.id, "file", b"abcdef")
+        .await
+        .unwrap();
+    let receipt = engine
+        .commit_upload(&actor, &root.id, &upload)
+        .await
+        .unwrap();
+    for fault in [Fault::CorruptRead, Fault::TruncateRead, Fault::Offline] {
+        one.fault(fault).await;
+        let mut read = engine
+            .download(&actor, &root.id, &receipt.version_id, Some((1, 4)))
+            .await
+            .unwrap();
+        assert_eq!(read.next().await.unwrap().unwrap(), b"bcd");
+        assert!(read.next().await.unwrap().is_none());
+    }
+    two.fault(Fault::CorruptRead).await;
+    let mut read = engine
+        .download(&actor, &root.id, &receipt.version_id, None)
+        .await
+        .unwrap();
+    assert!(read.next().await.is_err()); // No unverified bytes are released.
+    drop(read);
+    one.fault(Fault::None).await;
+    two.fault(Fault::None).await;
+    let mut pinned = engine
+        .download(&actor, &root.id, &receipt.version_id, None)
+        .await
+        .unwrap();
+    let replacement = ready_bytes(&engine, &writer, &actor, &root.id, "file", b"replacement")
+        .await
+        .unwrap();
+    engine
+        .commit_upload(&actor, &root.id, &replacement)
+        .await
+        .unwrap();
+    engine.tick().await.unwrap();
+    assert!(
+        engine
+            .download(&actor, &root.id, &receipt.version_id, None)
+            .await
+            .is_err()
+    );
+    assert_eq!(pinned.next().await.unwrap().unwrap(), b"abcdef");
+    sqlx::query("UPDATE read_pins SET expires_at=clock_timestamp()-interval '1 second'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(pinned.next().await.is_err());
+}

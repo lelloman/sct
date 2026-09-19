@@ -32,6 +32,13 @@ pub trait ObjectStore: Send + Sync {
     /// Never overwrite a physical key. Existing identical content is retryable.
     fn put<'a>(&'a self, key: &'a ObjectKey, length: u64, body: Reader) -> IoFuture<'a, ()>;
     fn read<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Reader>;
+    fn read_with_policy<'a>(
+        &'a self,
+        key: &'a ObjectKey,
+        _policy: &'a sct_protocol::ReadCandidate,
+    ) -> IoFuture<'a, Reader> {
+        self.read(key)
+    }
     fn stat<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Option<u64>>;
     /// Remove payload and retain a zero-byte generation tombstone so late conditional
     /// writes cannot resurrect deleted bytes. Tombstone metadata uses pool overhead.

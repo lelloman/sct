@@ -27,6 +27,14 @@ fn status(s: TransferStatus) -> Response {
 }
 pub fn routes() -> Router<App> {
     Router::new()
+        .route(
+            "/api/v1/roots/{root}/versions/{version}/manifest",
+            get(manifest),
+        )
+        .route(
+            "/api/v1/roots/{root}/versions/{version}/content",
+            get(content),
+        )
         .route("/api/v1/roots/{root}/uploads/{upload}/commit", post(commit))
         .route(
             "/api/v1/roots/{root}/entries/{entry}/versions",
@@ -189,4 +197,97 @@ async fn history(
             .file_history(&actor, &id(&root)?, &id(&entry)?, query.cursor.as_ref())
             .await?,
     ))
+}
+
+async fn manifest(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, version)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let manifest = engine(&app)?
+        .file_manifest(&actor, &id(&root)?, &id(&version)?)
+        .await?;
+    Ok((
+        [("content-type", "application/json")],
+        canonical(&manifest).map_err(|_| ApiError(ErrorCode::InternalError))?,
+    )
+        .into_response())
+}
+async fn content(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, version)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    let engine = engine(&app)?;
+    let root = id(&root)?;
+    let version = id(&version)?;
+    let manifest = engine.file_manifest(&actor, &root, &version).await?;
+    let length = manifest.length.get();
+    let range = if let Some(header) = headers.get("range") {
+        let range = header
+            .to_str()
+            .ok()
+            .and_then(|s| s.strip_prefix("bytes="))
+            .ok_or(ApiError(ErrorCode::InvalidRequest))?;
+        let (a, b) = range
+            .split_once('-')
+            .ok_or(ApiError(ErrorCode::InvalidRequest))?;
+        let (start, end) = if a.is_empty() {
+            let suffix: u64 = b.parse().map_err(|_| ApiError(ErrorCode::InvalidRequest))?;
+            (length.saturating_sub(suffix), length)
+        } else {
+            let start: u64 = a.parse().map_err(|_| ApiError(ErrorCode::InvalidRequest))?;
+            let end = if b.is_empty() {
+                length
+            } else {
+                b.parse::<u64>()
+                    .map_err(|_| ApiError(ErrorCode::InvalidRequest))?
+                    .saturating_add(1)
+                    .min(length)
+            };
+            (start, end)
+        };
+        if start >= end || end > length {
+            let mut response = ApiError(ErrorCode::InvalidRequest).into_response();
+            *response.status_mut() = StatusCode::RANGE_NOT_SATISFIABLE;
+            response.headers_mut().insert(
+                "content-range",
+                format!("bytes */{length}").parse().unwrap(),
+            );
+            return Ok(response);
+        }
+        Some((start, end))
+    } else {
+        None
+    };
+    let download = engine.download(&actor, &root, &version, range).await?;
+    let start = download.start;
+    let end = download.end;
+    let stream = futures_util::stream::try_unfold(download, |mut d| async move {
+        d.next()
+            .await
+            .map(|next| next.map(|bytes| (bytes, d)))
+            .map_err(std::io::Error::other)
+    });
+    let mut response = axum::body::Body::from_stream(stream).into_response();
+    response
+        .headers_mut()
+        .insert("content-type", "application/octet-stream".parse().unwrap());
+    response
+        .headers_mut()
+        .insert("content-length", (end - start).to_string().parse().unwrap());
+    response
+        .headers_mut()
+        .insert("accept-ranges", "bytes".parse().unwrap());
+    if range.is_some() {
+        *response.status_mut() = StatusCode::PARTIAL_CONTENT;
+        response.headers_mut().insert(
+            "content-range",
+            format!("bytes {start}-{}/{length}", end - 1)
+                .parse()
+                .unwrap(),
+        );
+    }
+    Ok(response)
 }

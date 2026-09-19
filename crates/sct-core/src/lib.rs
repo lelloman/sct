@@ -36,3 +36,5 @@ mod admission;
 mod ingest;
 
 mod publication;
+
+pub mod download;

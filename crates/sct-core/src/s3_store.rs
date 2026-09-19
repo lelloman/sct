@@ -96,6 +96,18 @@ impl S3Store {
         body: Vec<u8>,
         conditional: bool,
     ) -> Result<reqwest::Response> {
+        self.request_using(&self.client, method, key, query, body, conditional)
+            .await
+    }
+    async fn request_using(
+        &self,
+        client: &reqwest::Client,
+        method: reqwest::Method,
+        key: Option<&ObjectKey>,
+        query: &str,
+        body: Vec<u8>,
+        conditional: bool,
+    ) -> Result<reqwest::Response> {
         let path = match key {
             Some(k) => format!("/{}/{}", self.settings.bucket, k.path()),
             None => format!("/{}", self.settings.bucket),
@@ -152,7 +164,7 @@ impl S3Store {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect::<String>();
-        let mut request=self.client.request(method,url).header("authorization",format!("AWS4-HMAC-SHA256 Credential={}/{scope}, SignedHeaders={names}, Signature={signature}",self.access));
+        let mut request=client.request(method,url).header("authorization",format!("AWS4-HMAC-SHA256 Credential={}/{scope}, SignedHeaders={names}, Signature={signature}",self.access));
         for (k, v) in headers {
             request = request.header(k, v);
         }
@@ -264,6 +276,31 @@ impl ObjectStore for S3Store {
             require(r.status().is_success(), ErrorCode::DestinationUnavailable)?;
             Ok(Box::pin(tokio_util::io::StreamReader::new(
                 r.bytes_stream().map_err(std::io::Error::other),
+            )) as Reader)
+        })
+    }
+    fn read_with_policy<'a>(
+        &'a self,
+        key: &'a ObjectKey,
+        policy: &'a sct_protocol::ReadCandidate,
+    ) -> IoFuture<'a, Reader> {
+        Box::pin(async move {
+            self.bucket().await?;
+            // No fixed body timeout: the caller enforces idle/progress/deadline budgets.
+            let client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .connect_timeout(Duration::from_millis(policy.connection_timeout_ms.get()))
+                .build()
+                .map_err(|_| Error(ErrorCode::InternalError))?;
+            let response = self
+                .request_using(&client, reqwest::Method::GET, Some(key), "", vec![], false)
+                .await?;
+            require(
+                response.status().is_success(),
+                ErrorCode::DestinationUnavailable,
+            )?;
+            Ok(Box::pin(tokio_util::io::StreamReader::new(
+                response.bytes_stream().map_err(std::io::Error::other),
             )) as Reader)
         })
     }
