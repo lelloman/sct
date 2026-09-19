@@ -38,3 +38,4 @@ mod ingest;
 mod publication;
 
 pub mod download;
+mod tree_catalog;

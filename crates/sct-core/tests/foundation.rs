@@ -1,4 +1,6 @@
 mod support;
+#[path = "support/tree_catalog_tests.rs"]
+mod tree_catalog_tests;
 use sct_core::{
     auth::Actor,
     backend::{Registry, TestAdapter},
@@ -871,7 +873,22 @@ async fn transfer_graph_reservations_and_pin_retirement_orders() {
         .resolve_path(&actor, &root.id, &"/".parse().unwrap())
         .await
         .unwrap();
-    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES('version',$1,$2,$3,3)").bind(root.id.as_str()).bind(entry.id.as_str()).bind(&hash).execute(&pool).await.unwrap();
+    // A version must point to a file manifest, not directly to a chunk page.
+    let manifest = FileManifest {
+        format: 1,
+        profile: CHUNK_PROFILE.into(),
+        length: 3.try_into().unwrap(),
+        chunks: 1.try_into().unwrap(),
+        height: 0,
+        tree: Some(hash.parse().unwrap()),
+    };
+    let body = canonical(&manifest).unwrap();
+    let manifest_id = digest(&body);
+    sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,'file',3,0,$3)")
+        .bind(root.id.as_str()).bind(&manifest_id).bind(body).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO entries(id,root_id,parent_id,name,kind,revision) VALUES('pin-file',$1,$2,'pin-file','file','r1')")
+        .bind(root.id.as_str()).bind(entry.id.as_str()).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES('version',$1,'pin-file',$2,3)").bind(root.id.as_str()).bind(&manifest_id).execute(&pool).await.unwrap();
     let version = "version".parse().unwrap();
     let pin = writer
         .pin_version(&actor, &root.id, &version)

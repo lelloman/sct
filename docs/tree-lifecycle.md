@@ -127,6 +127,16 @@ move atomically before bounded policy reconciliation, without partial subtree mo
 
 ## Qualification boundaries
 
+Migration 5 extends the existing version/pin identities with a content kind; old
+file rows default to `file`. Directory versions point at immutable manifests and
+do not create descendant rows in `entries`. Draft working rows, traversal frontiers,
+preview effects and lifecycle job cursors are root-scoped with foreign keys.
+Namespace/version mutations advance a separate generation for preview invalidation;
+this does not change M1 revision tokens returned during root creation. Snapshot
+lookup checks authorization, retained-version membership, canonical hashes and
+bounded page height at every path component. Runtime workers and HTTP lifecycle
+routes are supplied by the subsequent implementation tickets.
+
 Each implementation task carries focused tests and its ticket-linked commit.
 M3 qualification includes real local/S3/mirrored operations, late generation deletion,
 both pin/retirement orderings, crash/replay, protected hidden history, policy-inherit

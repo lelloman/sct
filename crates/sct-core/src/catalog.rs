@@ -50,6 +50,13 @@ impl Catalog {
                 include_str!("../migrations/0004_publication.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                5,
+                "trees".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0005_trees.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),
