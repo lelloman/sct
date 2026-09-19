@@ -13,6 +13,12 @@ serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 sha2.workspace = true
+hmac = "0.12"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+reqwest = { workspace = true, features = ["stream"] }
+futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
+quick-xml = { version = "0.38", features = ["serialize"] }
 rustix = { version = "1.1", features = ["fs"] }
 
 tokio = { workspace = true, features = ["fs", "io-util", "time", "sync"] }

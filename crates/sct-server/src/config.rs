@@ -121,6 +121,9 @@ impl Config {
         registry
             .register(Arc::new(sct_core::local_store::LocalAdapter))
             .map_err(|_| "duplicate adapter")?;
+        registry
+            .register(Arc::new(sct_core::s3_store::S3Adapter))
+            .map_err(|_| "duplicate adapter")?;
         if self.enable_test_adapter {
             registry
                 .register(Arc::new(TestAdapter))

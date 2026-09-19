@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+sct_s3=""
+cleanup() { if [[ -n "$sct_s3" ]]; then docker rm -f "$sct_s3" >/dev/null; fi; }
+trap cleanup EXIT
+export SCT_TEST_S3_ACCESS=sct-test-access
+export SCT_TEST_S3_SECRET=sct-test-secret
+sct_s3="$(docker run --detach --rm -e MINIO_ROOT_USER="$SCT_TEST_S3_ACCESS" -e MINIO_ROOT_PASSWORD="$SCT_TEST_S3_SECRET" -p 127.0.0.1::9000 quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data)"
+sct_s3_address="$(docker port "$sct_s3" 9000/tcp)"
+export SCT_TEST_S3_ENDPOINT="http://$sct_s3_address"
+for attempt in {1..60}; do
+  if curl --silent --fail "$SCT_TEST_S3_ENDPOINT/minio/health/ready" >/dev/null; then break; fi
+  sleep 1
+done
+curl --silent --fail "$SCT_TEST_S3_ENDPOINT/minio/health/ready" >/dev/null
+cargo test --locked -p sct-core s3_store::tests::real_s3_conformance -- --ignored
