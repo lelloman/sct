@@ -1,9 +1,16 @@
 # Initial Crumbles ticket migration
 
-Implementation update, 2026-09-18: the repository now implements the full M1 foundation
-(SCT-6–13). See `docs/foundation.md` and `WORK_LOG.md` for behavior and verification.
-This is a repository status update; remote ticket states/descriptions have not been
-changed by this implementation. M2–M5 remain roadmap epics requiring decomposition.
+Implementation update, 2026-09-19: M1 and the approved M2 independent-file pipeline
+are implemented. SCT-14–27 have scoped local commits and are handed off for review;
+this does not mark the milestone parent complete or change older M1 ticket states.
+See `WORK_LOG.md` and `docs/m2-qualification.md`. M3–M5 require decomposition.
+
+Refinement update, 2026-09-19: M2 now includes independent-file history, keep-N
+rotation and admission-time relaxed reclamation before payloads. See
+[the approved M2 plan](docs/m2-implementation-plan.md) for 14 Tasks
+(SCT-14–27), their acceptance criteria and 17 dependency edges. The user approved
+the complete breakdown; all children and edges were created and verified. This supersedes older M3-only assignments of basic file
+rotation, publication accounting and admission reclamation below.
 
 Source: `ARCHITECTURE_PLAN.md`, dated 2026-09-14. Crumbles project: https://crumbles.lelloman.com/w/LLPR/SCT
 

@@ -98,7 +98,7 @@ pub struct RequestLimits {
     pub max_request_bytes: ByteCount,
     pub max_metadata_bytes: ByteCount,
     pub max_manifest_page_bytes: ByteCount,
-    pub max_manifest_page_entries: PageSize,
+    pub max_manifest_page_entries: ByteCount,
     pub max_chunk_batch: PageSize,
 }
 

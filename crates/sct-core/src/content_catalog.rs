@@ -78,6 +78,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
+        authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM file_versions WHERE id=$1 AND root_id=$2 AND NOT retired)",
         )
@@ -95,6 +96,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
+        authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         let n=sqlx::query("UPDATE read_pins SET expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1 AND root_id=$2 AND principal_id=$3 AND expires_at>clock_timestamp()").bind(pin).bind(root.as_str()).bind(&actor.principal).execute(&mut *tx).await?.rows_affected();
         require(n == 1, ErrorCode::NotFound)?;
         tx.commit().await?;

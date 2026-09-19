@@ -38,7 +38,7 @@ impl std::fmt::Display for ValidationError {
 }
 impl std::error::Error for ValidationError {}
 
-/// Implemented application operations; storage formats and transfers remain absent.
+/// Implemented foundation application operations.
 pub const FOUNDATION_OPERATIONS: &[&str] = &[
     "capabilities",
     "list_roots",
@@ -64,4 +64,20 @@ pub const FOUNDATION_OPERATIONS: &[&str] = &[
     "revoke_grant",
     "list_allocations",
     "policy_constraints",
+];
+
+/// Implemented independent-file transfer operations (M2).
+pub const TRANSFER_OPERATIONS: &[&str] = &[
+    "list_versions",
+    "read_manifest",
+    "download_content",
+    "begin_upload",
+    "inspect_upload",
+    "abort_upload",
+    "missing_chunks",
+    "upload_chunk",
+    "upload_page",
+    "admit_upload",
+    "seal_upload",
+    "commit_upload",
 ];

@@ -12,4 +12,5 @@ npm --prefix web run test:contracts
 npm --prefix web run build
 ./scripts/check-client
 ./scripts/test-integration
+./scripts/test-s3
 npm --prefix web run test:e2e

@@ -23,7 +23,7 @@ fn status(s: TransferStatus) -> Response {
     } else {
         StatusCode::OK
     };
-    (code, Json(s)).into_response()
+    pending_response(code, s)
 }
 pub fn routes() -> Router<App> {
     Router::new()
@@ -54,6 +54,15 @@ pub fn routes() -> Router<App> {
         )
         .route("/api/v1/roots/{root}/uploads/{upload}/admit", post(admit))
         .route("/api/v1/roots/{root}/uploads/{upload}/abort", post(abort))
+}
+fn pending_response(code: StatusCode, status: TransferStatus) -> Response {
+    let mut response = (code, Json(status)).into_response();
+    if code == StatusCode::ACCEPTED {
+        response
+            .headers_mut()
+            .insert("retry-after", "1".parse().unwrap());
+    }
+    response
 }
 async fn create(
     State(app): State<App>,
@@ -90,9 +99,13 @@ async fn page(
     let digest = id(&digest)?;
     // Authorize the session before consuming even a manifest page body.
     engine(&app)?.upload_status(&actor, &root, &upload).await?;
-    let bytes = axum::body::to_bytes(request.into_body(), MANIFEST_BYTES)
-        .await
-        .map_err(|_| ApiError(ErrorCode::InvalidRequest))?;
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        axum::body::to_bytes(request.into_body(), MANIFEST_BYTES),
+    )
+    .await
+    .map_err(|_| ApiError(ErrorCode::DestinationUnavailable))?
+    .map_err(|_| ApiError(ErrorCode::InvalidRequest))?;
     engine(&app)?
         .upload_page(&actor, &root, &upload, &digest, &bytes)
         .await?;
@@ -151,9 +164,13 @@ async fn chunk(
         .chunk_permission(&actor, &root, &upload, &digest)
         .await?;
     let _permit = engine.payload_permit().await?;
-    let bytes = axum::body::to_bytes(request.into_body(), length as usize + 1)
-        .await
-        .map_err(|_| ApiError(ErrorCode::InvalidRequest))?;
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        axum::body::to_bytes(request.into_body(), length as usize + 1),
+    )
+    .await
+    .map_err(|_| ApiError(ErrorCode::DestinationUnavailable))?
+    .map_err(|_| ApiError(ErrorCode::InvalidRequest))?;
     engine
         .upload_chunk(&actor, &root, &upload, &digest, bytes.to_vec())
         .await?;
@@ -172,7 +189,7 @@ async fn seal(
     } else {
         StatusCode::ACCEPTED
     };
-    Ok((code, Json(status)).into_response())
+    Ok(pending_response(code, status))
 }
 
 async fn commit(

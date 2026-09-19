@@ -56,16 +56,20 @@ pub fn capabilities() -> sct_protocol::Capabilities {
     use sct_protocol::*;
     Capabilities {
         protocol_version: 1,
-        supported_operations: FOUNDATION_OPERATIONS.iter().map(|s| (*s).into()).collect(),
-        storage_format_versions: vec![],
-        chunk_profiles: vec![],
+        supported_operations: FOUNDATION_OPERATIONS
+            .iter()
+            .chain(TRANSFER_OPERATIONS)
+            .map(|s| (*s).into())
+            .collect(),
+        storage_format_versions: vec![1],
+        chunk_profiles: vec![CHUNK_PROFILE.into()],
         limits: RequestLimits {
             max_page_size: 1000.try_into().unwrap(),
             max_request_bytes: 65536.try_into().unwrap(),
-            max_metadata_bytes: 0.try_into().unwrap(),
-            max_manifest_page_bytes: 0.try_into().unwrap(),
-            max_manifest_page_entries: 1.try_into().unwrap(),
-            max_chunk_batch: 1.try_into().unwrap(),
+            max_metadata_bytes: (MANIFEST_BYTES as u64).try_into().unwrap(),
+            max_manifest_page_bytes: (MANIFEST_BYTES as u64).try_into().unwrap(),
+            max_manifest_page_entries: (MANIFEST_FANOUT as u64).try_into().unwrap(),
+            max_chunk_batch: 1000.try_into().unwrap(),
         },
     }
 }

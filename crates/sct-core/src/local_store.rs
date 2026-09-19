@@ -54,7 +54,7 @@ impl Adapter for LocalAdapter {
             consistency: "Local filesystem read-after-write".into(),
             durability: "Depends on filesystem and hardware honoring fsync".into(),
             deletion_and_capacity:
-                "Unlink and fsync; statvfs available bytes minus configured headroom".into(),
+                "Durable empty tombstone and fsync; statvfs available bytes minus headroom".into(),
             limitations: vec![
                 "Private service-owned directory; no external writers or symlink substitution"
                     .into(),

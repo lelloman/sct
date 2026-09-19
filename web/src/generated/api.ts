@@ -165,7 +165,7 @@ export type RenameEntryRequest = { expected_revision: Revision, expected_source_
 
 export type RequestId = string & { readonly __brand: "RequestId" };
 
-export type RequestLimits = { max_page_size: PageSize, max_request_bytes: ByteCount, max_metadata_bytes: ByteCount, max_manifest_page_bytes: ByteCount, max_manifest_page_entries: PageSize, max_chunk_batch: PageSize, };
+export type RequestLimits = { max_page_size: PageSize, max_request_bytes: ByteCount, max_metadata_bytes: ByteCount, max_manifest_page_bytes: ByteCount, max_manifest_page_entries: ByteCount, max_chunk_batch: PageSize, };
 
 export type ResolvePathRequest = { path: RootPath, };
 

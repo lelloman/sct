@@ -161,8 +161,10 @@ fn generation_is_deterministic_and_does_not_advertise_planned_routes() {
     let mut ids = std::collections::BTreeSet::new();
     let mut paths = std::collections::BTreeSet::new();
     for operation in openapi["x-sct-planned-operations"].as_array().unwrap() {
-        let implemented =
-            FOUNDATION_OPERATIONS.contains(&operation["operation_id"].as_str().unwrap());
+        let implemented = FOUNDATION_OPERATIONS
+            .iter()
+            .chain(TRANSFER_OPERATIONS)
+            .any(|id| *id == operation["operation_id"].as_str().unwrap());
         assert_eq!(operation["implemented"], implemented);
         let path = operation["path"].as_str().unwrap();
         let method = operation["method"].as_str().unwrap().to_lowercase();

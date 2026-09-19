@@ -4,7 +4,7 @@ Architecture and implementation plan.
 
 The project is branded **ScT**, expanded as **Stipa ca Truova**. Use `sct` for the repository, directory, domain label, and code identifiers; Rust crates use the `sct-` prefix.
 
-Status: M1 foundation (SCT-6–13) is implemented. Payload storage functionality and M2–M5 remain pending. See `docs/foundation.md` for implemented behavior and `contracts/README.md` for wire conventions.
+Status: M1 foundation (SCT-6–13) and M2 independent-file storage (SCT-14–27) are implemented. Atomic trees/deletion (M3), administration/checkpoints (M4), and broader release qualification (M5) remain pending. M2 measurements and limits are in `docs/m2-qualification.md`. See `docs/foundation.md` for implemented behavior and `contracts/README.md` for wire conventions.
 
 Date: 2026-09-14. Backend abstraction revised: 2026-09-15.
 
@@ -580,6 +580,8 @@ Exit criteria: authorization and policy tests pass; generated contracts are repr
 
 Deliver chunking/manifests, resumable sessions, the object-store interface and backend registry, local and S3 adapters, provider-independent mirrored writes, file commit/read operations, and basic Rust library operations.
 
+Scope refinement, 2026-09-19: include independent-file history, keep-N rotation and admission-time relaxed reclamation. Clients submit a bounded hash/length plan before file payloads. The server pins reuse, checks projected quota, staging and every destination pool, reclaims eligible older relaxed versions in the same root if necessary, and reserves all required capacity before admitting payloads. Never reclaim latest versions, strict-protected versions or active read pins. Confirm physical capacity recovery before treating deletion as free space. Pruning does not enlarge the staging allocation and remains effective if the subsequent upload fails. Reject irreducible limits before destructive pruning. See `docs/m2-implementation-plan.md` for the approved child breakdown and dependency graph, created as SCT-14–27 with 17 dependencies.
+
 Uploads hold root mutation ownership across staging/publication and use generation-specific physical addresses. Include durable session expiry and reconciliation infrastructure now; recovery and terminal cleanup are prerequisites for safe transfer. Later milestones extend these workers with additional maintenance jobs.
 
 Implement bounded read fallback in configured order, with connection/initial-response timeouts, transfer progress limits, cancellation, and verified-chunk retry. Exercise fast intermittent candidates and slower available mirrors with deterministic fault-injection adapters; adaptive scoring and cross-request cooldowns are outside this milestone.
@@ -588,7 +590,7 @@ Exit criteria: single-local, single-S3, and mirrored placements pass the common 
 
 ### Milestone 3 — Versioned trees and retention
 
-Deliver independent file history, atomic directory drafts/commits, inheritance, quotas/reservations, strict rotation, relaxed reclamation, tombstones, purge, and safe reference-based garbage collection.
+Extend M2 file history, accounting, rotation, admission reclamation and physical cleanup with atomic directory drafts/commits, tree retention/inheritance, broader policy preview/apply transitions, tombstones, purge, and the complete reference-based garbage-collection race matrix.
 
 Exit criteria: the retention, capacity, and GC-race matrix below passes; million-entry operations are paginated or resumable; deleted content cannot bypass policy or authorization.
 

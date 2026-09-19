@@ -38,10 +38,10 @@ Catalog graph edges are shared; traversals and missing/history results are paged
 Physical keys use opaque root ID, object digest and unique copy generation, never
 user names. Manifest objects follow the same required-copy rules as payloads.
 
-## HTTP workflow (implementation follows)
+## Implemented HTTP workflow
 
-All routes are under `/api/v1/roots/{root}`. Existing generated capabilities keep
-planned routes disabled until their implementation tickets enable them.
+All routes are under `/api/v1/roots/{root}`. Generated capabilities advertise these M2 routes; later milestone operations
+remain disabled.
 
 | Request | Behavior |
 | --- | --- |
@@ -64,7 +64,8 @@ information; payload permission requires admitted. A completed admission returns
 200. Guard chunk bodies before consuming them; a client must wait for admission.
 Proxies may already have buffered bytes. Metadata submission is not payload upload.
 
-Inactivity expires after 24 hours. Authenticated successful session actions renew
+Chunk/page bodies have a 60-second ingestion deadline; retry the same bounded
+request on transport failure. Inactivity expires after 24 hours by default. Authenticated successful session actions renew
 expiry; worker leases are separate. Credential revocation is immediately effective.
 Every action reauthorizes; commit also rechecks expected target and policy
 revisions. Planning binds content immutably; changed source requires a new session.

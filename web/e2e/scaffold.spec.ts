@@ -13,7 +13,7 @@ test("built Vue application runs from the Rust server", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("liveness is available, foundation endpoints require authentication, and uploads remain unavailable", async ({
+test("liveness is available, foundation endpoints require authentication, and unknown routes use structured errors", async ({
   request,
 }) => {
   const live = await request.get("/health/live");

@@ -2,13 +2,14 @@
 
 # ScT — Stipa ca Truova
 
-Self-hosted versioned storage. **Milestone 1 (foundation) is implemented**: PostgreSQL
-catalog/migrations, fenced configuration/runtime, OIDC and application credentials,
-roots/grants/capacity allocations, policies, and directory namespace operations.
-Uploads/downloads, real payload adapters, retention execution, and the complete
-administration UI remain milestones 2–5.
+Self-hosted versioned storage. **M1 and M2 are implemented**: authenticated roots,
+namespace/policies, metadata-first file upload admission, immutable local/S3/mirrored
+storage, resumable Rust SDK jobs, keep-N history and verified full/range downloads.
+Atomic trees and broader deletion/policy transitions remain M3; the administration
+UI and checkpoints remain M4; broader release qualification remains M5.
 
-See [foundation setup, API behavior and verification](docs/foundation.md).
+See [service setup](docs/foundation.md), [transfer operations](docs/transfers.md),
+[the Rust SDK](docs/rust-sdk.md), and [qualification](docs/m2-qualification.md).
 
 The primary repository is hosted on Fucina. The public
 [GitHub mirror](https://github.com/lelloman/sct) updates automatically on pushes
@@ -44,8 +45,8 @@ passing acceptance. To require complete product acceptance, use:
 npm --prefix web run test:acceptance
 ```
 
-The second command **currently fails intentionally** because the four M2–M5 milestone
-acceptance scenarios are pending; the M1 browser scenario is executable. These gates must be expanded into the detailed
+The second command **currently fails intentionally** because the three M3–M5 milestone
+acceptance scenarios remain pending; M1 browser and M2 HTTP/SDK scenarios execute. These gates must be expanded into the detailed
 workflows in [the acceptance matrix](ARCHITECTURE_PLAN.md#16-test-and-acceptance-matrix),
 not simply removed to obtain a green result.
 
@@ -73,7 +74,7 @@ authentication through Vite, set `SCT_PUBLIC_URL` to its loopback origin.
 
 `GET /health/live` checks process liveness. `GET /health/database` returns 204
 after a successful PostgreSQL query or 503 if unconfigured/unavailable. `GET /health/ready` additionally checks the writer lease in configured service mode.
-None claims payload storage is ready. The configured service implements the M1
+None claims payload storage is ready. The configured service implements the M1/M2
 [operation map](contracts/operations.md); the frontend-only scaffold keeps returning
 structured 404 responses for application routes.
 
@@ -83,6 +84,9 @@ Useful focused checks:
 cargo test --locked --workspace
 ./scripts/test-integration
 ./scripts/check-client
+./scripts/test-s3
+./scripts/test-transfers
+./scripts/measure-transfer-memory
 npm --prefix web run test:e2e   # disposable PostgreSQL + real server/Chromium; requires builds
 ```
 
@@ -94,7 +98,7 @@ For formatting, run `cargo fmt --all` and `npm --prefix web run format`.
 | --- | --- |
 | `sct-protocol` | Public Rust-owned contracts with generated OpenAPI, JSON Schema and TypeScript |
 | `sct-client` | Standalone authenticated foundation API client; transfer/chunking follows in M2; depends on protocol, never core/server |
-| `sct-core` | Authorization, catalog, roots, policies, namespace and operation fencing; payload coordination follows in M2 |
+| `sct-core` | Authorization, catalog, roots, policies, namespace and operation fencing; immutable payload coordination and recovery |
 | `sct-server` | Axum routes, Tokio runtime, configuration and worker wiring |
 | `web` | Vue 3/TypeScript UI; wire models are generated from Rust contracts |
 
@@ -111,9 +115,8 @@ repository is needed.
 - [Approved icon and shared palette](docs/branding.md)
 - [Protocol contracts, generation and wire conventions](contracts/README.md)
 
-Next: refine and implement M2 immutable transfer and real storage adapters, resolving
-its capacity-ledger, immutable-format and crash-recovery design prerequisites.
-M2–M5 still need implementation-ticket decomposition beyond their existing epics.
+Next: refine M3 atomic trees, delete/purge and broader policy transitions.
+M3–M5 still need implementation-ticket decomposition beyond their existing epics.
 
 Technical references: [Axum serving](https://docs.rs/axum/0.8.9/axum/fn.serve.html),
 [SQLx PostgreSQL wiring](https://docs.rs/crate/sqlx/0.8.6/source/README.md),

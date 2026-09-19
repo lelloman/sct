@@ -463,13 +463,19 @@ async fn real_transfer_placements() {
             "{failure:?}"
         );
         engine.tick().await.unwrap();
+        let rejected = client
+            .create_upload(&small.id, plan.request())
+            .await
+            .unwrap();
+        assert_eq!(rejected.admission, AdmissionState::Rejected);
         assert_eq!(
             client
-                .create_upload(&small.id, plan.request())
+                .abort_upload(&small.id, &rejected.upload.id)
                 .await
                 .unwrap()
-                .admission,
-            AdmissionState::Rejected
+                .upload
+                .state,
+            SessionState::Aborted
         );
         assert_eq!(
             client

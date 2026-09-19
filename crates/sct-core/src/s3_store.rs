@@ -77,6 +77,7 @@ impl S3Store {
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(120))
             .build()
             .map_err(|_| Error(ErrorCode::InternalError))?;
         Ok(Self {
@@ -235,7 +236,7 @@ async fn small_body(response: reqwest::Response) -> Result<String> {
 }
 impl Adapter for S3Adapter {
     fn documentation(&self) -> AdapterDocumentation {
-        AdapterDocumentation{kind:"s3".into(),display_name:"S3 unversioned storage".into(),acknowledgement:"SigV4 conditional PUT followed by SHA-256 verified GET".into(),consistency:"Requires S3 strong read-after-write/delete semantics".into(),durability:"Provider acknowledgment; no independent durability certification".into(),deletion_and_capacity:"Confirmed DELETE and configured catalog capacity budget".into(),limitations:vec!["Unversioned buckets without Object Lock only; do not change these settings while active".into(),"S3-compatible integration qualification is not AWS qualification".into()]}
+        AdapterDocumentation{kind:"s3".into(),display_name:"S3 unversioned storage".into(),acknowledgement:"SigV4 conditional PUT followed by SHA-256 verified GET".into(),consistency:"Requires S3 strong read-after-write/delete semantics".into(),durability:"Provider acknowledgment; no independent durability certification".into(),deletion_and_capacity:"Confirmed zero-byte tombstone PUT and configured catalog capacity budget".into(),limitations:vec!["Unversioned buckets without Object Lock only; do not change these settings while active".into(),"S3-compatible integration qualification is not AWS qualification".into()]}
     }
     fn validate(&self, value: &serde_json::Value) -> Result<String> {
         let s = settings(value)?;

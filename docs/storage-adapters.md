@@ -15,7 +15,9 @@ Endpoints must use HTTPS except loopback HTTP for integration fixtures. Path-sty
 addressing uses generation-specific ASCII keys. Requests use SigV4 and conditional
 If-None-Match PUT; a success/conflict is followed by verified GET before acknowledgment.
 ETags never prove SHA-256. Redirects are disabled to keep signed credentials at the
-configured endpoint. Configure a catalog capacity budget; remote free space is unknown.
+configured endpoint. Standard metadata/write/delete requests have a 120-second
+overall timeout; download bodies instead use the root read policy budgets.
+Configure a catalog capacity budget; remote free space is unknown.
 
 S3 v1 supports only never-versioned buckets without Object Lock. First I/O checks
 bucket configuration and fails closed if permissions prevent inspection. Suspended

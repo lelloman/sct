@@ -41,3 +41,84 @@ repository hosting were not modified. No deployment or push was performed.
 Operational limits and M1/M2 boundaries are documented in `docs/foundation.md`.
 The remaining readiness decisions in `docs/implementation-readiness.md` still apply
 to their dependent milestones.
+
+## M2 refinement — 2026-09-19
+
+Agreed metadata-first admission with same-root relaxed-history reclamation before
+payloads; latest/strict/read-pinned versions remain protected. Reclamation does
+not expand staging allocation, and pruned history remains deleted if upload fails.
+M2 includes basic file history and keep-N; M3 extends this with atomic trees,
+delete/purge and broader policy transitions. Updated local scope/readiness notes.
+
+Drafted `docs/m2-implementation-plan.md`: 14 proposed Tasks, full acceptance
+criteria and 17 proposed dependency edges. Crumbles refinement inspection found
+no existing M2 children or relations. The complete plan awaits user approval
+before remote creation. No application code, remote tickets or workflow states
+changed during this refinement.
+
+
+M2 plan approval recorded, 2026-09-19: created exactly 14 direct Task children
+SCT-14–27 and 17 approved `blocks` edges. Read back every child's relations and
+the parent child list; both match the approved plan. All children are Open with
+Medium priority and the approved labels; assignment/estimates remain unset.
+SCT-2 remains Open. Added ticket links and refreshed local planning status.
+No M2 implementation was started.
+
+## M2 implementation in progress
+
+Scoped commits: SCT-14 a7e5f10 (format/protocol), SCT-15 aba3f7e (ledger model),
+SCT-16 d930075 (catalog), SCT-17 7520b7c (adapter/fault contract), SCT-18 5cffda9
+(local), SCT-19 80aecc9 (S3), SCT-20 0611df2 (recovery). These tickets are in Review.
+Correction: the SCT-16 remote handoff accidentally contained a placeholder commit
+reference before a sandbox-blocked Git write was retried; d930075 is its actual
+verified commit. No code was lost. The later full integration rerun passed.
+
+Protocol fixtures, Clippy, core units, PostgreSQL/HTTP/process integration and
+real pinned MinIO conformance pass at this point. Existing M1 bad-signature test
+is flaky because it mutates the final base64url character (sometimes only unused
+bits); fix during final acceptance. M2 application flow, SDK and acceptance are
+still pending. SCT-21 is now In Progress. Pre-existing refinement docs remain
+uncommitted until final M2 documentation reconciliation.
+
+## M2 implementation result — 2026-09-19
+
+The approved work is 14 tasks, SCT-14–27 (17 refers to dependency edges). The user
+assigned the whole set and authorized implementation. Continued through all tasks:
+
+- SCT-21 e2c6726: metadata-first admission, root ownership, bounded irreversible
+  same-root relaxed pruning, physically confirmed cleanup and atomic reservations.
+- SCT-22 1f65f5f: admitted verified chunks, mirror acknowledgment, bounded sealing.
+- SCT-23 f477c59: atomic independent-file publication, keep-N/history, durable
+  receipts and outgoing pinned-copy staging accounting. Also fixed the M1
+  signature-test fixture to mutate meaningful signature bits.
+- SCT-24 a229d37: authorized renewable pins, verified whole/range downloads,
+  ordered sticky fallback, progress budgets and stream failure propagation.
+- SCT-25 35dd20d: standalone SDK saved jobs, disk-backed plans, metadata admission,
+  second-pass source verification, resume/abort/history/download and example.
+- SCT-26 898acaf: five real placement workflows and actual process crash/resume.
+  Integration fixed SDK height-0 leaf encoding and rejected-session inspection
+  after durable ownership was released.
+- SCT-27: capabilities/generated routes, executable M2 acceptance, large-file
+  measurement, final cleanup/authorization hardening and reconciled operator docs.
+  Its scoped commit carries the ticket link.
+
+Memory qualification passed at 16 MiB and 1.5 GiB (15 / 1,256 chunks, tree heights
+0 / 1): combined HTTP server/SDK peak RSS 33,708 / 43,860 KiB under a 262,144 KiB
+ceiling. Plan/upload/download time 1.41 / 97.73 s. See docs/m2-qualification.md for
+methodology, exact scope and reproducible commands. The larger plan exercises
+branch pages, missing-chunk pagination and bounded traversal.
+
+The final suite includes standalone SDK packaging, real local/MinIO placements,
+PostgreSQL/HTTP/OIDC/process recovery and M1/M2 acceptance. M3 atomic trees and
+broader delete/policy work, M4 control UI/checkpoints and M5 release qualification
+remain pending; the full-product acceptance command must still report three
+pending scenarios. No push or deployment was performed. All completed M2 tasks
+are handed off to the user in Review, not marked Done or used to close the epic.
+
+Final validation: `./scripts/check` exited 0: Rust/Clippy/contracts/web/packaged SDK,
+19 PostgreSQL cases, real MinIO conformance, and 4 passing Chromium/acceptance cases
+with 3 explicit M3–M5 pending gates. Both memory workloads passed. A final bounded
+S3 write-timeout adjustment passed focused real MinIO conformance and workspace
+Clippy. `git diff --check` is clean. Integration output is recorded locally in
+`/tmp/sct-m2-final-check.log`; durable methodology/results are in the qualification
+and test guides.

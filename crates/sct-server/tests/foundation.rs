@@ -449,12 +449,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
             .unwrap()
             .contains(&json!("create_directory"))
     );
-    assert!(
-        capabilities["storage_format_versions"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
+    assert_eq!(capabilities["storage_format_versions"], json!([1]));
     writer
         .revoke_credential(&actor, issued["id"].as_str().unwrap())
         .await

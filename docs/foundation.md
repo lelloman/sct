@@ -1,8 +1,10 @@
-# Foundation service (M1)
+# Service foundation (M1/M2)
 
-SCT-8–13 implement the database-backed foundation. Payload transfers, real local/S3
-adapters, content history, destructive policy jobs, deletion/purge, and the complete
-administration UI remain M2–M5. The landing page is still a development page.
+SCT-8–13 implement the database-backed foundation; SCT-14–27 add independent-file
+transfers, local/S3/mirrored payloads, basic retention and history. See
+[transfer operations](transfers.md). Destructive policy jobs, atomic trees,
+deletion/purge, checkpoints and the administration UI remain M3–M5.
+The landing page is still a development page.
 
 ## Starting a development installation
 
@@ -10,8 +12,7 @@ Use a dedicated PostgreSQL 17+ database. Build the web assets and Rust server, s
 `SCT_CONFIG` to `config.example.toml`, and set `SCT_DATABASE_URL` privately. The file
 contains an explicitly enabled test adapter: it validates metadata configuration
 and reports test connectivity, but cannot store bytes. Production configuration
-must use HTTPS and cannot enable this adapter. No production payload adapter is
-provided by M1.
+must use HTTPS and cannot enable this adapter. M2 real adapters are configured as described in [transfer operations](transfers.md).
 
 With the server stopped, run:
 
@@ -67,15 +68,15 @@ for the same destination is compatible with the registry interface. Referenced
 backends cannot disappear on restart. A mirror has exactly two distinct instances,
 requires explicit read order, and charges both copies even in a shared pool.
 
-`workers` and `session_expiry_seconds` reserve validated settings for M2 transfer
-workers/upload sessions. Browser sessions currently have a fixed 12-hour lifetime;
+`workers` bounds concurrent M2 transfer buffers/I/O and `session_expiry_seconds`
+sets upload inactivity expiry. Browser sessions currently have a fixed 12-hour lifetime;
 OIDC login attempts expire after 10 minutes and listing cursors after one hour.
 
 ## Authentication and API
 
 The generated [operation map](../contracts/operations.md) and OpenAPI document list
 implemented v1 routes. `GET /api/v1/capabilities` requires authentication and exposes
-only those operations; supported storage formats and chunk profiles remain empty.
+M1/M2 operations, immutable format 1 and the pinned FastCDC profile.
 
 Application tokens use `Authorization: Bearer TOKEN`. Their authority comes from
 the associated principal's current root grants. Tokens are independently revocable
@@ -115,8 +116,7 @@ management separate. Delegation cannot exceed the grantor's own capabilities.
 Namespace operations preserve case-sensitive Unicode names and stable entry IDs,
 reject cross-root parents/moves and cycles, and compare entry/parent revisions.
 A rename across effective policy scopes or atomic scopes is rejected, including
-moves between equal-valued but independently managed policy scopes. The foundation
-has no hidden-entry mutation or content publication endpoint.
+moves between equal-valued but independently managed policy scopes. Hidden-entry mutation remains M3; M2 publication is described in the transfer guide.
 
 Policies default to strict keep-one. The nearest explicit policy applies, with file
 overrides supported by the catalog/core model. Atomic directories have a single
@@ -140,8 +140,8 @@ hold a durable root owner with a separate worker epoch/lease. Worker or server
 expiry does not free the root. Recovery claims the same operation with a new epoch;
 stale worker completion fails. Reservations and uncertain I/O prevent terminal
 ownership release. Reads and operations on unrelated roots remain available.
-M2 must extend these primitives with physical-incarnation records and explicit I/O
-phase reconciliation before introducing backend work.
+M2 extends these primitives with physical-incarnation records and explicit I/O
+phase reconciliation; see [capacity/recovery rules](capacity-recovery.md).
 
 ## Verification
 
@@ -157,5 +157,5 @@ creates/lists/renames a directory, checks policy revisions and authorization, an
 rejects traversal. HTTP tests additionally run a signed mock OIDC provider, invalid
 claim cases, CSRF, revocation, safe error envelopes and SDK calls. Process tests
 cover writer exclusion, SIGTERM release, crash fencing and local recovery with
-an unavailable identity provider. M2–M5 remain pending and the full-product
+an unavailable identity provider. M3–M5 remain pending and the full-product
 `npm --prefix web run test:acceptance` command must continue to fail until they land.

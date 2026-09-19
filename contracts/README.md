@@ -21,7 +21,9 @@ The foundation provides DTOs, validation, deterministic generation, fixtures, an
 implemented M1 HTTP operations for authenticated roots/grants, namespace, policies,
 allocation/backend inspection and root operation status. The generated operation
 map records each operation's implementation status. OpenAPI `paths` and runtime
-capabilities include only implemented routes; payload operations remain absent.
+capabilities include only implemented routes. M2 adds root-scoped upload sessions,
+metadata admission, verified chunk transfer, publication/history and ranged downloads;
+see [the normative immutable contract](../docs/immutable-format.md).
 
 The configured service requires a database and a valid writer lease. The frontend
 scaffold (without `SCT_CONFIG`) returns `404 unsupported_operation` for application

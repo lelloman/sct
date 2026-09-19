@@ -240,8 +240,12 @@ impl TransferEngine {
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         sqlx::query("UPDATE transfer_sessions SET state='aborted' WHERE id=$1 AND state IN ('open','ready')").bind(upload.as_str()).execute(&mut *tx).await?;
+        let active: bool = sqlx::query_scalar("SELECT state='active' FROM operations WHERE id=$1")
+            .bind(s.fence.id().as_str())
+            .fetch_one(&mut *tx)
+            .await?;
         tx.commit().await?;
-        if matches!(s.state, SessionState::Open | SessionState::Ready) {
+        if active && matches!(s.state, SessionState::Open | SessionState::Ready) {
             self.writer.release_unused_reservations(&s.fence).await?;
             let _ = self.writer.finish_operation(&s.fence, true).await;
         }
