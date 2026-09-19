@@ -118,6 +118,9 @@ impl Config {
     }
     pub fn registry(&self) -> Result<Registry, &'static str> {
         let mut registry = Registry::default();
+        registry
+            .register(Arc::new(sct_core::local_store::LocalAdapter))
+            .map_err(|_| "duplicate adapter")?;
         if self.enable_test_adapter {
             registry
                 .register(Arc::new(TestAdapter))

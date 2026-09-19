@@ -22,3 +22,5 @@ pub mod accounting;
 pub mod content_catalog;
 
 pub mod payload;
+
+pub mod local_store;
