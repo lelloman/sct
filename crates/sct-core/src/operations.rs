@@ -8,6 +8,7 @@ use sct_protocol::*;
 use sqlx::{PgConnection, Row};
 
 /// Private worker fence; never serialized into API responses.
+#[derive(Clone)]
 pub struct OperationFence {
     pub(crate) id: String,
     pub(crate) root: String,

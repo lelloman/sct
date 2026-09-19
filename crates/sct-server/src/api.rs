@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct App {
+    pub transfer: Option<sct_core::transfer_io::TransferEngine>,
     pub writer: Writer,
     pub registry: Registry,
     pub oidc: Option<Arc<Oidc>>,
@@ -191,6 +192,7 @@ pub fn routes(state: App) -> Router {
         .route("/api/v1/admin/allocations/{allocation}", get(allocation))
         .route("/api/v1/admin/backends/{backend}", get(backend))
         .route("/api/v1/admin/adapters/{kind}", get(adapter))
+        .merge(crate::transfer_api::routes())
         .layer(simple_server::axum::extract::DefaultBodyLimit::max(65536))
         .layer(middleware::from_fn(response_headers))
         .with_state(state)

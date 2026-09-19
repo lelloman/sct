@@ -36,6 +36,13 @@ impl Catalog {
                 include_str!("../migrations/0002_transfer.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                3,
+                "admission".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0003_admission.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

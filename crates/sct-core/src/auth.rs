@@ -24,7 +24,7 @@ pub struct IssuedCredential {
 }
 
 pub(crate) async fn administrator(db: &mut PgConnection, actor: &Actor) -> Result<bool> {
-    sqlx::query_scalar("SELECT p.administrator FROM principals p JOIN credentials c ON c.principal_id=p.id WHERE p.id=$1 AND c.id=$2 AND NOT p.disabled AND NOT c.revoked AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp())")
+    sqlx::query_scalar("SELECT p.administrator FROM principals p JOIN credentials c ON c.principal_id=p.id WHERE p.id=$1 AND c.id=$2 AND NOT p.disabled AND NOT c.revoked AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()) FOR SHARE OF p,c")
       .bind(&actor.principal).bind(&actor.credential).fetch_optional(db).await?
       .ok_or(Error(ErrorCode::Unauthorized))
 }

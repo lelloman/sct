@@ -204,6 +204,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         .await
         .unwrap();
     let app = App {
+        transfer: None,
         writer: writer.clone(),
         registry,
         oidc: Some(Arc::new(oidc)),

@@ -1,8 +1,9 @@
 use crate::{
     auth::{Actor, authorize, capabilities},
+    content_catalog::lock_content_root as lock_root,
     error::{Error, Result, id, require},
     lease::Writer,
-    roots::{json, lock_root, parse, revision},
+    roots::{json, parse, revision},
 };
 use sct_protocol::*;
 use sqlx::{PgConnection, Row, postgres::PgRow};
@@ -57,6 +58,13 @@ impl Writer {
         )
         .await?;
         lock_root(&mut tx, request.root_id.as_str()).await?;
+        check(
+            &mut tx,
+            actor,
+            request.root_id.as_str(),
+            &request.capabilities,
+        )
+        .await?;
         let row = sqlx::query("INSERT INTO grants VALUES($1,$2,$3,$4,$5) RETURNING *")
             .bind(id())
             .bind(request.root_id.as_str())
@@ -91,6 +99,7 @@ impl Writer {
         let root: String = row.get("root_id");
         check(&mut tx, actor, &root, &request.capabilities).await?;
         lock_root(&mut tx, &root).await?;
+        authorize(&mut tx, actor, &root, Capability::ManageGrants).await?;
         let row = grant_row(&mut tx, grant).await?;
         revision(&row, &request.expected_revision)?;
         let row =
@@ -114,6 +123,7 @@ impl Writer {
         let root: String = row.get("root_id");
         authorize(&mut tx, actor, &root, Capability::ManageGrants).await?;
         lock_root(&mut tx, &root).await?;
+        authorize(&mut tx, actor, &root, Capability::ManageGrants).await?;
         revision(&grant_row(&mut tx, grant).await?, expected)?;
         sqlx::query("DELETE FROM grants WHERE id=$1")
             .bind(grant.as_str())

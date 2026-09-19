@@ -69,3 +69,5 @@ pub fn capabilities() -> sct_protocol::Capabilities {
         },
     }
 }
+
+mod transfer_api;

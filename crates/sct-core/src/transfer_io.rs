@@ -51,6 +51,25 @@ impl TransferEngine {
         backend: &BackendId,
         bytes: Vec<u8>,
     ) -> Result<()> {
+        let engine = self.clone();
+        let fence = fence.clone();
+        let digest = digest.clone();
+        let backend = backend.clone();
+        tokio::spawn(async move {
+            engine
+                .write_copy_inner(&fence, &digest, &backend, bytes)
+                .await
+        })
+        .await
+        .map_err(|_| Error(ErrorCode::DestinationUnavailable))?
+    }
+    async fn write_copy_inner(
+        &self,
+        fence: &OperationFence,
+        digest: &ChunkDigest,
+        backend: &BackendId,
+        bytes: Vec<u8>,
+    ) -> Result<()> {
         require(
             sct_protocol::digest(&bytes) == digest.as_str()
                 && !bytes.is_empty()
@@ -104,7 +123,18 @@ impl TransferEngine {
             digest: digest.clone(),
             generation: generation.parse()?,
         };
-        store.put(&key, bytes.len() as u64, reader(bytes)).await?;
+        if let Err(error) = store.put(&key, bytes.len() as u64, reader(bytes)).await {
+            let mut tx = self.writer.transaction().await?;
+            check_fence(&mut tx, fence, self.writer.epoch).await?;
+            sqlx::query(
+                "UPDATE object_copies SET worker_epoch=0 WHERE generation=$1 AND state='writing'",
+            )
+            .bind(&generation)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Err(error);
+        }
         self.acknowledge(fence, &generation).await
     }
     async fn acknowledge(&self, fence: &OperationFence, generation: &str) -> Result<()> {
@@ -123,7 +153,7 @@ impl TransferEngine {
         let rows = {
             let mut tx = self.writer.transaction().await?;
             check_fence(&mut tx, fence, self.writer.epoch).await?;
-            sqlx::query("SELECT generation,digest,backend_id,bytes FROM object_copies WHERE operation_id=$1 AND state='writing' ORDER BY generation LIMIT 64").bind(&fence.id).fetch_all(&mut *tx).await?
+            sqlx::query("SELECT generation,digest,backend_id,bytes FROM object_copies WHERE operation_id=$1 AND state='writing' AND (worker_epoch<>$2 OR server_epoch<>$3) ORDER BY generation LIMIT 64").bind(&fence.id).bind(fence.epoch).bind(self.writer.epoch).fetch_all(&mut *tx).await?
         };
         let count = rows.len();
         for r in rows {
@@ -281,6 +311,14 @@ impl TransferEngine {
                 let _ = self.writer.finish_operation(&fence, false).await;
             }
         }
+        Ok(())
+    }
+}
+impl TransferEngine {
+    pub async fn heartbeat(&self) -> Result<()> {
+        let mut tx = self.writer.transaction().await?;
+        sqlx::query("UPDATE operations SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE server_epoch=$1 AND worker_expires_at>clock_timestamp() AND state IN ('active','recovering','cleaning_up') AND kind='upload'").bind(self.writer.epoch).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(())
     }
 }

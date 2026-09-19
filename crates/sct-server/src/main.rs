@@ -71,7 +71,35 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             )),
             None => None,
         };
+        let mut stores = std::collections::BTreeMap::new();
+        for backend in &config.backends {
+            if backend.inspection.adapter_kind != "test" {
+                stores.insert(
+                    backend.inspection.id.as_str().to_owned(),
+                    registry
+                        .get(&backend.inspection.adapter_kind)?
+                        .open(&backend.settings)?,
+                );
+            }
+        }
+        let transfer = sct_core::transfer_io::TransferEngine::new(
+            writer.clone(),
+            stores,
+            config.workers,
+            config.session_expiry_seconds,
+        )?;
+        let worker = transfer.clone();
+        let recovery = tokio::spawn(async move {
+            loop {
+                if worker.tick().await.is_err() {
+                    eprintln!("transfer recovery will retry");
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        });
+        let heartbeat = transfer.clone();
         let app = App {
+            transfer: Some(transfer),
             writer: writer.clone(),
             registry,
             oidc,
@@ -106,12 +134,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     _ = lease_stop.requested() => return Ok::<_, sct_core::error::Error>(()),
                     _ = tokio::time::sleep(Duration::from_secs(10)) => {
                         lease.renew().await?;
+                        heartbeat.heartbeat().await?;
                     }
                 }
             }
         })?;
         lifecycle
             .run(signals.wait(), async {
+                recovery.abort();
+                let _ = recovery.await;
                 let released = writer.release().await;
                 catalog.close().await;
                 released

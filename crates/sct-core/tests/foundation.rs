@@ -985,3 +985,199 @@ async fn physical_copy_lost_response_and_recovery_preserve_charges() {
         .unwrap();
     writer.finish_operation(&recovered, true).await.unwrap();
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn metadata_first_admission_and_abort_release_only_unused_space() {
+    use sct_core::{
+        payload::{MemoryStore, ObjectStore},
+        transfer_io::TransferEngine,
+    };
+    use std::collections::BTreeMap;
+    let (writer, actor, pool) = setup().await;
+    let root = root(&writer, &actor, "/sessions", 4000).await;
+    let entry = writer
+        .resolve_path(&actor, &root.id, &"/".parse().unwrap())
+        .await
+        .unwrap();
+    let policy = writer
+        .effective_policy(
+            &actor,
+            &PolicyScope::Root {
+                root_id: root.id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let memory = Arc::new(MemoryStore::default());
+    let engine = TransferEngine::new(
+        writer.clone(),
+        BTreeMap::from([("one".into(), memory as Arc<dyn ObjectStore>)]),
+        2,
+        86400,
+    )
+    .unwrap();
+    let page = ManifestPage::Chunks {
+        format: 1,
+        chunks: vec![ChunkReference {
+            digest: digest(b"abc").parse().unwrap(),
+            length: 3.try_into().unwrap(),
+        }],
+    };
+    let page_bytes = canonical(&page).unwrap();
+    let page_hash = digest(&page_bytes);
+    let request = CreateUploadRequest {
+        idempotency_key: "upload-one".parse().unwrap(),
+        target: FileTarget::Create {
+            parent_id: entry.id,
+            expected_parent_revision: entry.revision,
+            name: "file".parse().unwrap(),
+        },
+        expected_policy_revision: policy.revision,
+        manifest: FileManifest {
+            format: 1,
+            profile: CHUNK_PROFILE.into(),
+            length: 3.try_into().unwrap(),
+            chunks: 1.try_into().unwrap(),
+            height: 0,
+            tree: Some(page_hash.parse().unwrap()),
+        },
+    };
+    let first = engine
+        .create_upload(&actor, &root.id, &request)
+        .await
+        .unwrap();
+    assert_eq!(first.admission, AdmissionState::Planning);
+    assert_eq!(
+        engine
+            .create_upload(&actor, &root.id, &request)
+            .await
+            .unwrap()
+            .upload
+            .id,
+        first.upload.id
+    );
+    let mut changed = request.clone();
+    changed.manifest.length = 4.try_into().unwrap();
+    assert!(matches!(
+        engine
+            .create_upload(&actor, &root.id, &changed)
+            .await
+            .unwrap_err()
+            .0,
+        ErrorCode::IdempotencyConflict
+    ));
+    engine
+        .upload_page(
+            &actor,
+            &root.id,
+            &first.upload.id,
+            &page_hash.parse().unwrap(),
+            &page_bytes,
+        )
+        .await
+        .unwrap();
+    let mut admitted = false;
+    for _ in 0..10 {
+        if engine
+            .admit_upload(&actor, &root.id, &first.upload.id)
+            .await
+            .unwrap()
+            .admission
+            == AdmissionState::Admitted
+        {
+            admitted = true;
+            break;
+        }
+    }
+    assert!(admitted);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM object_copies")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(
+        sqlx::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            > 3
+    );
+    assert!(
+        engine
+            .upload_page(
+                &actor,
+                &root.id,
+                &first.upload.id,
+                &page_hash.parse().unwrap(),
+                &page_bytes
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        engine
+            .abort_upload(&actor, &root.id, &first.upload.id)
+            .await
+            .unwrap()
+            .upload
+            .state,
+        SessionState::Aborted
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    let mut request = request;
+    request.idempotency_key = "upload-no-space".parse().unwrap();
+    sqlx::query("UPDATE allocations SET capacity=100 WHERE root_id IS NULL")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let second = engine
+        .create_upload(&actor, &root.id, &request)
+        .await
+        .unwrap();
+    engine
+        .upload_page(
+            &actor,
+            &root.id,
+            &second.upload.id,
+            &page_hash.parse().unwrap(),
+            &page_bytes,
+        )
+        .await
+        .unwrap();
+    let mut failed = false;
+    for _ in 0..10 {
+        if let Err(error) = engine
+            .admit_upload(&actor, &root.id, &second.upload.id)
+            .await
+        {
+            assert_eq!(error.0, ErrorCode::StagingExhausted);
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed);
+    assert_eq!(
+        engine
+            .upload_status(&actor, &root.id, &second.upload.id)
+            .await
+            .unwrap()
+            .admission,
+        AdmissionState::Rejected
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM transfer_audit")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+}
