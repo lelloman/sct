@@ -10,6 +10,8 @@
 //! let entry: EntryId = root;
 //! ```
 
+mod tree;
+pub use tree::*;
 mod content;
 pub use content::*;
 mod scalars;

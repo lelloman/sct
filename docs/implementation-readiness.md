@@ -17,10 +17,12 @@ the dependent behavior.
 | Immutable format | Canonical JSON rules, bounds, page structure, digest inputs and exact chunk-profile fixtures | Reserve format versions in SCT-7; finish before M2 manifests |
 | Checkpoints | Fencing resumable uploads, draining already-issued I/O, generation watermark and restore semantics | Compatible M1/M2 primitives; complete before M4 |
 
-Proposed, **not yet adopted**, deletion interpretation: removing an atomic descendant
+Approved M3 deletion interpretation: removing an atomic descendant
 removes it from the new snapshot; older directory snapshots preserve it only for their
 retention lifetime. Reject individual descendant purge while snapshots reference it.
 This avoids silently adding independent file retention to an atomic directory.
+The approved purge and preview/apply rules are frozen in [tree lifecycle](tree-lifecycle.md).
+M3 is ticketed as SCT-28–41 with 15 dependency edges; implementation is in progress.
 
 M2 requires real staging reservations, physical capacity checks and publication
 accounting. The agreed 2026-09-19 scope includes independent-file history, keep-N

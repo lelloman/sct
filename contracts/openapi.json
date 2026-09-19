@@ -50,6 +50,22 @@
         ],
         "type": "string"
       },
+      "AllocateDraftIdentitiesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "$ref": "#/components/schemas/PageSize"
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "count"
+        ],
+        "type": "object"
+      },
       "AllocationId": {
         "maxLength": 128,
         "minLength": 1,
@@ -149,6 +165,30 @@
         },
         "required": [
           "items"
+        ],
+        "type": "object"
+      },
+      "ApplyChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_retention_effect": {
+            "type": "boolean"
+          },
+          "expected_root_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "preview_id": {
+            "$ref": "#/components/schemas/PreviewId"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "preview_id",
+          "expected_root_revision",
+          "acknowledge_retention_effect"
         ],
         "type": "object"
       },
@@ -299,6 +339,50 @@
           "unknown"
         ],
         "type": "string"
+      },
+      "ChangePreview": {
+        "additionalProperties": false,
+        "properties": {
+          "change": {
+            "$ref": "#/components/schemas/PolicyChange"
+          },
+          "estimated_payload_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "expires_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PreviewId"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "root_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LifecycleState"
+          },
+          "versions_losing_protection": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "versions_to_retire": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "root_revision",
+          "state",
+          "versions_to_retire",
+          "versions_losing_protection",
+          "estimated_payload_bytes",
+          "expires_at_ms",
+          "change"
+        ],
+        "type": "object"
       },
       "CheckpointId": {
         "maxLength": 128,
@@ -479,6 +563,26 @@
         ],
         "type": "object"
       },
+      "CreateTreeDraftRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/DirectoryDraftBase"
+          },
+          "expected_policy_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "base",
+          "expected_policy_revision"
+        ],
+        "type": "object"
+      },
       "CreateUploadRequest": {
         "additionalProperties": false,
         "properties": {
@@ -595,6 +699,184 @@
         ],
         "type": "object"
       },
+      "DirectoryEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "chunks": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EntryKind"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/ManifestId"
+          },
+          "name": {
+            "$ref": "#/components/schemas/EntryName"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "manifest",
+          "length",
+          "chunks"
+        ],
+        "type": "object"
+      },
+      "DirectoryManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "chunks": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "entries": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "format": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DirectoryObjectKind"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManifestId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "format",
+          "kind",
+          "entries",
+          "length",
+          "chunks",
+          "height"
+        ],
+        "type": "object"
+      },
+      "DirectoryObjectKind": {
+        "enum": [
+          "directory"
+        ],
+        "type": "string"
+      },
+      "DirectoryPage": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entries": {
+                "items": {
+                  "$ref": "#/components/schemas/DirectoryEntry"
+                },
+                "type": "array"
+              },
+              "format": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "directory_entries",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "format",
+              "entries"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "format": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "height": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "directory_branch",
+                "type": "string"
+              },
+              "pages": {
+                "items": {
+                  "$ref": "#/components/schemas/DirectoryPageReference"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "format",
+              "height",
+              "pages"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "DirectoryPageReference": {
+        "additionalProperties": false,
+        "properties": {
+          "chunks": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/ManifestId"
+          },
+          "entries": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "first": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "last": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "digest",
+          "first",
+          "last",
+          "entries",
+          "length",
+          "chunks"
+        ],
+        "type": "object"
+      },
       "DraftEntryIdentity": {
         "description": "New identities are server-issued and draft-scoped; never infer identity from a path or digest.",
         "oneOf": [
@@ -665,12 +947,106 @@
         ],
         "type": "object"
       },
+      "DraftIdentities": {
+        "additionalProperties": false,
+        "properties": {
+          "entry_ids": {
+            "items": {
+              "$ref": "#/components/schemas/EntryId"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entry_ids"
+        ],
+        "type": "object"
+      },
       "DraftMode": {
         "enum": [
           "complete_replacement",
           "patch"
         ],
         "type": "string"
+      },
+      "DraftMutation": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entry_kind": {
+                "$ref": "#/components/schemas/EntryKind"
+              },
+              "file": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FileManifest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "identity": {
+                "$ref": "#/components/schemas/DraftEntryIdentity"
+              },
+              "kind": {
+                "const": "upsert",
+                "type": "string"
+              },
+              "name": {
+                "$ref": "#/components/schemas/EntryName"
+              },
+              "parent_id": {
+                "$ref": "#/components/schemas/EntryId"
+              }
+            },
+            "required": [
+              "kind",
+              "identity",
+              "parent_id",
+              "name",
+              "entry_kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entry_id": {
+                "$ref": "#/components/schemas/EntryId"
+              },
+              "kind": {
+                "const": "remove",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "entry_id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "DraftMutationPage": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "mutations": {
+            "items": {
+              "$ref": "#/components/schemas/DraftMutation"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "mutations"
+        ],
+        "type": "object"
       },
       "EffectivePolicy": {
         "additionalProperties": false,
@@ -1140,6 +1516,22 @@
         ],
         "type": "object"
       },
+      "HideEntryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "expected_revision"
+        ],
+        "type": "object"
+      },
       "IdempotencyKey": {
         "maxLength": 128,
         "minLength": 1,
@@ -1198,6 +1590,65 @@
           "secret"
         ],
         "type": "object"
+      },
+      "LifecycleJob": {
+        "additionalProperties": false,
+        "properties": {
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/OperationId"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "processed": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LifecycleState"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ByteCount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "state",
+          "phase",
+          "processed"
+        ],
+        "type": "object"
+      },
+      "LifecycleState": {
+        "enum": [
+          "planning",
+          "ready",
+          "applying",
+          "cleaning_up",
+          "blocked",
+          "completed"
+        ],
+        "type": "string"
       },
       "ListEntriesQuery": {
         "additionalProperties": false,
@@ -1600,6 +2051,89 @@
           }
         ]
       },
+      "PolicyChange": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expected_policy_revision": {
+                "$ref": "#/components/schemas/Revision"
+              },
+              "kind": {
+                "const": "set",
+                "type": "string"
+              },
+              "policy": {
+                "$ref": "#/components/schemas/RetentionPolicy"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/PolicyScope"
+              }
+            },
+            "required": [
+              "kind",
+              "scope",
+              "expected_policy_revision",
+              "policy"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expected_policy_revision": {
+                "$ref": "#/components/schemas/Revision"
+              },
+              "kind": {
+                "const": "inherit",
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/PolicyScope"
+              }
+            },
+            "required": [
+              "kind",
+              "scope",
+              "expected_policy_revision"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entry_id": {
+                "$ref": "#/components/schemas/EntryId"
+              },
+              "expected_parent_revision": {
+                "$ref": "#/components/schemas/Revision"
+              },
+              "expected_revision": {
+                "$ref": "#/components/schemas/Revision"
+              },
+              "kind": {
+                "const": "move",
+                "type": "string"
+              },
+              "name": {
+                "$ref": "#/components/schemas/EntryName"
+              },
+              "parent_id": {
+                "$ref": "#/components/schemas/EntryId"
+              }
+            },
+            "required": [
+              "kind",
+              "entry_id",
+              "expected_revision",
+              "parent_id",
+              "expected_parent_revision",
+              "name"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "PolicyConstraintsRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1749,6 +2283,22 @@
         ],
         "type": "object"
       },
+      "PreviewChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "change": {
+            "$ref": "#/components/schemas/PolicyChange"
+          },
+          "expected_root_revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "expected_root_revision",
+          "change"
+        ],
+        "type": "object"
+      },
       "PreviewId": {
         "maxLength": 128,
         "minLength": 1,
@@ -1775,11 +2325,118 @@
         ],
         "type": "object"
       },
+      "PreviewVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "entry_id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "loses_protection": {
+            "type": "boolean"
+          },
+          "retire": {
+            "type": "boolean"
+          },
+          "version_id": {
+            "$ref": "#/components/schemas/VersionId"
+          }
+        },
+        "required": [
+          "version_id",
+          "entry_id",
+          "retire",
+          "loses_protection"
+        ],
+        "type": "object"
+      },
+      "PreviewVersionPage": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "type": "object"
+      },
       "PrincipalId": {
         "maxLength": 128,
         "minLength": 1,
         "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
         "type": "string"
+      },
+      "PurgeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "target": {
+            "$ref": "#/components/schemas/PurgeTarget"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "expected_revision",
+          "target"
+        ],
+        "type": "object"
+      },
+      "PurgeTarget": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "historical_version",
+                "type": "string"
+              },
+              "version_id": {
+                "$ref": "#/components/schemas/VersionId"
+              }
+            },
+            "required": [
+              "kind",
+              "version_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entry_id": {
+                "$ref": "#/components/schemas/EntryId"
+              },
+              "kind": {
+                "const": "hidden_entry",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "entry_id"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "ReadCandidate": {
         "additionalProperties": false,
@@ -2226,6 +2883,35 @@
         ],
         "type": "object"
       },
+      "SnapshotEntryPage": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryEntry"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version_id": {
+            "$ref": "#/components/schemas/VersionId"
+          }
+        },
+        "required": [
+          "version_id",
+          "entries"
+        ],
+        "type": "object"
+      },
       "TimestampMs": {
         "format": "uint64",
         "maximum": 9007199254740991,
@@ -2255,6 +2941,74 @@
         "required": [
           "upload",
           "admission"
+        ],
+        "type": "object"
+      },
+      "TreeDraftPhase": {
+        "enum": [
+          "initializing",
+          "editing",
+          "building",
+          "planning",
+          "staging",
+          "ready",
+          "committed",
+          "cleaning_up",
+          "terminal"
+        ],
+        "type": "string"
+      },
+      "TreeDraftStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "admission": {
+            "$ref": "#/components/schemas/AdmissionState"
+          },
+          "directory_id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "expires_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "id": {
+            "$ref": "#/components/schemas/UploadId"
+          },
+          "operation_id": {
+            "$ref": "#/components/schemas/OperationId"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/TreeDraftPhase"
+          },
+          "processed_entries": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommitReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionState"
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "directory_id",
+          "operation_id",
+          "state",
+          "phase",
+          "admission",
+          "processed_entries",
+          "expires_at_ms"
         ],
         "type": "object"
       },

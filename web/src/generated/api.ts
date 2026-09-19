@@ -5,6 +5,8 @@ export type AdapterDocumentation = { kind: string, display_name: string, acknowl
 
 export type AdmissionState = "planning" | "pending" | "admitted" | "rejected";
 
+export type AllocateDraftIdentitiesRequest = { idempotency_key: IdempotencyKey, count: PageSize, };
+
 export type AllocationId = string & { readonly __brand: "AllocationId" };
 
 export type AllocationInspection = { id: AllocationId, pool_id: PoolId, owner: AllocationOwner, capacity_bytes: ByteCount, reserved_bytes: ByteCount, occupied_bytes: ByteCount, pending_cleanup_bytes: ByteCount, };
@@ -12,6 +14,8 @@ export type AllocationInspection = { id: AllocationId, pool_id: PoolId, owner: A
 export type AllocationOwner = { "kind": "root", root_id: RootId, } | { "kind": "server_staging" };
 
 export type AllocationPage = { items: Array<AllocationInspection>, next_cursor: CursorToken | null, };
+
+export type ApplyChangeRequest = { idempotency_key: IdempotencyKey, preview_id: PreviewId, expected_root_revision: Revision, acknowledge_retention_effect: boolean, };
 
 export type ApplyPolicyRequest = { preview_id: PreviewId, expected_revision: Revision, expected_scope_revision: Revision, acknowledge_retention_effect: boolean, };
 
@@ -30,6 +34,8 @@ export type Capabilities = { protocol_version: number, supported_operations: Arr
 export type Capability = "list_read" | "write" | "manage_policy" | "delete" | "purge" | "manage_grants";
 
 export type CapacityRecovery = "confirmed" | "delayed" | "unknown";
+
+export type ChangePreview = { id: PreviewId, root_id: RootId, root_revision: Revision, state: LifecycleState, versions_to_retire: ByteCount, versions_losing_protection: ByteCount, estimated_payload_bytes: ByteCount, expires_at_ms: TimestampMs, change: PolicyChange, };
 
 export type CheckpointId = string & { readonly __brand: "CheckpointId" };
 
@@ -51,6 +57,8 @@ export type CreateGrantRequest = { root_id: RootId, principal_id: PrincipalId, c
 
 export type CreateRootRequest = { idempotency_key: IdempotencyKey, owner_id: PrincipalId, display_name: EntryName, mount_path: RootPath, placement: Placement, quota_bytes: ByteCount, default_policy: RetentionPolicy, allocations: Array<RootAllocationRequest>, };
 
+export type CreateTreeDraftRequest = { idempotency_key: IdempotencyKey, base: DirectoryDraftBase, expected_policy_revision: Revision, };
+
 export type CreateUploadRequest = { idempotency_key: IdempotencyKey, target: FileTarget, expected_policy_revision: Revision, manifest: FileManifest, };
 
 export type CredentialId = string & { readonly __brand: "CredentialId" };
@@ -63,11 +71,27 @@ export type DirectoryCursor = { token: CursorToken, directory_id: EntryId, direc
 
 export type DirectoryDraftBase = { root_id: RootId, directory_id: EntryId, expected_revision: Revision, base_version_id: VersionId | null, mode: DraftMode, };
 
+export type DirectoryEntry = { id: EntryId, name: EntryName, kind: EntryKind, manifest: ManifestId, length: ByteCount, chunks: ByteCount, };
+
+export type DirectoryManifest = { format: number, kind: DirectoryObjectKind, entries: ByteCount, length: ByteCount, chunks: ByteCount, height: number, tree: ManifestId | null, };
+
+export type DirectoryObjectKind = "directory";
+
+export type DirectoryPage = { "kind": "directory_entries", format: number, entries: Array<DirectoryEntry>, } | { "kind": "directory_branch", format: number, height: number, pages: Array<DirectoryPageReference>, };
+
+export type DirectoryPageReference = { digest: ManifestId, first: EntryName, last: EntryName, entries: ByteCount, length: ByteCount, chunks: ByteCount, };
+
 export type DraftEntryIdentity = { "kind": "existing", entry_id: EntryId, } | { "kind": "new", entry_id: EntryId, };
 
 export type DraftEntryReference = { identity: DraftEntryIdentity, path: RootPath, kind: EntryKind, manifest_id: ManifestId | null, };
 
+export type DraftIdentities = { entry_ids: Array<EntryId>, };
+
 export type DraftMode = "complete_replacement" | "patch";
+
+export type DraftMutation = { "kind": "upsert", identity: DraftEntryIdentity, parent_id: EntryId, name: EntryName, entry_kind: EntryKind, file: FileManifest | null, } | { "kind": "remove", entry_id: EntryId, };
+
+export type DraftMutationPage = { idempotency_key: IdempotencyKey, mutations: Array<DraftMutation>, };
 
 export type EffectivePolicy = { id: PolicyId, revision: Revision, source: PolicyScope, inherited: boolean, policy: RetentionPolicy, versioning: VersioningMode, transitioning: boolean, };
 
@@ -101,11 +125,17 @@ export type GrantInspection = { id: GrantId, root_id: RootId, principal_id: Prin
 
 export type GrantPage = { items: Array<GrantInspection>, next_cursor: CursorToken | null, };
 
+export type HideEntryRequest = { idempotency_key: IdempotencyKey, expected_revision: Revision, };
+
 export type IdempotencyKey = string & { readonly __brand: "IdempotencyKey" };
 
 export type InstanceHints = { expected_initial_response_ms: Milliseconds | null, expected_bytes_per_second: BytesPerSecond | null, expected_availability: AvailabilityHint | null, };
 
 export type IssuedToken = { id: CredentialId, secret: string, };
+
+export type LifecycleJob = { id: OperationId, root_id: RootId, state: LifecycleState, phase: string, processed: ByteCount, total: ByteCount | null, failure: ErrorCode | null, };
+
+export type LifecycleState = "planning" | "ready" | "applying" | "cleaning_up" | "blocked" | "completed";
 
 export type ListEntriesQuery = { directory_id: EntryId, limit: PageSize, cursor: CursorToken | null, directory_revision: Revision | null, include_hidden: boolean, };
 
@@ -139,6 +169,8 @@ export type PageSize = number;
 
 export type Placement = { "kind": "single", backend_id: BackendId, read_policy: ReadPolicy, } | { "kind": "mirror", backend_ids: [BackendId, BackendId], read_policy: ReadPolicy, };
 
+export type PolicyChange = { "kind": "set", scope: PolicyScope, expected_policy_revision: Revision, policy: RetentionPolicy, } | { "kind": "inherit", scope: PolicyScope, expected_policy_revision: Revision, } | { "kind": "move", entry_id: EntryId, expected_revision: Revision, parent_id: EntryId, expected_parent_revision: Revision, name: EntryName, };
+
 export type PolicyConstraintsRequest = { expected_revision: Revision, min_versions: VersionCount, max_versions: VersionCount, allow_relaxed: boolean, };
 
 export type PolicyId = string & { readonly __brand: "PolicyId" };
@@ -151,11 +183,21 @@ export type PoolId = string & { readonly __brand: "PoolId" };
 
 export type PoolInspection = { id: PoolId, revision: Revision, allocatable_bytes: ByteCount, allocated_bytes: ByteCount, reported_available_bytes: ByteCount | null, };
 
+export type PreviewChangeRequest = { expected_root_revision: Revision, change: PolicyChange, };
+
 export type PreviewId = string & { readonly __brand: "PreviewId" };
 
 export type PreviewPolicyRequest = { scope: PolicyScope, expected_revision: Revision, proposed: RetentionPolicy, };
 
+export type PreviewVersion = { version_id: VersionId, entry_id: EntryId, retire: boolean, loses_protection: boolean, };
+
+export type PreviewVersionPage = { versions: Array<PreviewVersion>, next_cursor: CursorToken | null, };
+
 export type PrincipalId = string & { readonly __brand: "PrincipalId" };
+
+export type PurgeRequest = { idempotency_key: IdempotencyKey, expected_revision: Revision, target: PurgeTarget, };
+
+export type PurgeTarget = { "kind": "historical_version", version_id: VersionId, } | { "kind": "hidden_entry", entry_id: EntryId, };
 
 export type ReadCandidate = { backend_id: BackendId, connection_timeout_ms: Milliseconds, initial_response_timeout_ms: Milliseconds, idle_timeout_ms: Milliseconds, throughput_window_ms: Milliseconds, minimum_bytes_per_second: BytesPerSecond, startup_allowance_ms: Milliseconds, };
 
@@ -199,9 +241,15 @@ export type SessionState = "open" | "ready" | "committed" | "aborted" | "expired
 
 export type SetPolicyRequest = { scope: PolicyScope, expected_revision: Revision, expected_scope_revision: Revision, policy: RetentionPolicy, versioning: VersioningMode, };
 
+export type SnapshotEntryPage = { version_id: VersionId, entries: Array<DirectoryEntry>, next_cursor: CursorToken | null, };
+
 export type TimestampMs = number;
 
 export type TransferStatus = { upload: UploadInspection, admission: AdmissionState, failure: ErrorCode | null, };
+
+export type TreeDraftPhase = "initializing" | "editing" | "building" | "planning" | "staging" | "ready" | "committed" | "cleaning_up" | "terminal";
+
+export type TreeDraftStatus = { id: UploadId, root_id: RootId, directory_id: EntryId, operation_id: OperationId, state: SessionState, phase: TreeDraftPhase, admission: AdmissionState, processed_entries: ByteCount, expires_at_ms: TimestampMs, result: CommitReceipt | null, };
 
 export type UpdateGrantRequest = { expected_revision: Revision, capabilities: Array<Capability>, };
 

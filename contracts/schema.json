@@ -49,6 +49,22 @@
       ],
       "type": "string"
     },
+    "AllocateDraftIdentitiesRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "$ref": "#/$defs/PageSize"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "count"
+      ],
+      "type": "object"
+    },
     "AllocationId": {
       "maxLength": 128,
       "minLength": 1,
@@ -148,6 +164,30 @@
       },
       "required": [
         "items"
+      ],
+      "type": "object"
+    },
+    "ApplyChangeRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "acknowledge_retention_effect": {
+          "type": "boolean"
+        },
+        "expected_root_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "preview_id": {
+          "$ref": "#/$defs/PreviewId"
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "preview_id",
+        "expected_root_revision",
+        "acknowledge_retention_effect"
       ],
       "type": "object"
     },
@@ -298,6 +338,50 @@
         "unknown"
       ],
       "type": "string"
+    },
+    "ChangePreview": {
+      "additionalProperties": false,
+      "properties": {
+        "change": {
+          "$ref": "#/$defs/PolicyChange"
+        },
+        "estimated_payload_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "expires_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        },
+        "id": {
+          "$ref": "#/$defs/PreviewId"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        },
+        "root_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "state": {
+          "$ref": "#/$defs/LifecycleState"
+        },
+        "versions_losing_protection": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "versions_to_retire": {
+          "$ref": "#/$defs/ByteCount"
+        }
+      },
+      "required": [
+        "id",
+        "root_id",
+        "root_revision",
+        "state",
+        "versions_to_retire",
+        "versions_losing_protection",
+        "estimated_payload_bytes",
+        "expires_at_ms",
+        "change"
+      ],
+      "type": "object"
     },
     "CheckpointId": {
       "maxLength": 128,
@@ -478,6 +562,26 @@
       ],
       "type": "object"
     },
+    "CreateTreeDraftRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "$ref": "#/$defs/DirectoryDraftBase"
+        },
+        "expected_policy_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "base",
+        "expected_policy_revision"
+      ],
+      "type": "object"
+    },
     "CreateUploadRequest": {
       "additionalProperties": false,
       "properties": {
@@ -594,6 +698,184 @@
       ],
       "type": "object"
     },
+    "DirectoryEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "chunks": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "id": {
+          "$ref": "#/$defs/EntryId"
+        },
+        "kind": {
+          "$ref": "#/$defs/EntryKind"
+        },
+        "length": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "manifest": {
+          "$ref": "#/$defs/ManifestId"
+        },
+        "name": {
+          "$ref": "#/$defs/EntryName"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "manifest",
+        "length",
+        "chunks"
+      ],
+      "type": "object"
+    },
+    "DirectoryManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "chunks": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "entries": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "format": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "height": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/DirectoryObjectKind"
+        },
+        "length": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "tree": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ManifestId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "format",
+        "kind",
+        "entries",
+        "length",
+        "chunks",
+        "height"
+      ],
+      "type": "object"
+    },
+    "DirectoryObjectKind": {
+      "enum": [
+        "directory"
+      ],
+      "type": "string"
+    },
+    "DirectoryPage": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entries": {
+              "items": {
+                "$ref": "#/$defs/DirectoryEntry"
+              },
+              "type": "array"
+            },
+            "format": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "directory_entries",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "format",
+            "entries"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "format": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "height": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "directory_branch",
+              "type": "string"
+            },
+            "pages": {
+              "items": {
+                "$ref": "#/$defs/DirectoryPageReference"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "format",
+            "height",
+            "pages"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DirectoryPageReference": {
+      "additionalProperties": false,
+      "properties": {
+        "chunks": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "digest": {
+          "$ref": "#/$defs/ManifestId"
+        },
+        "entries": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "first": {
+          "$ref": "#/$defs/EntryName"
+        },
+        "last": {
+          "$ref": "#/$defs/EntryName"
+        },
+        "length": {
+          "$ref": "#/$defs/ByteCount"
+        }
+      },
+      "required": [
+        "digest",
+        "first",
+        "last",
+        "entries",
+        "length",
+        "chunks"
+      ],
+      "type": "object"
+    },
     "DraftEntryIdentity": {
       "description": "New identities are server-issued and draft-scoped; never infer identity from a path or digest.",
       "oneOf": [
@@ -664,12 +946,106 @@
       ],
       "type": "object"
     },
+    "DraftIdentities": {
+      "additionalProperties": false,
+      "properties": {
+        "entry_ids": {
+          "items": {
+            "$ref": "#/$defs/EntryId"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "entry_ids"
+      ],
+      "type": "object"
+    },
     "DraftMode": {
       "enum": [
         "complete_replacement",
         "patch"
       ],
       "type": "string"
+    },
+    "DraftMutation": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entry_kind": {
+              "$ref": "#/$defs/EntryKind"
+            },
+            "file": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FileManifest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "identity": {
+              "$ref": "#/$defs/DraftEntryIdentity"
+            },
+            "kind": {
+              "const": "upsert",
+              "type": "string"
+            },
+            "name": {
+              "$ref": "#/$defs/EntryName"
+            },
+            "parent_id": {
+              "$ref": "#/$defs/EntryId"
+            }
+          },
+          "required": [
+            "kind",
+            "identity",
+            "parent_id",
+            "name",
+            "entry_kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entry_id": {
+              "$ref": "#/$defs/EntryId"
+            },
+            "kind": {
+              "const": "remove",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entry_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DraftMutationPage": {
+      "additionalProperties": false,
+      "properties": {
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "mutations": {
+          "items": {
+            "$ref": "#/$defs/DraftMutation"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "mutations"
+      ],
+      "type": "object"
     },
     "EffectivePolicy": {
       "additionalProperties": false,
@@ -1139,6 +1515,22 @@
       ],
       "type": "object"
     },
+    "HideEntryRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "expected_revision"
+      ],
+      "type": "object"
+    },
     "IdempotencyKey": {
       "maxLength": 128,
       "minLength": 1,
@@ -1197,6 +1589,65 @@
         "secret"
       ],
       "type": "object"
+    },
+    "LifecycleJob": {
+      "additionalProperties": false,
+      "properties": {
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/OperationId"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "processed": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        },
+        "state": {
+          "$ref": "#/$defs/LifecycleState"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ByteCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "root_id",
+        "state",
+        "phase",
+        "processed"
+      ],
+      "type": "object"
+    },
+    "LifecycleState": {
+      "enum": [
+        "planning",
+        "ready",
+        "applying",
+        "cleaning_up",
+        "blocked",
+        "completed"
+      ],
+      "type": "string"
     },
     "ListEntriesQuery": {
       "additionalProperties": false,
@@ -1599,6 +2050,89 @@
         }
       ]
     },
+    "PolicyChange": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expected_policy_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "kind": {
+              "const": "set",
+              "type": "string"
+            },
+            "policy": {
+              "$ref": "#/$defs/RetentionPolicy"
+            },
+            "scope": {
+              "$ref": "#/$defs/PolicyScope"
+            }
+          },
+          "required": [
+            "kind",
+            "scope",
+            "expected_policy_revision",
+            "policy"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expected_policy_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "kind": {
+              "const": "inherit",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/PolicyScope"
+            }
+          },
+          "required": [
+            "kind",
+            "scope",
+            "expected_policy_revision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entry_id": {
+              "$ref": "#/$defs/EntryId"
+            },
+            "expected_parent_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "expected_revision": {
+              "$ref": "#/$defs/Revision"
+            },
+            "kind": {
+              "const": "move",
+              "type": "string"
+            },
+            "name": {
+              "$ref": "#/$defs/EntryName"
+            },
+            "parent_id": {
+              "$ref": "#/$defs/EntryId"
+            }
+          },
+          "required": [
+            "kind",
+            "entry_id",
+            "expected_revision",
+            "parent_id",
+            "expected_parent_revision",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "PolicyConstraintsRequest": {
       "additionalProperties": false,
       "properties": {
@@ -1748,6 +2282,22 @@
       ],
       "type": "object"
     },
+    "PreviewChangeRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "change": {
+          "$ref": "#/$defs/PolicyChange"
+        },
+        "expected_root_revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "expected_root_revision",
+        "change"
+      ],
+      "type": "object"
+    },
     "PreviewId": {
       "maxLength": 128,
       "minLength": 1,
@@ -1774,11 +2324,118 @@
       ],
       "type": "object"
     },
+    "PreviewVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "entry_id": {
+          "$ref": "#/$defs/EntryId"
+        },
+        "loses_protection": {
+          "type": "boolean"
+        },
+        "retire": {
+          "type": "boolean"
+        },
+        "version_id": {
+          "$ref": "#/$defs/VersionId"
+        }
+      },
+      "required": [
+        "version_id",
+        "entry_id",
+        "retire",
+        "loses_protection"
+      ],
+      "type": "object"
+    },
+    "PreviewVersionPage": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "versions": {
+          "items": {
+            "$ref": "#/$defs/PreviewVersion"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "versions"
+      ],
+      "type": "object"
+    },
     "PrincipalId": {
       "maxLength": 128,
       "minLength": 1,
       "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
       "type": "string"
+    },
+    "PurgeRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/IdempotencyKey"
+        },
+        "target": {
+          "$ref": "#/$defs/PurgeTarget"
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "expected_revision",
+        "target"
+      ],
+      "type": "object"
+    },
+    "PurgeTarget": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "historical_version",
+              "type": "string"
+            },
+            "version_id": {
+              "$ref": "#/$defs/VersionId"
+            }
+          },
+          "required": [
+            "kind",
+            "version_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entry_id": {
+              "$ref": "#/$defs/EntryId"
+            },
+            "kind": {
+              "const": "hidden_entry",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entry_id"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "ReadCandidate": {
       "additionalProperties": false,
@@ -2225,6 +2882,35 @@
       ],
       "type": "object"
     },
+    "SnapshotEntryPage": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/DirectoryEntry"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version_id": {
+          "$ref": "#/$defs/VersionId"
+        }
+      },
+      "required": [
+        "version_id",
+        "entries"
+      ],
+      "type": "object"
+    },
     "TimestampMs": {
       "format": "uint64",
       "maximum": 9007199254740991,
@@ -2254,6 +2940,74 @@
       "required": [
         "upload",
         "admission"
+      ],
+      "type": "object"
+    },
+    "TreeDraftPhase": {
+      "enum": [
+        "initializing",
+        "editing",
+        "building",
+        "planning",
+        "staging",
+        "ready",
+        "committed",
+        "cleaning_up",
+        "terminal"
+      ],
+      "type": "string"
+    },
+    "TreeDraftStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "admission": {
+          "$ref": "#/$defs/AdmissionState"
+        },
+        "directory_id": {
+          "$ref": "#/$defs/EntryId"
+        },
+        "expires_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        },
+        "id": {
+          "$ref": "#/$defs/UploadId"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/OperationId"
+        },
+        "phase": {
+          "$ref": "#/$defs/TreeDraftPhase"
+        },
+        "processed_entries": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommitReceipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        },
+        "state": {
+          "$ref": "#/$defs/SessionState"
+        }
+      },
+      "required": [
+        "id",
+        "root_id",
+        "directory_id",
+        "operation_id",
+        "state",
+        "phase",
+        "admission",
+        "processed_entries",
+        "expires_at_ms"
       ],
       "type": "object"
     },
