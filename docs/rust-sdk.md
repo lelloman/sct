@@ -37,3 +37,42 @@ Keep the job and source until the receipt is durably recorded, then remove them
 according to the application's lifecycle. They are trusted local state, not an
 untrusted interchange format. Preparing into an existing directory is rejected;
 a failed preparation leaves an incomplete directory for caller cleanup.
+
+## Trees and lifecycle
+
+The standalone client exposes tree draft create/status/advance, identity allocation,
+mutation pages, file manifest pages, freeze/admit/commit and explicit abort.
+It also exposes immutable snapshot listing/path lookup/range download, hide,
+policy preview/effect paging/apply, purge and job status/advance/resume.
+
+For a durable replacement or patch:
+
+1. Capture stable source files yourself. Construct and persist a
+   `CreateTreeDraftRequest` with the exact directory/base/policy revisions and
+   a stable request key. Choose `CompleteReplacement` or `Patch` explicitly.
+2. Call `create_tree_draft`, then `allocate_tree_identities` with stable allocation
+   keys for new entries. Existing snapshot identities need no allocation.
+3. On a blocking thread, call `TreeJob::prepare(directory, request, pages)`.
+   Supply an iterator of bounded pages of `TreeMutation` (file, directory,
+   removal or an existing manifest). One source file per identity is supported.
+   Mutation order, manifests and chunk indexes are persisted; the caller retains
+   stable source files. Preparation never publishes and an incomplete preparation
+   has no usable job receipt.
+4. Call `client.upload_tree(&job)`. After disconnect or process restart, reopen
+   with `TreeJob::open` and call again. Exact mutation keys and server receipts
+   make replay safe. Payload starts only after whole-tree admission. Every source
+   is rehashed, including reusable chunks; drift returns `SourceChanged`.
+5. Keep the job directory until the commit receipt is known. Dropping a future
+   disconnects only; `abort_tree_draft` is explicit.
+
+Memory is bounded by one mutation page, one manifest page and the current chunk.
+Tree/file counts use disk-backed plans, directory iteration and server pagination.
+Snapshot downloads stream into caller-owned temporary output; promote only after
+success. Patch omission preserves entries; replacement omission removes them from
+the new snapshot. Older retained snapshots remain addressable by version.
+
+Destructive lifecycle calls never auto-approve effects: the caller constructs
+`ApplyChangeRequest` with explicit acknowledgment or an explicit `PurgeRequest`.
+Persist these request keys to recover an uncertain response. Inspect and advance
+the returned job; blocked jobs require explicit authorized resume. No rollback
+or cancel promise is exposed after apply.

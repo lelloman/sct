@@ -14,7 +14,7 @@ struct JobFile {
     request: CreateUploadRequest,
 }
 pub struct UploadJob {
-    directory: PathBuf,
+    pub(crate) directory: PathBuf,
     saved: JobFile,
 }
 impl UploadJob {
@@ -293,7 +293,7 @@ impl Client {
         self.put_bytes(&format!("{}/chunks/{hash}", path(root, upload)), bytes)
             .await
     }
-    async fn put_bytes(&self, path: &str, bytes: Vec<u8>) -> Result<(), Error> {
+    pub(crate) async fn put_bytes(&self, path: &str, bytes: Vec<u8>) -> Result<(), Error> {
         let response = self
             .raw(reqwest::Method::PUT, path)
             .body(bytes)
@@ -303,7 +303,7 @@ impl Client {
         checked(response).await?;
         Ok(())
     }
-    fn raw(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn raw(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
         let mut url = self.origin.clone();
         url.set_path(path);
         let request = self.http.request(method, url);
@@ -413,6 +413,21 @@ impl Client {
                 break;
             }
         }
+        self.upload_verified_source(root, &upload, job, &job.directory.join("missing"))
+            .await?;
+        while self.seal_upload(root, &upload).await?.upload.state != SessionState::Ready {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        // Lost receipts are recovered by replaying this same job/commit.
+        self.commit_upload(root, &upload).await
+    }
+    pub(crate) async fn upload_verified_source(
+        &self,
+        root: &RootId,
+        upload: &UploadId,
+        job: &UploadJob,
+        missing: &Path,
+    ) -> Result<(), Error> {
         // Second sequential pass verifies even reusable chunks, not just missing ones.
         let mut index = BufReader::new(File::open(job.directory.join("chunks.jsonl"))?).lines();
         for chunk in chunker(File::open(&job.saved.source)?) {
@@ -424,23 +439,14 @@ impl Client {
             {
                 return Err(Error::SourceChanged);
             }
-            if job
-                .directory
-                .join("missing")
-                .join(expected.digest.as_str())
-                .exists()
-            {
-                self.upload_chunk(root, &upload, chunk.data).await?;
+            if missing.join(expected.digest.as_str()).exists() {
+                self.upload_chunk(root, upload, chunk.data).await?;
             }
         }
         if index.next().is_some() {
             return Err(Error::SourceChanged);
         }
-        while self.seal_upload(root, &upload).await?.upload.state != SessionState::Ready {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        // Lost receipts are recovered by replaying this same job/commit.
-        self.commit_upload(root, &upload).await
+        Ok(())
     }
     /// Stream to a caller-owned temporary output; promote it only after success.
     /// Range is [start,end), matching Rust slice conventions.
@@ -498,7 +504,7 @@ impl Client {
         Ok(received)
     }
 }
-async fn checked(response: reqwest::Response) -> Result<reqwest::Response, Error> {
+pub(crate) async fn checked(response: reqwest::Response) -> Result<reqwest::Response, Error> {
     if response.status().is_success() {
         Ok(response)
     } else {

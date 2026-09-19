@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 mod transfer;
+mod tree;
 pub use transfer::UploadJob;
+pub use tree::{TreeJob, TreeMutation};
 
 pub use sct_protocol as protocol;
 
