@@ -18,3 +18,5 @@ pub mod policy;
 pub mod roots;
 
 pub mod accounting;
+
+pub mod content_catalog;

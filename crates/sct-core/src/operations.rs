@@ -18,7 +18,7 @@ impl OperationFence {
         self.id.parse().expect("generated operation ID")
     }
 }
-async fn check_fence(
+pub(crate) async fn check_fence(
     db: &mut PgConnection,
     fence: &OperationFence,
     server_epoch: i64,

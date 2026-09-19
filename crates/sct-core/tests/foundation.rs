@@ -810,3 +810,86 @@ async fn concurrent_pool_admission_cross_root_moves_and_cursor_isolation() {
         ErrorCode::Forbidden
     );
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn transfer_graph_reservations_and_pin_retirement_orders() {
+    use std::collections::BTreeMap;
+    let (writer, actor, pool) = setup().await;
+    writer.catalog().migrate().await.unwrap();
+    let root = root(&writer, &actor, "/transfer", 4000).await;
+    let fence = writer
+        .begin_operation(&actor, &root.id, OperationKind::Upload)
+        .await
+        .unwrap();
+    let demand = BTreeMap::from([("pool".parse().unwrap(), 800.try_into().unwrap())]);
+    writer.reserve_transfer(&fence, &demand).await.unwrap();
+    writer.reserve_transfer(&fence, &demand).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        800
+    );
+    let bad = BTreeMap::from([("pool".parse().unwrap(), 900.try_into().unwrap())]);
+    assert!(writer.reserve_transfer(&fence, &bad).await.is_err());
+    let page = ManifestPage::Chunks {
+        format: 1,
+        chunks: vec![ChunkReference {
+            digest: digest(b"abc").parse().unwrap(),
+            length: 3.try_into().unwrap(),
+        }],
+    };
+    let bytes = canonical(&page).unwrap();
+    let hash = digest(&bytes);
+    writer
+        .store_manifest_page(&fence, &hash.parse().unwrap(), &bytes)
+        .await
+        .unwrap();
+    writer
+        .store_manifest_page(&fence, &hash.parse().unwrap(), &bytes)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM content_edges")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        1
+    );
+    // Catalog constraints disallow cross-root edges and mutation of stored bytes.
+    assert!(
+        sqlx::query("UPDATE content_objects SET body='x'::bytea WHERE digest=$1")
+            .bind(&hash)
+            .execute(&pool)
+            .await
+            .is_err()
+    );
+    assert!(sqlx::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES('other',$1,0,$1,3,1)").bind(&hash).execute(&pool).await.is_err());
+    let entry = writer
+        .resolve_path(&actor, &root.id, &"/".parse().unwrap())
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES('version',$1,$2,$3,3)").bind(root.id.as_str()).bind(entry.id.as_str()).bind(&hash).execute(&pool).await.unwrap();
+    let version = "version".parse().unwrap();
+    let pin = writer
+        .pin_version(&actor, &root.id, &version)
+        .await
+        .unwrap();
+    let n=sqlx::query("UPDATE file_versions SET retired=true WHERE id='version' AND NOT EXISTS(SELECT 1 FROM read_pins WHERE version_id='version' AND expires_at>clock_timestamp())").execute(&pool).await.unwrap().rows_affected();
+    assert_eq!(n, 0);
+    writer.release_read_pin(&actor, &pin).await.unwrap();
+    sqlx::query("UPDATE file_versions SET retired=true WHERE id='version'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        writer
+            .pin_version(&actor, &root.id, &version)
+            .await
+            .is_err()
+    );
+    writer.release_unused_reservations(&fence).await.unwrap();
+    writer.finish_operation(&fence, true).await.unwrap();
+}

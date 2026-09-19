@@ -21,13 +21,22 @@ impl Catalog {
 
     /// Forward-only embedded migrations; SQLx rejects modified or unknown migrations.
     pub async fn migrate(&self) -> Result<(), sqlx::migrate::MigrateError> {
-        let migrations = vec![sqlx::migrate::Migration::new(
-            1,
-            "foundation".into(),
-            sqlx::migrate::MigrationType::Simple,
-            include_str!("../migrations/0001_foundation.sql").into(),
-            false,
-        )];
+        let migrations = vec![
+            sqlx::migrate::Migration::new(
+                1,
+                "foundation".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0001_foundation.sql").into(),
+                false,
+            ),
+            sqlx::migrate::Migration::new(
+                2,
+                "transfer".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0002_transfer.sql").into(),
+                false,
+            ),
+        ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),
             ignore_missing: false,
