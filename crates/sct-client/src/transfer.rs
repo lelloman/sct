@@ -32,7 +32,7 @@ impl UploadJob {
         fs::create_dir(directory.join("missing"))?;
         let source = fs::canonicalize(source)?;
         let mut index = BufWriter::new(File::create(directory.join("chunks.jsonl"))?);
-        let mut refs = BufWriter::new(File::create(directory.join("level-1.jsonl"))?);
+        let mut refs = BufWriter::new(File::create(directory.join("level-0.jsonl"))?);
         let mut leaf = Vec::new();
         let mut length = 0u64;
         let mut count = 0u64;
@@ -75,7 +75,7 @@ impl UploadJob {
         index.get_ref().sync_all()?;
         refs.flush()?;
         drop(refs);
-        let mut height = if count == 0 { 0 } else { 1 };
+        let mut height = 0;
         let tree = if count == 0 {
             None
         } else {

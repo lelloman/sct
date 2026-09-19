@@ -147,7 +147,7 @@ impl TransferEngine {
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
-        let row=sqlx::query("SELECT s.*,o.epoch,o.server_epoch,o.phase,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) worker_expired FROM transfer_sessions s JOIN operations o ON o.id=s.operation_id WHERE s.id=$1 AND s.root_id=$2 AND s.principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+        let row=sqlx::query("SELECT s.*,o.epoch,o.server_epoch,o.phase,o.state operation_state,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) worker_expired FROM transfer_sessions s JOIN operations o ON o.id=s.operation_id WHERE s.id=$1 AND s.root_id=$2 AND s.principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         sqlx::query("UPDATE transfer_sessions SET state='expired' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp()").bind(upload.as_str()).execute(&mut *tx).await?;
         sqlx::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()").bind(upload.as_str()).bind(self.expiry_seconds as f64).execute(&mut *tx).await?;
         let state: String = sqlx::query_scalar("SELECT state FROM transfer_sessions WHERE id=$1")
@@ -163,6 +163,7 @@ impl TransferEngine {
         if (row.get::<bool, _>("worker_expired")
             || row.get::<i64, _>("server_epoch") != self.writer.epoch)
             && matches!(state.as_str(), "open" | "ready")
+            && row.get::<String, _>("operation_state") == "active"
         {
             fence = self.writer.recover_operation(&fence.id()).await?;
         }
