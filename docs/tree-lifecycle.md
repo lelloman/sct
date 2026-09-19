@@ -127,6 +127,18 @@ move atomically before bounded policy reconciliation, without partial subtree mo
 
 ## Qualification boundaries
 
+Draft metadata API (all under `/api/v1/roots/{root}/tree-drafts`): `POST /`
+creates or replays a draft; `GET /{draft}` inspects it; `POST /{draft}/advance`
+imports one base page or validates 64 entries; `POST /{draft}/identities` mints
+an idempotent batch of IDs; `POST /{draft}/mutations` accepts a bounded mutation
+page; `PUT /{draft}/pages/{digest}` stages canonical file chunk-index pages.
+`POST /{draft}/freeze` stops editing and starts validation. Invalid frozen trees
+can be aborted; they cannot publish. `POST /{draft}/abort` releases a metadata-only
+owner, or defers payload cleanup to the transfer worker when one exists.
+Draft status is durable across writer epochs; inactivity expiry releases abandoned
+metadata-only owners through the recovery worker. Tree materialization, admission
+and publication follow under SCT-32/33.
+
 Migration 5 extends the existing version/pin identities with a content kind; old
 file rows default to `file`. Directory versions point at immutable manifests and
 do not create descendant rows in `entries`. Draft working rows, traversal frontiers,

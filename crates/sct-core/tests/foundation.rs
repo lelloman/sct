@@ -1,6 +1,8 @@
 mod support;
 #[path = "support/tree_catalog_tests.rs"]
 mod tree_catalog_tests;
+#[path = "support/tree_draft_tests.rs"]
+mod tree_draft_tests;
 use sct_core::{
     auth::Actor,
     backend::{Registry, TestAdapter},

@@ -78,7 +78,12 @@ impl Writer {
         path: &[EntryName],
     ) -> Result<DirectoryEntry> {
         require(
-            !path.is_empty() && path.iter().map(|p| p.as_str().len() + 1).sum::<usize>() <= 4096,
+            !path.is_empty()
+                && path
+                    .iter()
+                    .map(|p| p.as_str().chars().count() + 1)
+                    .sum::<usize>()
+                    <= 4096,
             ErrorCode::InvalidRequest,
         )?;
         let mut tx = self.transaction().await?;

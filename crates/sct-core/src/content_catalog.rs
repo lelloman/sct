@@ -198,7 +198,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         lock_content_root(&mut tx, &fence.root).await?;
         check_fence(&mut tx, fence, self.epoch).await?;
-        let frozen:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1 AND admission<>'planning')").bind(&fence.id).fetch_one(&mut *tx).await?;
+        let frozen:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1 AND admission<>'planning') OR EXISTS(SELECT 1 FROM tree_drafts WHERE operation_id=$1 AND (phase<>'editing' OR state<>'open'))").bind(&fence.id).fetch_one(&mut *tx).await?;
         require(!frozen, ErrorCode::InvalidRequest)?;
         object(
             &mut tx,
