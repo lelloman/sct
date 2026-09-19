@@ -7,7 +7,7 @@ use crate::{
     paging,
     roots::json,
     transfer_io::TransferEngine,
-    upload::check_target,
+    upload::UploadRequest,
 };
 use sct_protocol::*;
 use sqlx::Row;
@@ -38,7 +38,10 @@ impl TransferEngine {
             ErrorCode::InvalidRequest,
         )?;
         check_fence(&mut tx, &s.fence, self.writer.epoch).await?;
-        check_target(&mut tx, &s.root, &s.request).await?;
+        s.check_target(&mut tx, actor).await?;
+        let UploadRequest::File(request) = &s.request else {
+            return Err(crate::error::Error(ErrorCode::UnsupportedOperation));
+        };
         let missing:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM session_objects p JOIN root_backends rb ON rb.root_id=p.root_id WHERE p.session_id=$1 AND NOT EXISTS(SELECT 1 FROM object_copies c WHERE c.root_id=p.root_id AND c.digest=p.digest AND c.backend_id=rb.backend_id AND c.state='available'))").bind(&s.id).fetch_one(&mut *tx).await?;
         require(!missing, ErrorCode::IntegrityFailure)?;
         let sql = format!(
@@ -93,7 +96,7 @@ impl TransferEngine {
             .bind(&s.fence.id)
             .execute(&mut *tx)
             .await?;
-        let entry = match &s.request.target {
+        let entry = match &request.target {
             FileTarget::Create {
                 parent_id, name, ..
             } => {
@@ -110,7 +113,7 @@ impl TransferEngine {
         };
         let version = id();
         let manifest: String = row.get("manifest");
-        let sequence:i64=sqlx::query_scalar("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES($1,$2,$3,$4,$5) RETURNING sequence").bind(&version).bind(&s.root).bind(&entry).bind(&manifest).bind(s.request.manifest.length.get() as i64).fetch_one(&mut *tx).await?;
+        let sequence:i64=sqlx::query_scalar("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES($1,$2,$3,$4,$5) RETURNING sequence").bind(&version).bind(&s.root).bind(&entry).bind(&manifest).bind(request.manifest.length.get() as i64).fetch_one(&mut *tx).await?;
         sqlx::query("UPDATE entries SET current_version_id=$2,revision=$3 WHERE id=$1")
             .bind(&entry)
             .bind(&version)

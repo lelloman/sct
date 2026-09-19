@@ -1,6 +1,8 @@
 #[path = "support/graph_work_tests.rs"]
 mod graph_work_tests;
 mod support;
+#[path = "support/tree_build_tests.rs"]
+mod tree_build_tests;
 #[path = "support/tree_catalog_tests.rs"]
 mod tree_catalog_tests;
 #[path = "support/tree_draft_tests.rs"]

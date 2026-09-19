@@ -355,6 +355,7 @@ impl TransferEngine {
                 let _ = self.writer.finish_operation(&fence, false).await;
             }
         }
+        self.cleanup_terminal_tree_work().await?;
         Ok(())
     }
 }

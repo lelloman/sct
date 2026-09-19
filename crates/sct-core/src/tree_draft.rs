@@ -78,6 +78,10 @@ impl TransferEngine {
         let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tree_drafts WHERE root_id=$1 AND id=$2 AND principal_id=$3)")
             .bind(root.as_str()).bind(draft.as_str()).bind(&actor.principal).fetch_one(&mut *db).await?;
         require(exists, ErrorCode::NotFound)?;
+        sqlx::query("UPDATE transfer_sessions SET state='expired' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp()")
+            .bind(draft.as_str()).execute(&mut *db).await?;
+        sqlx::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()")
+            .bind(draft.as_str()).bind(self.expiry_seconds as f64).execute(&mut *db).await?;
         sqlx::query("UPDATE tree_drafts SET state='expired',phase='terminal' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM transfer_sessions WHERE id=$1)")
             .bind(draft.as_str()).execute(&mut *db).await?;
         sqlx::query("UPDATE tree_drafts SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()")
@@ -486,6 +490,8 @@ impl TransferEngine {
                 .bind(sequence)
                 .execute(&mut *tx)
                 .await?;
+        } else if row.get::<String, _>("phase") == "building" {
+            crate::tree_build::build_step(&mut tx, actor, &row).await?;
         }
         sqlx::query("UPDATE tree_drafts SET phase='editing' WHERE id=$1 AND phase='initializing' AND NOT EXISTS(SELECT 1 FROM tree_work WHERE draft_id=$1)")
             .bind(draft.as_str()).execute(&mut *tx).await?;

@@ -1,7 +1,7 @@
 use super::*;
 use sct_core::{payload::Stores, transfer_io::TransferEngine};
 
-async fn draft_request(
+pub(super) async fn draft_request(
     w: &Writer,
     a: &Actor,
     r: &RootId,
@@ -31,7 +31,7 @@ async fn draft_request(
         expected_policy_revision: policy.revision,
     }
 }
-fn mutation(mutations: Vec<DraftMutation>) -> DraftMutationPage {
+pub(super) fn mutation(mutations: Vec<DraftMutation>) -> DraftMutationPage {
     DraftMutationPage {
         idempotency_key: uuid::Uuid::new_v4().simple().to_string().parse().unwrap(),
         mutations,

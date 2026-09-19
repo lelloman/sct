@@ -44,6 +44,10 @@ pub fn routes() -> Router<App> {
             "/api/v1/roots/{root}/tree-drafts/{draft}/abort",
             post(abort),
         )
+        .route(
+            "/api/v1/roots/{root}/tree-drafts/{draft}/admit",
+            post(admit),
+        )
 }
 async fn create(
     State(app): State<App>,
@@ -166,6 +170,17 @@ async fn abort(
     Ok(Json(
         engine(&app)?
             .abort_tree_draft(&actor, &id(&root)?, &id(&draft)?)
+            .await?,
+    ))
+}
+async fn admit(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, draft)): Path<(String, String)>,
+) -> Result<Json<TreeDraftStatus>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .admit_tree_draft(&actor, &id(&root)?, &id(&draft)?)
             .await?,
     ))
 }

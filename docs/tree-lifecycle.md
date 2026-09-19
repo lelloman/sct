@@ -147,8 +147,14 @@ page; `PUT /{draft}/pages/{digest}` stages canonical file chunk-index pages.
 can be aborted; they cannot publish. `POST /{draft}/abort` releases a metadata-only
 owner, or defers payload cleanup to the transfer worker when one exists.
 Draft status is durable across writer epochs; inactivity expiry releases abandoned
-metadata-only owners through the recovery worker. Tree materialization, admission
-and publication follow under SCT-32/33.
+metadata-only owners through the recovery worker. `POST /{draft}/admit` advances
+the frozen tree builder (128 entries per leaf, 64 references per branch), then
+uses the existing root operation to admit the complete content graph. Poll until
+admitted before using the ordinary upload chunk/seal routes with the same ID.
+Whole-tree unique payload quota and every destination's metadata/payload staging
+obligation are checked before bytes; deduplication spans all files. Terminal draft
+working rows are removed in bounded recovery batches, preserving the small draft
+receipt/status record. Publication follows under SCT-33.
 
 Migration 5 extends the existing version/pin identities with a content kind; old
 file rows default to `file`. Directory versions point at immutable manifests and

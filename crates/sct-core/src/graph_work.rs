@@ -10,7 +10,7 @@ const SOURCES: [&str; 6] = [
     "SELECT p.id key,v.manifest FROM read_pins p JOIN file_versions v ON v.root_id=p.root_id AND v.id=p.version_id WHERE p.root_id=$1 AND p.expires_at>clock_timestamp() AND p.id>$2 ORDER BY p.id LIMIT 64",
     "SELECT id key,manifest FROM transfer_sessions WHERE root_id=$1 AND state IN ('open','ready') AND admission<>'rejected' AND id>$2 ORDER BY id LIMIT 64",
     "SELECT key,manifest FROM (SELECT d.id||'-base' key,v.manifest FROM tree_drafts d JOIN file_versions v ON v.root_id=d.root_id AND v.id=d.base_version_id WHERE d.root_id=$1 AND d.state IN ('open','ready') UNION ALL SELECT id||'-tree' key,manifest FROM tree_drafts WHERE root_id=$1 AND state IN ('open','ready') AND manifest IS NOT NULL) roots WHERE key>$2 ORDER BY key LIMIT 64",
-    "SELECT e.id key,e.manifest FROM draft_entries e JOIN tree_drafts d ON d.id=e.draft_id AND d.root_id=e.root_id WHERE e.root_id=$1 AND d.state IN ('open','ready') AND NOT e.removed AND e.manifest IS NOT NULL AND e.id>$2 ORDER BY e.id LIMIT 64",
+    "SELECT e.id key,e.manifest FROM draft_entries e JOIN tree_drafts d ON d.id=e.draft_id AND d.root_id=e.root_id WHERE e.root_id=$1 AND d.state IN ('open','ready') AND d.manifest IS NULL AND NOT e.removed AND e.manifest IS NOT NULL AND e.id>$2 ORDER BY e.id LIMIT 64",
     "SELECT id key,manifest FROM graph_pins WHERE root_id=$1 AND (expires_at IS NULL OR expires_at>clock_timestamp()) AND id>$2 ORDER BY id LIMIT 64",
 ];
 

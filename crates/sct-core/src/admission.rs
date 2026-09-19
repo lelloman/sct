@@ -6,7 +6,7 @@ use crate::{
     policy::effective,
     roots::json,
     transfer_io::TransferEngine,
-    upload::{Session, check_target},
+    upload::Session,
 };
 use sct_protocol::*;
 use sqlx::{PgConnection, Row};
@@ -160,13 +160,13 @@ impl TransferEngine {
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         check_fence(&mut tx, &s.fence, self.writer.epoch).await?;
-        let policy = check_target(&mut tx, root.as_str(), &s.request).await?;
+        let policy = s.check_target(&mut tx, actor).await?;
         sqlx::query("UPDATE transfer_sessions SET admission='pending' WHERE id=$1")
             .bind(&s.id)
             .execute(&mut *tx)
             .await?;
         if s.admission == AdmissionState::Planning {
-            if let FileTarget::Replace { entry_id, .. } = &s.request.target {
+            if let Some(entry_id) = s.replaced_entry() {
                 sqlx::query("INSERT INTO transfer_retire(root_id,session_id,version_id,reason) SELECT root_id,$2,id,'rotation' FROM file_versions WHERE root_id=$1 AND entry_id=$3 AND NOT retired ORDER BY sequence DESC OFFSET $4 ON CONFLICT DO NOTHING").bind(&s.root).bind(&s.id).bind(entry_id.as_str()).bind((policy.policy.keep_versions.get()-1) as i64).execute(&mut *tx).await?;
             }
             sqlx::query("UPDATE operations SET phase='admission' WHERE id=$1")
@@ -262,7 +262,7 @@ impl TransferEngine {
         lock_content_root(&mut tx, &s.root).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         check_fence(&mut tx, &s.fence, self.writer.epoch).await?;
-        check_target(&mut tx, &s.root, &s.request).await?;
+        s.check_target(&mut tx, actor).await?;
         let rows=sqlx::query("SELECT r.version_id,v.entry_id FROM transfer_retire r JOIN file_versions v ON v.id=r.version_id WHERE r.session_id=$1 AND r.reason='admission' AND NOT r.applied ORDER BY v.sequence LIMIT 64").bind(&s.id).fetch_all(&mut *tx).await?;
         for r in rows {
             let version: String = r.get("version_id");

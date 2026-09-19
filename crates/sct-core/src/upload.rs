@@ -14,10 +14,46 @@ pub(crate) struct Session {
     pub id: String,
     pub root: String,
     pub fence: OperationFence,
-    pub request: CreateUploadRequest,
+    pub request: UploadRequest,
     pub state: SessionState,
     pub admission: AdmissionState,
     pub phase: String,
+}
+pub(crate) enum UploadRequest {
+    File(CreateUploadRequest),
+    Tree(CreateTreeDraftRequest),
+}
+impl Session {
+    pub(crate) async fn check_target(
+        &self,
+        db: &mut PgConnection,
+        actor: &Actor,
+    ) -> Result<EffectivePolicy> {
+        match &self.request {
+            UploadRequest::File(request) => check_target(db, &self.root, request).await,
+            UploadRequest::Tree(request) => {
+                let deletion: bool =
+                    sqlx::query_scalar("SELECT requires_delete FROM tree_drafts WHERE id=$1")
+                        .bind(&self.id)
+                        .fetch_one(&mut *db)
+                        .await?;
+                if deletion {
+                    authorize(db, actor, &self.root, Capability::Delete).await?;
+                }
+                crate::tree_draft::check_base(db, request).await
+            }
+        }
+    }
+    pub(crate) fn replaced_entry(&self) -> Option<&EntryId> {
+        match &self.request {
+            UploadRequest::File(CreateUploadRequest {
+                target: FileTarget::Replace { entry_id, .. },
+                ..
+            }) => Some(entry_id),
+            UploadRequest::Tree(request) => Some(&request.base.directory_id),
+            _ => None,
+        }
+    }
 }
 pub(crate) async fn check_target(
     db: &mut PgConnection,
@@ -147,7 +183,7 @@ impl TransferEngine {
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
-        let row=sqlx::query("SELECT s.*,o.epoch,o.server_epoch,o.phase,o.state operation_state,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) worker_expired FROM transfer_sessions s JOIN operations o ON o.id=s.operation_id WHERE s.id=$1 AND s.root_id=$2 AND s.principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+        let row=sqlx::query("SELECT s.*,EXISTS(SELECT 1 FROM tree_drafts d WHERE d.id=s.id) is_tree,o.epoch,o.server_epoch,o.phase,o.state operation_state,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) worker_expired FROM transfer_sessions s JOIN operations o ON o.id=s.operation_id WHERE s.id=$1 AND s.root_id=$2 AND s.principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         sqlx::query("UPDATE transfer_sessions SET state='expired' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp()").bind(upload.as_str()).execute(&mut *tx).await?;
         sqlx::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()").bind(upload.as_str()).bind(self.expiry_seconds as f64).execute(&mut *tx).await?;
         let state: String = sqlx::query_scalar("SELECT state FROM transfer_sessions WHERE id=$1")
@@ -171,7 +207,11 @@ impl TransferEngine {
             id: upload.as_str().into(),
             root: root.as_str().into(),
             fence,
-            request: serde_json::from_value(row.get("request"))?,
+            request: if row.get::<bool, _>("is_tree") {
+                UploadRequest::Tree(serde_json::from_value(row.get("request"))?)
+            } else {
+                UploadRequest::File(serde_json::from_value(row.get("request"))?)
+            },
             state: serde_json::from_value(serde_json::json!(state))?,
             admission: serde_json::from_value(serde_json::json!(
                 row.get::<String, _>("admission")

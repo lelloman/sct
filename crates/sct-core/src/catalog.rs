@@ -71,6 +71,13 @@ impl Catalog {
                 include_str!("../migrations/0007_graph_work.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                8,
+                "tree_build".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0008_tree_build.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),
