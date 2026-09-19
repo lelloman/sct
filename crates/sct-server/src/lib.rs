@@ -74,5 +74,6 @@ pub fn capabilities() -> sct_protocol::Capabilities {
     }
 }
 
+mod lifecycle_api;
 mod transfer_api;
 mod tree_api;

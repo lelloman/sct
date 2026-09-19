@@ -127,6 +127,23 @@ move atomically before bounded policy reconciliation, without partial subtree mo
 
 ## Qualification boundaries
 
+Policy preview API: `POST /roots/{root}/policy-previews` captures the change and
+current root/policy revisions. `POST /.../{preview}/advance` scans at most 64
+retained versions per request using a persisted commit-order cursor. Inspect with
+`GET /.../{preview}` and page the ready effect set with `GET /.../{preview}/versions`.
+Hidden histories participate; explicit overrides beneath the selected scope do
+not. Atomic history is evaluated only at its directory boundary. Set and inherit
+preserve versioning mode. Root defaults cannot inherit.
+Retirement and protection-loss counts are disjoint: the latter counts versions
+that remain retained but become eligible for relaxed pruning. The byte estimate
+is an upper bound on unique logical payload represented by retiring versions,
+capped at the protocol's root quota maximum. Shared content, mirrors and readers
+mean it is not a promise of physical free space. Preview performs no retirement
+and owns no root lease. Root mutation generation, root/policy revisions, current
+credential/grant authority, administrator bounds and one-hour expiry are rechecked
+on every continuation/read and again at apply. Stale/expired previews must be
+recreated. Apply is supplied by SCT-37.
+
 `POST /roots/{root}/entries/{entry}/hide` requires `delete` and a matching entry
 revision. It changes one visibility flag and its parent's revision atomically;
 descendant visibility is inherited, so even very large directories disappear

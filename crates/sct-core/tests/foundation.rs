@@ -2,6 +2,8 @@
 mod deletion_tests;
 #[path = "support/graph_work_tests.rs"]
 mod graph_work_tests;
+#[path = "support/policy_preview_tests.rs"]
+mod policy_preview_tests;
 mod support;
 #[path = "support/tree_build_tests.rs"]
 mod tree_build_tests;

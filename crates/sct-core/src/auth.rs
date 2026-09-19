@@ -9,7 +9,7 @@ use sqlx::{PgConnection, Row};
 #[derive(Clone)]
 pub struct Actor {
     pub(crate) principal: String,
-    credential: String,
+    pub(crate) credential: String,
 }
 impl Actor {
     pub fn principal_id(&self) -> &str {

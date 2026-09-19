@@ -40,6 +40,7 @@ mod publication;
 mod deletion;
 pub mod download;
 mod graph_work;
+mod policy_preview;
 mod tree_build;
 mod tree_catalog;
 mod tree_draft;
