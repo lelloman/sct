@@ -196,16 +196,7 @@ impl TransferEngine {
         let mut tx = self.writer.transaction().await?;
         lock_content_root(&mut tx, &fence.root).await?;
         check_fence(&mut tx, fence, self.writer.epoch).await?;
-        let r=sqlx::query("WITH previous AS (SELECT generation,allocation_id,bytes,pending_charge FROM object_copies WHERE generation=$1 AND root_id=$2 AND state IN ('writing','available') FOR UPDATE), changed AS (UPDATE object_copies c SET state='deleting',operation_id=$3,pending_charge=true FROM previous p WHERE c.generation=p.generation RETURNING p.allocation_id,p.bytes,p.pending_charge) SELECT * FROM changed").bind(generation).bind(&fence.root).bind(&fence.id).fetch_optional(&mut *tx).await?;
-        if let Some(r) = r
-            && !r.get::<bool, _>("pending_charge")
-        {
-            sqlx::query("UPDATE allocations SET pending_cleanup=pending_cleanup+$2 WHERE id=$1")
-                .bind(r.get::<String, _>("allocation_id"))
-                .bind(r.get::<i64, _>("bytes"))
-                .execute(&mut *tx)
-                .await?;
-        }
+        mark_copy_deleting(&mut tx, fence, generation).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -251,26 +242,67 @@ impl TransferEngine {
         Ok(completed)
     }
 }
+async fn mark_copy_deleting(
+    db: &mut sqlx::PgConnection,
+    fence: &OperationFence,
+    generation: &str,
+) -> Result<()> {
+    let r=sqlx::query("WITH previous AS (SELECT generation,allocation_id,bytes,pending_charge FROM object_copies WHERE generation=$1 AND root_id=$2 AND state IN ('writing','available') FOR UPDATE), changed AS (UPDATE object_copies c SET state='deleting',operation_id=$3,pending_charge=true FROM previous p WHERE c.generation=p.generation RETURNING p.allocation_id,p.bytes,p.pending_charge) SELECT * FROM changed").bind(generation).bind(&fence.root).bind(&fence.id).fetch_optional(&mut *db).await?;
+    if let Some(r) = r
+        && !r.get::<bool, _>("pending_charge")
+    {
+        sqlx::query("UPDATE allocations SET pending_cleanup=pending_cleanup+$2 WHERE id=$1")
+            .bind(r.get::<String, _>("allocation_id"))
+            .bind(r.get::<i64, _>("bytes"))
+            .execute(&mut *db)
+            .await?;
+    }
+    Ok(())
+}
 async fn refresh_uncertain(db: &mut sqlx::PgConnection, operation: &str) -> Result<()> {
     sqlx::query("UPDATE operations SET uncertain_io=EXISTS(SELECT 1 FROM object_copies WHERE operation_id=$1 AND (uncertain OR state IN ('writing','deleting'))) WHERE id=$1").bind(operation).execute(db).await?;
     Ok(())
 }
 
 impl TransferEngine {
-    /// Mark a bounded batch unreachable from live versions, read leases or active
-    /// upload roots. Graph traversal stays in PostgreSQL; only 64 keys leave it.
+    /// Persist a bounded graph frontier before selecting copies to reclaim.
+    /// 64 also denotes unfinished graph work; callers must retry before admission.
     pub(crate) async fn collect_unreferenced(&self, fence: &OperationFence) -> Result<usize> {
-        let rows = {
-            let mut tx = self.writer.transaction().await?;
-            lock_content_root(&mut tx, &fence.root).await?;
-            check_fence(&mut tx, fence, self.writer.epoch).await?;
-            sqlx::query("WITH RECURSIVE seeds(digest) AS (SELECT manifest FROM file_versions WHERE root_id=$1 AND NOT retired UNION SELECT v.manifest FROM read_pins p JOIN file_versions v ON v.id=p.version_id WHERE p.root_id=$1 AND p.expires_at>clock_timestamp() UNION SELECT manifest FROM transfer_sessions WHERE root_id=$1 AND state IN ('open','ready') AND admission<>'rejected'), live(digest) AS (SELECT digest FROM seeds UNION SELECT e.child FROM live l JOIN content_edges e ON e.parent=l.digest AND e.root_id=$1) SELECT generation FROM object_copies c WHERE c.root_id=$1 AND c.state='available' AND NOT EXISTS(SELECT 1 FROM live WHERE live.digest=c.digest) ORDER BY generation LIMIT 64").bind(&fence.root).fetch_all(&mut *tx).await?
-        };
-        for r in &rows {
-            self.mark_deleting(fence, &r.get::<String, _>("generation"))
+        let mut tx = self.writer.transaction().await?;
+        lock_content_root(&mut tx, &fence.root).await?;
+        check_fence(&mut tx, fence, self.writer.epoch).await?;
+        if !crate::graph_work::advance(&mut tx, fence).await? {
+            tx.commit().await?;
+            return Ok(64);
+        }
+        let candidates=sqlx::query("SELECT c.generation,EXISTS(SELECT 1 FROM graph_marks m WHERE m.root_id=c.root_id AND m.digest=c.digest AND m.scan_id=s.scan_id) live FROM object_copies c JOIN graph_scans s ON s.root_id=c.root_id WHERE c.root_id=$1 AND c.state='available' AND c.generation>s.after_key ORDER BY c.generation LIMIT 64")
+            .bind(&fence.root).fetch_all(&mut *tx).await?;
+        let mut marked = 0;
+        // The reachability proof and deletion intent share one root transaction.
+        for candidate in &candidates {
+            if !candidate.get::<bool, _>("live") {
+                mark_copy_deleting(&mut tx, fence, &candidate.get::<String, _>("generation"))
+                    .await?;
+                marked += 1;
+            }
+        }
+        let more = candidates.len() == 64;
+        if more {
+            sqlx::query("UPDATE graph_scans SET after_key=$2 WHERE root_id=$1")
+                .bind(&fence.root)
+                .bind(candidates.last().unwrap().get::<String, _>("generation"))
+                .execute(&mut *tx)
+                .await?;
+        } else {
+            // A new pass re-evaluates expired reader/checkpoint leases. Marks are
+            // reused per root/object, so repeated sweeps do not accumulate sets.
+            sqlx::query("DELETE FROM graph_scans WHERE root_id=$1")
+                .bind(&fence.root)
+                .execute(&mut *tx)
                 .await?;
         }
-        Ok(rows.len())
+        tx.commit().await?;
+        Ok(if more { 64 } else { marked })
     }
     /// One bounded recovery pass. The runtime repeats this without extending user
     /// inactivity. An expired worker is reclaimed; an expired session is cleaned.
@@ -311,13 +343,14 @@ impl TransferEngine {
             if self.reconcile_writes(&fence).await.is_err() {
                 continue;
             }
-            if self.collect_unreferenced(&fence).await.is_err() {
-                continue;
-            }
+            let garbage = match self.collect_unreferenced(&fence).await {
+                Ok(count) => count,
+                Err(_) => continue,
+            };
             if self.cleanup_copies(&fence).await.is_err() {
                 continue;
             }
-            if terminal {
+            if terminal && garbage < 64 {
                 self.writer.release_unused_reservations(&fence).await?;
                 let _ = self.writer.finish_operation(&fence, false).await;
             }

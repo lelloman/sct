@@ -38,5 +38,6 @@ mod ingest;
 mod publication;
 
 pub mod download;
+mod graph_work;
 mod tree_catalog;
 mod tree_draft;

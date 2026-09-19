@@ -127,6 +127,17 @@ move atomically before bounded policy reconciliation, without partial subtree mo
 
 ## Qualification boundaries
 
+Reclamation uses one reusable root/object mark table and a persisted scan cursor.
+Each pass seeds at most 64 roots from each reference class, expands at most 64
+objects with bounded adjacency, and examines at most 64 physical copies. Catalog
+changes invalidate the scan generation; writer epoch changes preserve its progress.
+The worker rechecks the operation fence and persists deletion intent under the same
+root lock as the reachability proof. Only confirmed backend deletion releases
+occupied/pending bytes. File and tree versions, readers, active transfers/drafts
+and internal graph pins participate; `checkpoint` graph pins reserve the M4
+extension point without exposing checkpoint creation. A completed sweep starts
+fresh on the next pass so expired readers do not protect content indefinitely.
+
 Draft metadata API (all under `/api/v1/roots/{root}/tree-drafts`): `POST /`
 creates or replays a draft; `GET /{draft}` inspects it; `POST /{draft}/advance`
 imports one base page or validates 64 entries; `POST /{draft}/identities` mints
