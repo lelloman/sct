@@ -10,7 +10,7 @@ use serde_json::json;
 use sqlx::{PgConnection, Row, postgres::PgRow};
 
 pub(crate) async fn row(db: &mut PgConnection, entry: &str) -> Result<PgRow> {
-    sqlx::query("SELECT * FROM entries WHERE id=$1")
+    sqlx::query("SELECT * FROM entries WHERE id=$1 AND NOT entry_purged(id)")
         .bind(entry)
         .fetch_optional(db)
         .await?
@@ -237,7 +237,7 @@ impl Writer {
         } else {
             (String::new(), String::new())
         };
-        let rows=sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id=$2 AND ($3 OR NOT hidden) AND (name,id)>($4 COLLATE \"C\",$5) ORDER BY name COLLATE \"C\",id LIMIT $6")
+        let rows=sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id=$2 AND NOT purged AND ($3 OR NOT hidden) AND (name,id)>($4 COLLATE \"C\",$5) ORDER BY name COLLATE \"C\",id LIMIT $6")
           .bind(root.as_str()).bind(directory.as_str()).bind(request.include_hidden).bind(after.0).bind(after.1).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let items: Vec<_> = rows

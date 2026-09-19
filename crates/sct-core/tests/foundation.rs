@@ -1806,3 +1806,6 @@ async fn verified_download_ranges_fallback_and_pin_expiry() {
         .unwrap();
     assert!(pinned.next().await.is_err());
 }
+
+#[path = "support/purge_tests.rs"]
+mod purge_tests;

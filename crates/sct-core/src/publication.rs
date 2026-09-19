@@ -174,6 +174,13 @@ impl TransferEngine {
                 .bind(root.as_str())
                 .fetch_one(&mut *tx)
                 .await?;
+        require(
+            !sqlx::query_scalar::<_, bool>("SELECT entry_purged($1)")
+                .bind(entry.as_str())
+                .fetch_one(&mut *tx)
+                .await?,
+            ErrorCode::NotFound,
+        )?;
         let binding = serde_json::json!({"root":root,"entry":entry,"revision":revision});
         let before: i64 = if let Some(cursor) = cursor {
             paging::consume(&mut tx, actor, "file_history", cursor, &binding).await?

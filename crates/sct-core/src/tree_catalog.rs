@@ -42,7 +42,7 @@ pub(crate) async fn version_manifest(
     root: &str,
     version: &str,
 ) -> Result<String> {
-    sqlx::query_scalar("SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND kind='directory' AND NOT retired")
+    sqlx::query_scalar("SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND kind='directory' AND NOT retired AND NOT entry_purged(entry_id)")
         .bind(root).bind(version).fetch_optional(db).await?.ok_or(Error(ErrorCode::NotFound))
 }
 
@@ -238,7 +238,7 @@ impl Writer {
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         let mut manifest: String = sqlx::query_scalar(
-            "SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND kind='directory' AND NOT retired",
+            "SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND kind='directory' AND NOT retired AND NOT entry_purged(entry_id)",
         ).bind(root.as_str()).bind(version.as_str()).fetch_optional(&mut *tx).await?
             .ok_or(Error(ErrorCode::NotFound))?;
         for (index, name) in path.iter().enumerate() {

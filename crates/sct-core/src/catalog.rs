@@ -99,6 +99,13 @@ impl Catalog {
                 include_str!("../migrations/0011_move_previews.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                12,
+                "purge".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0012_purge.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

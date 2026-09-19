@@ -55,7 +55,7 @@ impl TransferEngine {
     ) -> Result<FileManifest> {
         let mut tx = self.writer.transaction().await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
-        let r=sqlx::query("SELECT o.body,o.digest FROM file_versions v JOIN content_objects o ON o.root_id=v.root_id AND o.digest=v.manifest WHERE v.id=$1 AND v.root_id=$2 AND v.kind='file' AND NOT v.retired").bind(version.as_str()).bind(root.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+        let r=sqlx::query("SELECT o.body,o.digest FROM file_versions v JOIN content_objects o ON o.root_id=v.root_id AND o.digest=v.manifest WHERE v.id=$1 AND v.root_id=$2 AND v.kind='file' AND NOT v.retired AND NOT entry_purged(v.entry_id)").bind(version.as_str()).bind(root.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         let bytes: Vec<u8> = r.get("body");
         require(
             digest(&bytes) == r.get::<String, _>("digest"),

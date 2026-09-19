@@ -238,3 +238,25 @@ both pin/retirement orderings, crash/replay, protected hidden history, policy-in
 boundaries, stale previews, revocation, and million-entry bounded/resumable work.
 Generalized graph roots reserve a checkpoint pin kind; M4 supplies actual checkpoint
 creation/export/restore. M1/M2 checks remain executable and M4/M5 gates stay pending.
+
+## Purge API and recovery
+
+`POST /roots/{root}/purge-jobs` requires the separate `purge` capability.
+For `historical_version`, `expected_revision` is the root revision; for
+`hidden_entry`, it is the entry revision. Current versions, live entries,
+mount roots and immutable snapshot descendants are rejected. Hide the containing
+entry before purging all of its history. Historical snapshots can be selected
+directly without affecting other snapshots that share their content.
+
+Acceptance atomically retires a selected historical version, or marks an
+already-hidden subtree unavailable to new reads. A persisted frontier retires
+at most 64 versions and visits at most 64 entries per worker pass, expanding at
+most one page of 128 children. Catalog tombstones remain for foreign-key and
+audit continuity; purged entries disappear from inspection and deleted listings.
+The shared graph collector preserves retained snapshots and active read pins.
+Existing readers can finish; unknown deletes stay charged until confirmed.
+
+Purge uses the same job status/advance/resume routes and forward-only recovery
+as policy apply. Every logical batch rechecks the stored purge authority.
+Revocation blocks the job and retains root ownership until explicitly resumed
+by an authorized actor. Exact request-key retries return the original job.

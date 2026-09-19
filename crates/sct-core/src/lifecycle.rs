@@ -232,6 +232,11 @@ impl TransferEngine {
             tx.commit().await?;
             return Ok(());
         }
+        if row.get::<String, _>("kind") == "purge" {
+            crate::purge::advance(&mut tx, &fence.root, &fence.id).await?;
+            tx.commit().await?;
+            return Ok(());
+        }
         let preview: String = row
             .get::<Option<String>, _>("preview_id")
             .ok_or(Error(ErrorCode::InvalidRequest))?;

@@ -11,6 +11,7 @@ fn id<T: std::str::FromStr>(s: &str) -> Result<T, ApiError> {
 pub fn routes() -> Router<App> {
     Router::new()
         .route("/api/v1/roots/{root}/policy-jobs", post(apply))
+        .route("/api/v1/roots/{root}/purge-jobs", post(purge))
         .route("/api/v1/roots/{root}/jobs/{job}", get(job))
         .route("/api/v1/roots/{root}/jobs/{job}/advance", post(advance_job))
         .route("/api/v1/roots/{root}/jobs/{job}/resume", post(resume_job))
@@ -136,6 +137,23 @@ async fn versions(
                 &id(&root)?,
                 &id(&preview)?,
                 &query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+
+async fn purge(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path(root): Path<String>,
+    body: Result<Json<PurgeRequest>, simple_server::axum::extract::rejection::JsonRejection>,
+) -> Result<Json<LifecycleJob>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .purge(
+                &actor,
+                &id(&root)?,
+                &body.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
             )
             .await?,
     ))

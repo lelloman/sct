@@ -80,7 +80,7 @@ impl Writer {
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM file_versions WHERE id=$1 AND root_id=$2 AND NOT retired)",
+            "SELECT EXISTS(SELECT 1 FROM file_versions WHERE id=$1 AND root_id=$2 AND NOT retired AND NOT entry_purged(entry_id))",
         )
         .bind(version.as_str())
         .bind(root.as_str())
