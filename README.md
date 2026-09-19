@@ -118,3 +118,6 @@ M2–M5 still need implementation-ticket decomposition beyond their existing epi
 Technical references: [Axum serving](https://docs.rs/axum/0.8.9/axum/fn.serve.html),
 [SQLx PostgreSQL wiring](https://docs.rs/crate/sqlx/0.8.6/source/README.md),
 and [Vite development/build setup](https://vite.dev/guide/).
+
+Lifecycle migration and sibling-library checkout instructions are in
+[Step 02](docs/step-02-lifecycle.md). The migration remains on its isolated branch.

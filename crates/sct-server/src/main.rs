@@ -1,3 +1,7 @@
+use simple_server::http;
+use simple_server::lifecycle::{Lifecycle, ShutdownOptions, Signals};
+use std::time::Duration;
+
 use sct_core::{
     catalog::Catalog,
     roots::{BackendSetup, PoolSetup},
@@ -6,7 +10,14 @@ use sct_server::{api::App, config::Config};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    if let Err(error) = run().await {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let config_path = match std::env::var("SCT_CONFIG") {
         Ok(value) => Some(value),
@@ -67,17 +78,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             public_url: config.public_url.clone(),
             secure_cookies: config.public_url.starts_with("https://"),
         };
-        let listener = tokio::net::TcpListener::bind(config.bind).await?;
+        let signals = Signals::install()?;
+        let mut lifecycle = Lifecycle::new(ShutdownOptions {
+            grace_period: Duration::from_secs(30),
+        });
+        let shutdown = lifecycle.shutdown();
+        let listener = http::bind(config.bind).await?;
         println!("ScT listening on {}", listener.local_addr()?);
+        lifecycle.service(
+            "http",
+            http::serve(
+                listener,
+                sct_server::application(app, config.web_dir),
+                shutdown.clone(),
+            ),
+        )?;
         let lease = writer.clone();
-        simple_server::axum::serve(listener,sct_server::application(app,config.web_dir)).with_graceful_shutdown(async move {
-            tokio::select!{
-                _=shutdown()=>{},
-                _=async{loop{tokio::time::sleep(std::time::Duration::from_secs(10)).await;if lease.renew().await.is_err(){eprintln!("writer lease lost; stopping server");break;}}}=>{}
+        lifecycle.service("writer-lease", async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = shutdown.requested() => return Ok::<_, sct_core::error::Error>(()),
+                    _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                        lease.renew().await?;
+                    }
+                }
             }
-        }).await?;
-        writer.release().await?;
-        catalog.close().await;
+        })?;
+        lifecycle
+            .run(signals.wait(), async {
+                let released = writer.release().await;
+                catalog.close().await;
+                released
+            })
+            .await?;
+        println!("ScT graceful shutdown complete");
         return Ok(());
     }
     if !args.is_empty() {
@@ -93,20 +128,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|_| "invalid SCT_BIND")?;
     let web = PathBuf::from(std::env::var("SCT_WEB_DIR").unwrap_or_else(|_| "web/dist".into()));
     require_web(&web)?;
-    let listener = tokio::net::TcpListener::bind(bind).await?;
+    let signals = Signals::install()?;
+    let mut lifecycle = Lifecycle::new(ShutdownOptions {
+        grace_period: Duration::from_secs(30),
+    });
+    let listener = http::bind(bind).await?;
     println!(
         "ScT development scaffold listening on {} (set SCT_CONFIG for foundation service)",
         listener.local_addr()?
     );
-    simple_server::axum::serve(listener, sct_server::router(None, web))
-        .with_graceful_shutdown(shutdown())
+    lifecycle.service(
+        "http",
+        http::serve(
+            listener,
+            sct_server::router(None, web),
+            lifecycle.shutdown(),
+        ),
+    )?;
+    lifecycle
+        .run(signals.wait(), async { Ok::<_, std::io::Error>(()) })
         .await?;
+    println!("ScT graceful shutdown complete");
     Ok(())
 }
 async fn local_command(
     writer: &sct_core::lease::Writer,
     args: &[String],
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if args == ["recover-admin"] || args == ["bootstrap-admin"] {
         let credential = writer.recover_administrator().await?;
         // This is the one intentional secret output, on the administrator's local terminal.
@@ -127,22 +175,9 @@ async fn local_command(
     }
     Ok(())
 }
-fn require_web(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn require_web(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if !path.join("index.html").is_file() {
         return Err("web build missing; run npm --prefix web run build or set SCT_WEB_DIR".into());
     }
     Ok(())
-}
-async fn shutdown() {
-    #[cfg(unix)]
-    {
-        let mut terminate =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("install SIGTERM handler");
-        tokio::select! {_=tokio::signal::ctrl_c()=>{},_=terminate.recv()=>{}}
-    }
-    #[cfg(not(unix))]
-    tokio::signal::ctrl_c()
-        .await
-        .expect("install shutdown handler");
 }

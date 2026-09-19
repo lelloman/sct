@@ -29,3 +29,7 @@ skipped by the existing suite. This migration does not implement those milestone
 The tests used temporary Postgres containers and isolated fixture data, with
 cleanup handled by the scripts. The dependency graph contains only central
 Axum 0.8.9. No deployment or publication was performed.
+
+Step 02 subsequently adopts shared lifecycle helpers and a reviewed sibling
+checkout; see [the current lifecycle migration](step-02-lifecycle.md). The Git
+pin above describes the historical Step 01 state.
