@@ -2,7 +2,7 @@
 use crate::api::{ApiError, App, Auth};
 use axum::{
     Json, Router,
-    extract::{Path, Request, State},
+    extract::{Path, Query, Request, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post, put},
@@ -27,6 +27,12 @@ fn status(s: TransferStatus) -> Response {
 }
 pub fn routes() -> Router<App> {
     Router::new()
+        .route("/api/v1/roots/{root}/uploads/{upload}/chunks", get(missing))
+        .route(
+            "/api/v1/roots/{root}/uploads/{upload}/chunks/{digest}",
+            put(chunk),
+        )
+        .route("/api/v1/roots/{root}/uploads/{upload}/seal", post(seal))
         .route("/api/v1/roots/{root}/uploads", post(create))
         .route("/api/v1/roots/{root}/uploads/{upload}", get(inspect))
         .route(
@@ -100,4 +106,58 @@ async fn abort(
             .abort_upload(&actor, &id(&root)?, &id(&upload)?)
             .await?,
     ))
+}
+
+#[derive(serde::Deserialize)]
+struct MissingQuery {
+    cursor: Option<CursorToken>,
+}
+async fn missing(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, upload)): Path<(String, String)>,
+    Query(query): Query<MissingQuery>,
+) -> Result<Json<MissingChunkPage>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .missing_chunks(&actor, &id(&root)?, &id(&upload)?, query.cursor.as_ref())
+            .await?,
+    ))
+}
+async fn chunk(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, upload, digest)): Path<(String, String, String)>,
+    request: Request,
+) -> Result<StatusCode, ApiError> {
+    let root = id(&root)?;
+    let upload = id(&upload)?;
+    let digest = id(&digest)?;
+    let engine = engine(&app)?;
+    let length = engine
+        .chunk_permission(&actor, &root, &upload, &digest)
+        .await?;
+    let _permit = engine.payload_permit().await?;
+    let bytes = axum::body::to_bytes(request.into_body(), length as usize + 1)
+        .await
+        .map_err(|_| ApiError(ErrorCode::InvalidRequest))?;
+    engine
+        .upload_chunk(&actor, &root, &upload, &digest, bytes.to_vec())
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+async fn seal(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, upload)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let status = engine(&app)?
+        .seal_upload(&actor, &id(&root)?, &id(&upload)?)
+        .await?;
+    let code = if status.upload.state == SessionState::Ready {
+        StatusCode::OK
+    } else {
+        StatusCode::ACCEPTED
+    };
+    Ok((code, Json(status)).into_response())
 }

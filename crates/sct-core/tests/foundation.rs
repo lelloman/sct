@@ -1181,3 +1181,174 @@ async fn metadata_first_admission_and_abort_release_only_unused_space() {
         0
     );
 }
+
+#[tokio::test]
+#[ignore = "requires disposable PostgreSQL"]
+async fn mirrored_ingestion_retries_completed_copies_and_seals_only_verified_graph() {
+    use sct_core::{
+        payload::{Fault, MemoryStore, ObjectStore},
+        transfer_io::TransferEngine,
+    };
+    use std::collections::BTreeMap;
+    let (writer, actor, pool) = setup().await;
+    let root = root(&writer, &actor, "/ingest", 4000).await;
+    let placement:Placement=serde_json::from_value(json!({"kind":"mirror","backend_ids":["one","two"],"read_policy":{"candidates":[{"backend_id":"one","connection_timeout_ms":100,"initial_response_timeout_ms":100,"idle_timeout_ms":1000,"throughput_window_ms":1000,"minimum_bytes_per_second":1,"startup_allowance_ms":1000},{"backend_id":"two","connection_timeout_ms":100,"initial_response_timeout_ms":100,"idle_timeout_ms":1000,"throughput_window_ms":1000,"minimum_bytes_per_second":1,"startup_allowance_ms":1000}],"overall_deadline_ms":null}})).unwrap();
+    let root = writer
+        .update_root(
+            &actor,
+            &root.id,
+            &UpdateRootRequest {
+                expected_revision: root.revision,
+                display_name: root.display_name,
+                state: RootState::Enabled,
+                placement,
+                quota_bytes: 2000.try_into().unwrap(),
+            },
+        )
+        .await
+        .unwrap();
+    let entry = writer
+        .resolve_path(&actor, &root.id, &"/".parse().unwrap())
+        .await
+        .unwrap();
+    let policy = writer
+        .effective_policy(
+            &actor,
+            &PolicyScope::Root {
+                root_id: root.id.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let one = Arc::new(MemoryStore::default());
+    let two = Arc::new(MemoryStore::default());
+    let engine = TransferEngine::new(
+        writer.clone(),
+        BTreeMap::from([
+            ("one".into(), one as Arc<dyn ObjectStore>),
+            ("two".into(), two.clone() as Arc<dyn ObjectStore>),
+        ]),
+        2,
+        86400,
+    )
+    .unwrap();
+    let chunk: ChunkDigest = digest(b"abc").parse().unwrap();
+    let page = ManifestPage::Chunks {
+        format: 1,
+        chunks: vec![ChunkReference {
+            digest: chunk.clone(),
+            length: 3.try_into().unwrap(),
+        }],
+    };
+    let page_bytes = canonical(&page).unwrap();
+    let page_hash: ManifestId = digest(&page_bytes).parse().unwrap();
+    let request = CreateUploadRequest {
+        idempotency_key: "mirror".parse().unwrap(),
+        target: FileTarget::Create {
+            parent_id: entry.id,
+            expected_parent_revision: entry.revision,
+            name: "file".parse().unwrap(),
+        },
+        expected_policy_revision: policy.revision,
+        manifest: FileManifest {
+            format: 1,
+            profile: CHUNK_PROFILE.into(),
+            length: 3.try_into().unwrap(),
+            chunks: 1.try_into().unwrap(),
+            height: 0,
+            tree: Some(page_hash.clone()),
+        },
+    };
+    let s = engine
+        .create_upload(&actor, &root.id, &request)
+        .await
+        .unwrap();
+    let upload = s.upload.id;
+    assert!(
+        engine
+            .chunk_permission(&actor, &root.id, &upload, &chunk)
+            .await
+            .is_err()
+    );
+    engine
+        .upload_page(&actor, &root.id, &upload, &page_hash, &page_bytes)
+        .await
+        .unwrap();
+    for _ in 0..10 {
+        if engine
+            .admit_upload(&actor, &root.id, &upload)
+            .await
+            .unwrap()
+            .admission
+            == AdmissionState::Admitted
+        {
+            break;
+        }
+    }
+    assert!(
+        engine
+            .upload_chunk(&actor, &root.id, &upload, &chunk, b"bad".to_vec())
+            .await
+            .is_err()
+    );
+    two.fault(Fault::LostWriteResponse).await;
+    assert!(
+        engine
+            .upload_chunk(&actor, &root.id, &upload, &chunk, b"abc".to_vec())
+            .await
+            .is_err()
+    );
+    let before: i64 = sqlx::query_scalar("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(before, 6);
+    two.fault(Fault::None).await;
+    engine
+        .upload_chunk(&actor, &root.id, &upload, &chunk, b"abc".to_vec())
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        before
+    );
+    assert!(
+        engine
+            .missing_chunks(&actor, &root.id, &upload, None)
+            .await
+            .unwrap()
+            .chunks
+            .is_empty()
+    );
+    let sealed = engine.seal_upload(&actor, &root.id, &upload).await.unwrap();
+    assert_eq!(sealed.upload.state, SessionState::Ready);
+    assert!(
+        sealed
+            .upload
+            .copies
+            .iter()
+            .all(|c| c.state == CopyAcknowledgement::Acknowledged)
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM file_versions")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    engine
+        .abort_upload(&actor, &root.id, &upload)
+        .await
+        .unwrap();
+    engine.tick().await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+}

@@ -183,7 +183,23 @@ impl TransferEngine {
         let mut tx = self.writer.transaction().await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         let row=sqlx::query("SELECT *,floor(extract(epoch FROM expires_at)*1000)::bigint expires_ms FROM transfer_sessions WHERE id=$1 AND root_id=$2 AND principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_one(&mut *tx).await?;
-        status(&row)
+        let mut result = status(&row)?;
+        let copies=sqlx::query("SELECT rb.backend_id,COALESCE(sum(c.bytes) FILTER(WHERE c.state='available'),0)::bigint acknowledged,COALESCE(bool_and(COALESCE(c.state='available',false)),false) complete FROM root_backends rb LEFT JOIN session_objects p ON p.root_id=rb.root_id AND p.session_id=$2 LEFT JOIN object_copies c ON c.root_id=p.root_id AND c.digest=p.digest AND c.backend_id=rb.backend_id AND c.state IN ('available','writing') WHERE rb.root_id=$1 GROUP BY rb.backend_id ORDER BY rb.backend_id").bind(root.as_str()).bind(upload.as_str()).fetch_all(&mut *tx).await?;
+        result.upload.copies = copies
+            .iter()
+            .map(|r| {
+                Ok(CopyProgress {
+                    backend_id: r.get::<String, _>("backend_id").parse()?,
+                    acknowledged_bytes: (r.get::<i64, _>("acknowledged") as u64).try_into()?,
+                    state: if r.get::<bool, _>("complete") {
+                        CopyAcknowledgement::Acknowledged
+                    } else {
+                        CopyAcknowledgement::Pending
+                    },
+                })
+            })
+            .collect::<Result<_>>()?;
+        Ok(result)
     }
     pub async fn upload_page(
         &self,

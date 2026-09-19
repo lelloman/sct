@@ -15,6 +15,7 @@ use std::sync::Arc;
 pub struct TransferEngine {
     pub(crate) writer: Writer,
     pub(crate) stores: Arc<Stores>,
+    pub(crate) ingress: Arc<tokio::sync::Semaphore>,
     pub(crate) slots: Arc<tokio::sync::Semaphore>,
     pub(crate) expiry_seconds: u32,
 }
@@ -27,6 +28,7 @@ impl TransferEngine {
         Ok(Self {
             writer,
             stores: Arc::new(stores),
+            ingress: Arc::new(tokio::sync::Semaphore::new(workers as usize)),
             slots: Arc::new(tokio::sync::Semaphore::new(workers as usize)),
             expiry_seconds,
         })
@@ -232,7 +234,13 @@ impl TransferEngine {
             check_fence(&mut tx, fence, self.writer.epoch).await?;
             let r=sqlx::query("UPDATE object_copies SET state='deleted',uncertain=false WHERE generation=$1 AND state='deleting' RETURNING allocation_id,bytes").bind(&generation).fetch_optional(&mut *tx).await?;
             if let Some(r) = r {
-                sqlx::query("UPDATE allocations SET occupied=occupied-$2,pending_cleanup=pending_cleanup-$2 WHERE id=$1").bind(r.get::<String,_>("allocation_id")).bind(r.get::<i64,_>("bytes")).execute(&mut *tx).await?;
+                let allocation: String = r.get("allocation_id");
+                let bytes: i64 = r.get("bytes");
+                let refund:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions s JOIN allocations a ON a.id=$2 WHERE s.operation_id=$1 AND s.state IN ('open','ready') AND s.admission='admitted' AND a.root_id IS NULL)").bind(&fence.id).bind(&allocation).fetch_one(&mut *tx).await?;
+                sqlx::query("UPDATE allocations SET occupied=occupied-$2,pending_cleanup=pending_cleanup-$2,reserved=reserved+$3 WHERE id=$1").bind(&allocation).bind(bytes).bind(if refund{bytes}else{0}).execute(&mut *tx).await?;
+                if refund {
+                    sqlx::query("UPDATE reservations SET bytes=bytes+$3 WHERE allocation_id=$1 AND operation_id=$2").bind(allocation).bind(&fence.id).bind(bytes).execute(&mut *tx).await?;
+                }
                 completed += 1;
             }
             refresh_uncertain(&mut tx, &fence.id).await?;
