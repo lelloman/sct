@@ -6,13 +6,14 @@ must be reconciled with that work before merging.
 
 The foundation service coordinates HTTP and writer-lease renewal with shared
 `Signals`, `Lifecycle`, and HTTP adapters. SIGINT/SIGTERM stop accepting requests;
-active HTTP requests and an in-flight renewal drain. Lease loss is a service
+active HTTP requests drain while writer-lease renewal continues. Renewal stops
+only once HTTP finishes, preserving ownership for writes during draining. Lease loss is a service
 failure and produces a nonzero exit. Final cleanup attempts writer release and
 closes the catalog pool, including after a service failure. One 30-second budget
 covers drain and cleanup. The frontend-only scaffold uses the same HTTP lifecycle.
 Local administration commands retain their existing setup and cleanup sequence.
-Startup is outside the drain budget. Renewal stops during draining as before;
-the catalog's existing transaction fencing still applies if the lease expires.
+Startup is outside the drain budget. The catalog's existing transaction fencing
+still applies if renewal fails or the lease expires.
 On failure or deadline expiry the application exits nonzero explicitly, rather
 than waiting indefinitely for runtime teardown. The helper does not forcibly
 terminate blocking jobs or supervise future storage workers.

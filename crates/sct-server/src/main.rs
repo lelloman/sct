@@ -1,5 +1,5 @@
 use simple_server::http;
-use simple_server::lifecycle::{Lifecycle, ShutdownOptions, Signals};
+use simple_server::lifecycle::{Lifecycle, Shutdown, ShutdownOptions, Signals};
 use std::time::Duration;
 
 use sct_core::{
@@ -85,20 +85,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let shutdown = lifecycle.shutdown();
         let listener = http::bind(config.bind).await?;
         println!("ScT listening on {}", listener.local_addr()?);
-        lifecycle.service(
-            "http",
-            http::serve(
+        // Keep ownership alive while HTTP drains; stop renewing only after it finishes.
+        let lease_stop = Shutdown::new();
+        let stop_after_http = lease_stop.clone();
+        lifecycle.service("http", async move {
+            let result = http::serve(
                 listener,
                 sct_server::application(app, config.web_dir),
-                shutdown.clone(),
-            ),
-        )?;
+                shutdown,
+            )
+            .await;
+            stop_after_http.request();
+            result
+        })?;
         let lease = writer.clone();
         lifecycle.service("writer-lease", async move {
             loop {
                 tokio::select! {
                     biased;
-                    _ = shutdown.requested() => return Ok::<_, sct_core::error::Error>(()),
+                    _ = lease_stop.requested() => return Ok::<_, sct_core::error::Error>(()),
                     _ = tokio::time::sleep(Duration::from_secs(10)) => {
                         lease.renew().await?;
                     }
