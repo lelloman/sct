@@ -14,8 +14,9 @@ serde_json.workspace = true
 uuid.workspace = true
 sha2.workspace = true
 
+tokio = { workspace = true, features = ["fs", "io-util", "time", "sync"] }
+
 [dev-dependencies]
-tokio.workspace = true
 
 [lints]
 workspace = true

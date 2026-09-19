@@ -20,3 +20,5 @@ pub mod roots;
 pub mod accounting;
 
 pub mod content_catalog;
+
+pub mod payload;

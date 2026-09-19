@@ -9,6 +9,9 @@ pub trait Adapter: Send + Sync {
     /// Returns a stable destination identity, including provider namespace.
     fn validate(&self, settings: &Value) -> Result<String>;
     fn probe(&self, settings: &Value) -> ObservedHealth;
+    fn open(&self, _settings: &Value) -> Result<Arc<dyn crate::payload::ObjectStore>> {
+        Err(Error(ErrorCode::UnsupportedOperation))
+    }
 }
 #[derive(Clone, Default)]
 pub struct Registry(BTreeMap<String, Arc<dyn Adapter>>);
