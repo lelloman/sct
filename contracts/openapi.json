@@ -41,6 +41,15 @@
         ],
         "type": "object"
       },
+      "AdmissionState": {
+        "enum": [
+          "planning",
+          "pending",
+          "admitted",
+          "rejected"
+        ],
+        "type": "string"
+      },
       "AllocationId": {
         "maxLength": 128,
         "minLength": 1,
@@ -303,6 +312,22 @@
         "pattern": "^[a-f0-9]{64}$(?![\\s\\S])",
         "type": "string"
       },
+      "ChunkReference": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "digest",
+          "length"
+        ],
+        "type": "object"
+      },
       "CommitReceipt": {
         "additionalProperties": false,
         "description": "Retained for idempotency reconciliation even if its content version is later pruned.",
@@ -451,6 +476,30 @@
           "quota_bytes",
           "default_policy",
           "allocations"
+        ],
+        "type": "object"
+      },
+      "CreateUploadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_policy_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/FileManifest"
+          },
+          "target": {
+            "$ref": "#/components/schemas/FileTarget"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "target",
+          "expected_policy_revision",
+          "manifest"
         ],
         "type": "object"
       },
@@ -909,6 +958,126 @@
         ],
         "type": "object"
       },
+      "FileManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "chunks": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "format": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ManifestId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "format",
+          "profile",
+          "length",
+          "chunks",
+          "height"
+        ],
+        "type": "object"
+      },
+      "FileTarget": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expected_parent_revision": {
+                "$ref": "#/components/schemas/Revision"
+              },
+              "kind": {
+                "const": "create",
+                "type": "string"
+              },
+              "name": {
+                "$ref": "#/components/schemas/EntryName"
+              },
+              "parent_id": {
+                "$ref": "#/components/schemas/EntryId"
+              }
+            },
+            "required": [
+              "kind",
+              "parent_id",
+              "expected_parent_revision",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entry_id": {
+                "$ref": "#/components/schemas/EntryId"
+              },
+              "expected_revision": {
+                "$ref": "#/components/schemas/Revision"
+              },
+              "kind": {
+                "const": "replace",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "entry_id",
+              "expected_revision"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "FileVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "commit_sequence": {
+            "$ref": "#/components/schemas/CommitSequence"
+          },
+          "entry_id": {
+            "$ref": "#/components/schemas/EntryId"
+          },
+          "id": {
+            "$ref": "#/components/schemas/VersionId"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "manifest_id": {
+            "$ref": "#/components/schemas/ManifestId"
+          }
+        },
+        "required": [
+          "id",
+          "entry_id",
+          "manifest_id",
+          "length",
+          "commit_sequence"
+        ],
+        "type": "object"
+      },
       "GrantId": {
         "maxLength": 128,
         "minLength": 1,
@@ -1150,11 +1319,98 @@
         "pattern": "^[a-f0-9]{64}$(?![\\s\\S])",
         "type": "string"
       },
+      "ManifestPage": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "chunks": {
+                "items": {
+                  "$ref": "#/components/schemas/ChunkReference"
+                },
+                "type": "array"
+              },
+              "format": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "chunks",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "format",
+              "chunks"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "format": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "height": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "branch",
+                "type": "string"
+              },
+              "pages": {
+                "items": {
+                  "$ref": "#/components/schemas/PageReference"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "format",
+              "height",
+              "pages"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "Milliseconds": {
         "format": "uint64",
         "maximum": 86400000,
         "minimum": 1,
         "type": "integer"
+      },
+      "MissingChunkPage": {
+        "additionalProperties": false,
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkReference"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "chunks"
+        ],
+        "type": "object"
       },
       "ObservedHealth": {
         "enum": [
@@ -1266,6 +1522,26 @@
           "failed"
         ],
         "type": "string"
+      },
+      "PageReference": {
+        "additionalProperties": false,
+        "properties": {
+          "chunks": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/ManifestId"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "digest",
+          "length",
+          "chunks"
+        ],
+        "type": "object"
       },
       "PageSize": {
         "format": "uint64",
@@ -1956,6 +2232,32 @@
         "minimum": 0,
         "type": "integer"
       },
+      "TransferStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "admission": {
+            "$ref": "#/components/schemas/AdmissionState"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upload": {
+            "$ref": "#/components/schemas/UploadInspection"
+          }
+        },
+        "required": [
+          "upload",
+          "admission"
+        ],
+        "type": "object"
+      },
       "UpdateGrantRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2066,6 +2368,31 @@
         "minLength": 1,
         "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
         "type": "string"
+      },
+      "VersionPage": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/FileVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "type": "object"
       },
       "VersioningMode": {
         "enum": [

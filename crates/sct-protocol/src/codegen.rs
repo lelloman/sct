@@ -22,6 +22,17 @@ fn register_types(
     macro_rules! types { ($target:ident, $($ty:ty),* $(,)?) => { $(register::<$ty>(&mut $target, config, declarations);)* }; }
     types!(
         schemas,
+        ChunkReference,
+        PageReference,
+        ManifestPage,
+        FileManifest,
+        FileTarget,
+        CreateUploadRequest,
+        AdmissionState,
+        TransferStatus,
+        MissingChunkPage,
+        FileVersion,
+        VersionPage,
         RequestId,
         PrincipalId,
         CredentialId,

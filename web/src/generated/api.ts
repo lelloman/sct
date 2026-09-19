@@ -3,6 +3,8 @@
 
 export type AdapterDocumentation = { kind: string, display_name: string, acknowledgement: string, consistency: string, durability: string, deletion_and_capacity: string, limitations: Array<string>, };
 
+export type AdmissionState = "planning" | "pending" | "admitted" | "rejected";
+
 export type AllocationId = string & { readonly __brand: "AllocationId" };
 
 export type AllocationInspection = { id: AllocationId, pool_id: PoolId, owner: AllocationOwner, capacity_bytes: ByteCount, reserved_bytes: ByteCount, occupied_bytes: ByteCount, pending_cleanup_bytes: ByteCount, };
@@ -33,6 +35,8 @@ export type CheckpointId = string & { readonly __brand: "CheckpointId" };
 
 export type ChunkDigest = string & { readonly __brand: "ChunkDigest" };
 
+export type ChunkReference = { digest: ChunkDigest, length: ByteCount, };
+
 export type CommitReceipt = { version_id: VersionId, manifest_id: ManifestId, commit_sequence: CommitSequence, };
 
 export type CommitSequence = number;
@@ -46,6 +50,8 @@ export type CreateDirectoryRequest = { idempotency_key: IdempotencyKey, parent_i
 export type CreateGrantRequest = { root_id: RootId, principal_id: PrincipalId, capabilities: Array<Capability>, };
 
 export type CreateRootRequest = { idempotency_key: IdempotencyKey, owner_id: PrincipalId, display_name: EntryName, mount_path: RootPath, placement: Placement, quota_bytes: ByteCount, default_policy: RetentionPolicy, allocations: Array<RootAllocationRequest>, };
+
+export type CreateUploadRequest = { idempotency_key: IdempotencyKey, target: FileTarget, expected_policy_revision: Revision, manifest: FileManifest, };
 
 export type CredentialId = string & { readonly __brand: "CredentialId" };
 
@@ -83,6 +89,12 @@ export type ErrorResponse = { request_id: RequestId, code: ErrorCode, message: s
 
 export type ExpectedRevision = { expected_revision: Revision, };
 
+export type FileManifest = { format: number, profile: string, length: ByteCount, chunks: ByteCount, height: number, tree: ManifestId | null, };
+
+export type FileTarget = { "kind": "create", parent_id: EntryId, expected_parent_revision: Revision, name: EntryName, } | { "kind": "replace", entry_id: EntryId, expected_revision: Revision, };
+
+export type FileVersion = { id: VersionId, entry_id: EntryId, manifest_id: ManifestId, length: ByteCount, commit_sequence: CommitSequence, };
+
 export type GrantId = string & { readonly __brand: "GrantId" };
 
 export type GrantInspection = { id: GrantId, root_id: RootId, principal_id: PrincipalId, revision: Revision, capabilities: Array<Capability>, };
@@ -105,7 +117,11 @@ export type ListRequest = { limit: PageSize, cursor: CursorToken | null, };
 
 export type ManifestId = string & { readonly __brand: "ManifestId" };
 
+export type ManifestPage = { "kind": "chunks", format: number, chunks: Array<ChunkReference>, } | { "kind": "branch", format: number, height: number, pages: Array<PageReference>, };
+
 export type Milliseconds = number;
+
+export type MissingChunkPage = { chunks: Array<ChunkReference>, next_cursor: CursorToken | null, };
 
 export type ObservedHealth = "unknown" | "reachable" | "unavailable" | "degraded";
 
@@ -116,6 +132,8 @@ export type OperationInspection = { id: OperationId, root_id: RootId, owner_prin
 export type OperationKind = "upload" | "namespace" | "policy_transition" | "purge" | "reclamation" | "deletion" | "repair";
 
 export type OperationState = "active" | "recovering" | "cleaning_up" | "completed" | "aborted" | "failed";
+
+export type PageReference = { digest: ManifestId, length: ByteCount, chunks: ByteCount, };
 
 export type PageSize = number;
 
@@ -183,6 +201,8 @@ export type SetPolicyRequest = { scope: PolicyScope, expected_revision: Revision
 
 export type TimestampMs = number;
 
+export type TransferStatus = { upload: UploadInspection, admission: AdmissionState, failure: ErrorCode | null, };
+
 export type UpdateGrantRequest = { expected_revision: Revision, capabilities: Array<Capability>, };
 
 export type UpdateRootRequest = { expected_revision: Revision, display_name: EntryName, state: RootState, placement: Placement, quota_bytes: ByteCount, };
@@ -194,5 +214,7 @@ export type UploadInspection = { id: UploadId, root_id: RootId, operation_id: Op
 export type VersionCount = number;
 
 export type VersionId = string & { readonly __brand: "VersionId" };
+
+export type VersionPage = { versions: Array<FileVersion>, next_cursor: CursorToken | null, };
 
 export type VersioningMode = "independent_files" | "atomic_directory";
