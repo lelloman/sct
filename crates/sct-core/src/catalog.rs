@@ -85,6 +85,13 @@ impl Catalog {
                 include_str!("../migrations/0009_policy_previews.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                10,
+                "lifecycle_jobs".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0010_lifecycle_jobs.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

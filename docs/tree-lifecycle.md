@@ -142,7 +142,19 @@ mean it is not a promise of physical free space. Preview performs no retirement
 and owns no root lease. Root mutation generation, root/policy revisions, current
 credential/grant authority, administrator bounds and one-hour expiry are rechecked
 on every continuation/read and again at apply. Stale/expired previews must be
-recreated. Apply is supplied by SCT-37.
+recreated. `POST /roots/{root}/policy-jobs` requires the preview ID, expected root
+revision, idempotency key and explicit retention-effect acknowledgment. Applying
+installs the new policy and durable root owner in one transaction. The worker
+retires at most 64 versions per batch; stronger protection is effective immediately.
+`GET /roots/{root}/jobs/{job}` reports progress; `/advance` can drive a bounded
+worker pass. The service also resumes jobs in its normal recovery loop.
+Revoked authority blocks further logical retirement. `POST /.../{job}/resume`
+requires fresh authority and explicitly adopts the remaining work. No cancel or
+rollback endpoint exists. Physical cleanup can retry automatically; uncertain
+deletes remain charged. Jobs retain ownership through pinned retired readers and
+confirm cleanup before atomically completing the job and releasing the root.
+Reads continue throughout. Completed retirements are never restored by raising
+retention later.
 
 `POST /roots/{root}/entries/{entry}/hide` requires `delete` and a matching entry
 revision. It changes one visibility flag and its parent's revision atomically;

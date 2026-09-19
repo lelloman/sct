@@ -309,7 +309,7 @@ impl TransferEngine {
     pub async fn tick(&self) -> Result<()> {
         let rows = {
             let mut tx = self.writer.transaction().await?;
-            sqlx::query("SELECT o.id,o.root_id,o.epoch,o.server_epoch,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) expired FROM operations o WHERE o.state IN ('active','recovering','cleaning_up') AND (EXISTS(SELECT 1 FROM transfer_sessions s WHERE s.operation_id=o.id) OR EXISTS(SELECT 1 FROM tree_drafts d WHERE d.operation_id=o.id) OR EXISTS(SELECT 1 FROM object_copies c WHERE c.operation_id=o.id AND c.state IN ('writing','deleting'))) ORDER BY o.worker_expires_at NULLS FIRST,o.id LIMIT 64").fetch_all(&mut *tx).await?
+            sqlx::query("SELECT o.id,o.root_id,o.epoch,o.server_epoch,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) expired FROM operations o WHERE o.state IN ('active','recovering','cleaning_up') AND (EXISTS(SELECT 1 FROM transfer_sessions s WHERE s.operation_id=o.id) OR EXISTS(SELECT 1 FROM tree_drafts d WHERE d.operation_id=o.id) OR EXISTS(SELECT 1 FROM lifecycle_jobs j WHERE j.operation_id=o.id) OR EXISTS(SELECT 1 FROM object_copies c WHERE c.operation_id=o.id AND c.state IN ('writing','deleting'))) ORDER BY o.worker_expires_at NULLS FIRST,o.id LIMIT 64").fetch_all(&mut *tx).await?
         };
         for r in rows {
             let operation: OperationId = r.get::<String, _>("id").parse()?;
@@ -328,31 +328,41 @@ impl TransferEngine {
                 }
             };
             self.writer.renew_operation(&fence).await?;
+            if let Err(error) = self.advance_lifecycle(&fence).await {
+                self.lifecycle_failure(&fence, &error.0, true).await?;
+            }
             let terminal = {
                 let mut tx = self.writer.transaction().await?;
                 lock_content_root(&mut tx, &fence.root).await?;
                 check_fence(&mut tx, &fence, self.writer.epoch).await?;
                 sqlx::query("UPDATE transfer_sessions SET state='expired' WHERE operation_id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp()").bind(&fence.id).execute(&mut *tx).await?;
                 sqlx::query("UPDATE tree_drafts SET state='expired',phase='terminal' WHERE operation_id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1)").bind(&fence.id).execute(&mut *tx).await?;
-                let terminal:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1 AND (state IN ('committed','aborted','expired') OR admission='rejected')) OR EXISTS(SELECT 1 FROM tree_drafts WHERE operation_id=$1 AND state IN ('aborted','expired') AND NOT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1))").bind(&fence.id).fetch_one(&mut *tx).await?;
+                let terminal:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1 AND (state IN ('committed','aborted','expired') OR admission='rejected')) OR EXISTS(SELECT 1 FROM tree_drafts WHERE operation_id=$1 AND state IN ('aborted','expired') AND NOT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1)) OR EXISTS(SELECT 1 FROM lifecycle_jobs WHERE operation_id=$1 AND phase='cleanup')").bind(&fence.id).fetch_one(&mut *tx).await?;
                 tx.commit().await?;
                 terminal
             };
             // Failed provider I/O leaves durable charge for the next pass and does
             // not starve unrelated roots in this pass.
-            if self.reconcile_writes(&fence).await.is_err() {
+            if let Err(error) = self.reconcile_writes(&fence).await {
+                self.lifecycle_failure(&fence, &error.0, false).await?;
                 continue;
             }
             let garbage = match self.collect_unreferenced(&fence).await {
                 Ok(count) => count,
-                Err(_) => continue,
+                Err(error) => {
+                    self.lifecycle_failure(&fence, &error.0, false).await?;
+                    continue;
+                }
             };
-            if self.cleanup_copies(&fence).await.is_err() {
+            if let Err(error) = self.cleanup_copies(&fence).await {
+                self.lifecycle_failure(&fence, &error.0, false).await?;
                 continue;
             }
             if terminal && garbage < 64 {
                 self.writer.release_unused_reservations(&fence).await?;
-                let _ = self.writer.finish_operation(&fence, false).await;
+                if !self.complete_lifecycle(&fence).await? {
+                    let _ = self.writer.finish_operation(&fence, false).await;
+                }
             }
         }
         self.cleanup_terminal_tree_work().await?;
@@ -362,7 +372,7 @@ impl TransferEngine {
 impl TransferEngine {
     pub async fn heartbeat(&self) -> Result<()> {
         let mut tx = self.writer.transaction().await?;
-        sqlx::query("UPDATE operations SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE server_epoch=$1 AND worker_expires_at>clock_timestamp() AND state IN ('active','recovering','cleaning_up') AND kind='upload'").bind(self.writer.epoch).execute(&mut *tx).await?;
+        sqlx::query("UPDATE operations SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE server_epoch=$1 AND worker_expires_at>clock_timestamp() AND state IN ('active','recovering','cleaning_up') AND kind IN ('upload','policy_transition','purge')").bind(self.writer.epoch).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }

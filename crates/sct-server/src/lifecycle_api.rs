@@ -10,6 +10,10 @@ fn id<T: std::str::FromStr>(s: &str) -> Result<T, ApiError> {
 }
 pub fn routes() -> Router<App> {
     Router::new()
+        .route("/api/v1/roots/{root}/policy-jobs", post(apply))
+        .route("/api/v1/roots/{root}/jobs/{job}", get(job))
+        .route("/api/v1/roots/{root}/jobs/{job}/advance", post(advance_job))
+        .route("/api/v1/roots/{root}/jobs/{job}/resume", post(resume_job))
         .route("/api/v1/roots/{root}/policy-previews", post(create))
         .route(
             "/api/v1/roots/{root}/policy-previews/{preview}",
@@ -23,6 +27,60 @@ pub fn routes() -> Router<App> {
             "/api/v1/roots/{root}/policy-previews/{preview}/versions",
             get(versions),
         )
+}
+fn engine(app: &App) -> Result<&sct_core::transfer_io::TransferEngine, ApiError> {
+    app.transfer
+        .as_ref()
+        .ok_or(ApiError(ErrorCode::UnsupportedOperation))
+}
+async fn apply(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path(root): Path<String>,
+    body: Result<Json<ApplyChangeRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<LifecycleJob>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .apply_change(
+                &actor,
+                &id(&root)?,
+                &body.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+async fn job(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, job)): Path<(String, String)>,
+) -> Result<Json<LifecycleJob>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .lifecycle_job(&actor, &id(&root)?, &id(&job)?)
+            .await?,
+    ))
+}
+async fn advance_job(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, job)): Path<(String, String)>,
+) -> Result<Json<LifecycleJob>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .advance_lifecycle_job(&actor, &id(&root)?, &id(&job)?)
+            .await?,
+    ))
+}
+async fn resume_job(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, job)): Path<(String, String)>,
+) -> Result<Json<LifecycleJob>, ApiError> {
+    Ok(Json(
+        engine(&app)?
+            .resume_lifecycle_job(&actor, &id(&root)?, &id(&job)?)
+            .await?,
+    ))
 }
 async fn create(
     State(app): State<App>,
