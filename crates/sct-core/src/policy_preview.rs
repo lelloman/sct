@@ -42,7 +42,9 @@ pub(crate) async fn validate_change(
             scope,
             expected_policy_revision,
         } => (scope, expected_policy_revision, None),
-        PolicyChange::Move { .. } => return Err(Error(ErrorCode::UnsupportedOperation)),
+        PolicyChange::Move { .. } => {
+            return Ok(crate::namespace_moves::validate(db, root, change).await?.0);
+        }
     };
     let (scope_root, entry) = scope_parts(scope);
     require(scope_root.as_str() == root, ErrorCode::InvalidRequest)?;
@@ -106,6 +108,9 @@ pub(crate) async fn check_preview(
         ErrorCode::RevisionConflict,
     )?;
     let request: PreviewChangeRequest = serde_json::from_value(row.get("request"))?;
+    if matches!(request.change, PolicyChange::Move { .. }) {
+        authorize(db, actor, &root, Capability::Write).await?;
+    }
     validate_change(db, &root, &request.change).await?;
     Ok(request)
 }
@@ -137,7 +142,22 @@ async fn affected(
 ) -> Result<bool> {
     let scope = match change {
         PolicyChange::Set { scope, .. } | PolicyChange::Inherit { scope, .. } => scope,
-        _ => return Err(Error(ErrorCode::UnsupportedOperation)),
+        PolicyChange::Move { entry_id, .. } => {
+            let ancestors=sqlx::query("WITH RECURSIVE a AS (SELECT id,parent_id,policy,0 depth FROM entries WHERE root_id=$1 AND id=$2 UNION ALL SELECT e.id,e.parent_id,e.policy,a.depth+1 FROM entries e JOIN a ON e.id=a.parent_id WHERE e.root_id=$1 AND a.depth<4096) SELECT id,policy FROM a ORDER BY depth")
+                .bind(root).bind(entry).fetch_all(db).await?;
+            for ancestor in ancestors {
+                if ancestor
+                    .get::<Option<serde_json::Value>, _>("policy")
+                    .is_some()
+                {
+                    return Ok(false);
+                }
+                if ancestor.get::<String, _>("id") == entry_id.as_str() {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
     };
     match scope {
         PolicyScope::Root { .. } => Ok(matches!(old.source, PolicyScope::Root { .. })),
@@ -177,10 +197,15 @@ impl Writer {
             ErrorCode::RevisionConflict,
         )?;
         validate_change(&mut tx, root.as_str(), &request.change).await?;
+        if matches!(request.change, PolicyChange::Move { .. }) {
+            authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
+        }
         let authority = authority(&mut tx, actor, root.as_str()).await?;
         let preview = id();
         sqlx::query("INSERT INTO change_previews(id,root_id,principal_id,request,root_revision,mutation_serial,authority) VALUES($1,$2,$3,$4,$5,$6,$7)")
             .bind(&preview).bind(root.as_str()).bind(&actor.principal).bind(json(request)?).bind(request.expected_root_revision.as_str()).bind(row.get::<i64,_>("mutation_serial")).bind(authority).execute(&mut *tx).await?;
+        crate::namespace_moves::initialize(&mut tx, root.as_str(), &preview, &request.change)
+            .await?;
         let result = inspect(&load(&mut tx, root.as_str(), &preview).await?)?;
         tx.commit().await?;
         Ok(result)
@@ -209,6 +234,12 @@ impl Writer {
         let request = check_preview(&mut tx, actor, &row).await?;
         if row.get::<String, _>("state") != "planning" {
             return inspect(&row);
+        }
+        if !row.get::<bool, _>("namespace_done") {
+            crate::namespace_moves::advance(&mut tx, root.as_str(), preview.as_str()).await?;
+            let result = inspect(&load(&mut tx, root.as_str(), preview.as_str()).await?)?;
+            tx.commit().await?;
+            return Ok(result);
         }
         let proposed = validate_change(&mut tx, root.as_str(), &request.change).await?;
         let cursor: Option<String> = row.get("cursor");

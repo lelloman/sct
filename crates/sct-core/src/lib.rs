@@ -41,6 +41,7 @@ mod deletion;
 pub mod download;
 mod graph_work;
 mod lifecycle;
+mod namespace_moves;
 mod policy_preview;
 mod tree_build;
 mod tree_catalog;

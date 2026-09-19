@@ -92,6 +92,13 @@ impl Catalog {
                 include_str!("../migrations/0010_lifecycle_jobs.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                11,
+                "move_previews".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0011_move_previews.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

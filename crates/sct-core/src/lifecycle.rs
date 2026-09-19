@@ -34,6 +34,23 @@ pub(crate) fn required(kind: &str) -> Capability {
         Capability::ManagePolicy
     }
 }
+async fn authorize_job(db: &mut PgConnection, actor: &Actor, row: &PgRow) -> Result<()> {
+    let root: String = row.get("root_id");
+    authorize(db, actor, &root, required(&row.get::<String, _>("kind"))).await?;
+    if let Some(preview) = row.get::<Option<String>, _>("preview_id") {
+        let request: serde_json::Value =
+            sqlx::query_scalar("SELECT request FROM change_previews WHERE root_id=$1 AND id=$2")
+                .bind(&root)
+                .bind(preview)
+                .fetch_one(&mut *db)
+                .await?;
+        let request: PreviewChangeRequest = serde_json::from_value(request)?;
+        if matches!(request.change, PolicyChange::Move { .. }) {
+            authorize(db, actor, &root, Capability::Write).await?;
+        }
+    }
+    Ok(())
+}
 pub(crate) async fn apply_policy(
     db: &mut PgConnection,
     root: &str,
@@ -67,6 +84,7 @@ pub(crate) async fn apply_policy(
             sqlx::query("UPDATE entries SET policy=NULL,policy_id=NULL,policy_revision=NULL,revision=$3 WHERE root_id=$1 AND id=$2")
                 .bind(root).bind(entry_id.as_str()).bind(id()).execute(&mut *db).await?;
         }
+        PolicyChange::Move { .. } => crate::namespace_moves::apply(db, root, change).await?,
         _ => return Err(Error(ErrorCode::UnsupportedOperation)),
     }
     sqlx::query("UPDATE roots SET revision=$2 WHERE id=$1")
@@ -184,6 +202,7 @@ impl TransferEngine {
             row.get::<String, _>("state") == "blocked",
             ErrorCode::InvalidRequest,
         )?;
+        authorize_job(&mut tx, actor, &row).await?;
         sqlx::query("UPDATE lifecycle_jobs SET run_principal_id=$2,credential_id=$3,failure=NULL,state=CASE WHEN phase='cleanup' THEN 'cleaning_up' ELSE 'applying' END WHERE operation_id=$1")
             .bind(operation.as_str()).bind(&actor.principal).bind(&actor.credential).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'job_resumed',$3)")
@@ -208,14 +227,7 @@ impl TransferEngine {
             principal: row.get("run_principal_id"),
             credential: row.get("credential_id"),
         };
-        if let Err(error) = authorize(
-            &mut tx,
-            &actor,
-            &fence.root,
-            required(&row.get::<String, _>("kind")),
-        )
-        .await
-        {
+        if let Err(error) = authorize_job(&mut tx, &actor, &row).await {
             block(&mut tx, &fence.id, &error.0).await?;
             tx.commit().await?;
             return Ok(());

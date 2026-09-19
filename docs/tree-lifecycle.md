@@ -124,6 +124,12 @@ jobs retain root ownership/charges, distinguish backend failure from authorizati
 and never automatically broaden authority. Recovery renews/claims the same fence.
 Cross-policy moves validate both namespace endpoints again at apply and publish the
 move atomically before bounded policy reconciliation, without partial subtree moves.
+Move previews first walk persisted pages of at most 128 children, validating
+projected path lengths and rejecting nested atomic boundaries. Both `write` and
+`manage_policy` are required, including on job resume and each retirement batch.
+Explicit policy overrides within the moved subtree retain their own policy;
+inherited histories are evaluated against the destination policy. Even moves
+between distinct policy boundaries with equal values use explicit preview/apply.
 
 ## Qualification boundaries
 
