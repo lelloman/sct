@@ -16,7 +16,7 @@ pub(crate) async fn row(db: &mut PgConnection, entry: &str) -> Result<PgRow> {
         .await?
         .ok_or(Error(ErrorCode::NotFound))
 }
-fn inspect(row: &PgRow) -> Result<EntryInspection> {
+pub(crate) fn inspect(row: &PgRow) -> Result<EntryInspection> {
     Ok(EntryInspection {
         id: row.get::<String, _>("id").parse()?,
         root_id: row.get::<String, _>("root_id").parse()?,
@@ -34,12 +34,16 @@ fn inspect(row: &PgRow) -> Result<EntryInspection> {
             .transpose()?,
     })
 }
+pub(crate) async fn hidden(db: &mut PgConnection, entry: &str) -> Result<bool> {
+    Ok(sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,hidden FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.hidden FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(bool_or(hidden),true) FROM a")
+        .bind(entry).fetch_one(db).await?)
+}
 async fn mutable_directory(db: &mut PgConnection, root: &str, entry: &str) -> Result<PgRow> {
     let row = row(db, entry).await?;
     require(
         row.get::<String, _>("root_id") == root
             && row.get::<String, _>("kind") == "directory"
-            && !row.get::<bool, _>("hidden"),
+            && !hidden(db, entry).await?,
         ErrorCode::InvalidRequest,
     )?;
     require(
@@ -54,6 +58,12 @@ async fn path_length(db: &mut PgConnection, entry: &str) -> Result<i64> {
 impl Writer {
     pub async fn inspect_entry(&self, actor: &Actor, entry: &EntryId) -> Result<EntryInspection> {
         let mut tx = self.transaction().await?;
+        let initial = row(&mut tx, entry.as_str()).await?;
+        let root: String = initial.get("root_id");
+        sqlx::query("SELECT id FROM roots WHERE id=$1 FOR SHARE")
+            .bind(&root)
+            .execute(&mut *tx)
+            .await?;
         let entry = row(&mut tx, entry.as_str()).await?;
         authorize(
             &mut tx,
@@ -62,7 +72,9 @@ impl Writer {
             Capability::ListRead,
         )
         .await?;
-        inspect(&entry)
+        let mut result = inspect(&entry)?;
+        result.hidden = hidden(&mut tx, result.id.as_str()).await?;
+        Ok(result)
     }
     pub async fn resolve_path(
         &self,
@@ -209,8 +221,13 @@ impl Writer {
             ErrorCode::NotFound,
         )?;
         let revision: Revision = dir.get::<String, _>("revision").parse()?;
+        let inherited_hidden = hidden(&mut tx, directory.as_str()).await?;
+        require(
+            request.include_hidden || !inherited_hidden,
+            ErrorCode::NotFound,
+        )?;
         let scope = format!("entries:{}:{}", root.as_str(), directory.as_str());
-        let binding = json!({"revision":revision,"limit":request.limit,"include_hidden":request.include_hidden});
+        let binding = json!({"revision":revision,"limit":request.limit,"include_hidden":request.include_hidden,"hidden":inherited_hidden});
         let after: (String, String) = if let Some(cursor) = &request.cursor {
             require(
                 cursor.directory_id == *directory && cursor.directory_revision == revision,
@@ -226,7 +243,11 @@ impl Writer {
         let items: Vec<_> = rows
             .iter()
             .take(request.limit.get() as usize)
-            .map(inspect)
+            .map(|row| {
+                let mut entry = inspect(row)?;
+                entry.hidden |= inherited_hidden;
+                Ok(entry)
+            })
             .collect::<Result<_>>()?;
         let next_cursor = if more {
             let last = items.last().unwrap();
@@ -273,7 +294,10 @@ impl Writer {
         )?;
         let current = row(&mut tx, entry.as_str()).await?;
         revision(&current, &request.expected_revision)?;
-        require(!current.get::<bool, _>("hidden"), ErrorCode::InvalidRequest)?;
+        require(
+            !hidden(&mut tx, entry.as_str()).await?,
+            ErrorCode::InvalidRequest,
+        )?;
         let source: String = current
             .get::<Option<String>, _>("parent_id")
             .ok_or(Error(ErrorCode::InvalidRequest))?;

@@ -1,3 +1,5 @@
+#[path = "support/deletion_tests.rs"]
+mod deletion_tests;
 #[path = "support/graph_work_tests.rs"]
 mod graph_work_tests;
 mod support;

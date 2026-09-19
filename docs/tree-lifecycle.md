@@ -127,6 +127,17 @@ move atomically before bounded policy reconciliation, without partial subtree mo
 
 ## Qualification boundaries
 
+`POST /roots/{root}/entries/{entry}/hide` requires `delete` and a matching entry
+revision. It changes one visibility flag and its parent's revision atomically;
+descendant visibility is inherited, so even very large directories disappear
+without a partial walk. History, copies and charges are unchanged. Root mount
+directories and atomic descendants are not hide targets. Use directory drafts to
+remove atomic children. Existing listing with `include_hidden=true` explicitly
+reveals hidden entries and descendants, with their effective hidden state. Normal
+listing/path resolution and writes by ID reject hidden ancestors. Recreating the
+same name produces a new identity; deletion has no undelete or permanent-purge
+side effect.
+
 Snapshot reads are rooted in an explicit directory version. Get the current ID
 from `GET /roots/{root}/entries/{entry}/snapshot`; the existing entry-version
 history route lists retained file or directory versions. Under

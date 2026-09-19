@@ -37,6 +37,7 @@ mod ingest;
 
 mod publication;
 
+mod deletion;
 pub mod download;
 mod graph_work;
 mod tree_build;

@@ -18,6 +18,7 @@ fn id<T: std::str::FromStr>(s: &str) -> Result<T, ApiError> {
 }
 pub fn routes() -> Router<App> {
     Router::new()
+        .route("/api/v1/roots/{root}/entries/{entry}/hide", post(hide))
         .route(
             "/api/v1/roots/{root}/entries/{entry}/snapshot",
             get(current),
@@ -69,6 +70,19 @@ pub fn routes() -> Router<App> {
             "/api/v1/roots/{root}/tree-drafts/{draft}/commit",
             post(commit),
         )
+}
+async fn hide(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, entry)): Path<(String, String)>,
+    body: Result<Json<HideEntryRequest>, axum::extract::rejection::JsonRejection>,
+) -> Result<Json<EntryInspection>, ApiError> {
+    let body = body.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
+    Ok(Json(
+        app.writer
+            .hide_entry(&actor, &id(&root)?, &id(&entry)?, &body)
+            .await?,
+    ))
 }
 async fn current(
     State(app): State<App>,
