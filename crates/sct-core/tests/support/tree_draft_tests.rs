@@ -46,7 +46,7 @@ fn directory(identity: DraftEntryIdentity, parent_id: EntryId, name: &str) -> Dr
         file: None,
     }
 }
-async fn import_base(e: &TransferEngine, a: &Actor, r: &RootId, d: &UploadId) {
+pub(super) async fn import_base(e: &TransferEngine, a: &Actor, r: &RootId, d: &UploadId) {
     for _ in 0..20 {
         if e.tree_draft_status(a, r, d).await.unwrap().phase != TreeDraftPhase::Initializing {
             return;

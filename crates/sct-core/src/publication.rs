@@ -39,9 +39,6 @@ impl TransferEngine {
         )?;
         check_fence(&mut tx, &s.fence, self.writer.epoch).await?;
         s.check_target(&mut tx, actor).await?;
-        let UploadRequest::File(request) = &s.request else {
-            return Err(crate::error::Error(ErrorCode::UnsupportedOperation));
-        };
         let missing:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM session_objects p JOIN root_backends rb ON rb.root_id=p.root_id WHERE p.session_id=$1 AND NOT EXISTS(SELECT 1 FROM object_copies c WHERE c.root_id=p.root_id AND c.digest=p.digest AND c.backend_id=rb.backend_id AND c.state='available'))").bind(&s.id).fetch_one(&mut *tx).await?;
         require(!missing, ErrorCode::IntegrityFailure)?;
         let sql = format!(
@@ -96,10 +93,15 @@ impl TransferEngine {
             .bind(&s.fence.id)
             .execute(&mut *tx)
             .await?;
-        let entry = match &request.target {
-            FileTarget::Create {
-                parent_id, name, ..
-            } => {
+        let entry = match &s.request {
+            UploadRequest::Tree(request) => request.base.directory_id.as_str().to_owned(),
+            UploadRequest::File(CreateUploadRequest {
+                target:
+                    FileTarget::Create {
+                        parent_id, name, ..
+                    },
+                ..
+            }) => {
                 let entry = id();
                 sqlx::query("INSERT INTO entries(id,root_id,parent_id,name,kind,revision) VALUES($1,$2,$3,$4,'file',$5)").bind(&entry).bind(&s.root).bind(parent_id.as_str()).bind(name.as_str()).bind(id()).execute(&mut *tx).await?;
                 sqlx::query("UPDATE entries SET revision=$2 WHERE id=$1")
@@ -109,11 +111,18 @@ impl TransferEngine {
                     .await?;
                 entry
             }
-            FileTarget::Replace { entry_id, .. } => entry_id.as_str().to_owned(),
+            UploadRequest::File(CreateUploadRequest {
+                target: FileTarget::Replace { entry_id, .. },
+                ..
+            }) => entry_id.as_str().to_owned(),
         };
         let version = id();
         let manifest: String = row.get("manifest");
-        let sequence:i64=sqlx::query_scalar("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES($1,$2,$3,$4,$5) RETURNING sequence").bind(&version).bind(&s.root).bind(&entry).bind(&manifest).bind(request.manifest.length.get() as i64).fetch_one(&mut *tx).await?;
+        let kind = match &s.request {
+            UploadRequest::File(_) => "file",
+            UploadRequest::Tree(_) => "directory",
+        };
+        let sequence:i64=sqlx::query_scalar("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) SELECT $1,$2,$3,digest,length,$5 FROM content_objects WHERE root_id=$2 AND digest=$4 AND kind=$5 RETURNING sequence").bind(&version).bind(&s.root).bind(&entry).bind(&manifest).bind(kind).fetch_one(&mut *tx).await?;
         sqlx::query("UPDATE entries SET current_version_id=$2,revision=$3 WHERE id=$1")
             .bind(&entry)
             .bind(&version)

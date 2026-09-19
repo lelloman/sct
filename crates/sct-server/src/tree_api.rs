@@ -48,6 +48,10 @@ pub fn routes() -> Router<App> {
             "/api/v1/roots/{root}/tree-drafts/{draft}/admit",
             post(admit),
         )
+        .route(
+            "/api/v1/roots/{root}/tree-drafts/{draft}/commit",
+            post(commit),
+        )
 }
 async fn create(
     State(app): State<App>,
@@ -182,5 +186,19 @@ async fn admit(
         engine(&app)?
             .admit_tree_draft(&actor, &id(&root)?, &id(&draft)?)
             .await?,
+    ))
+}
+async fn commit(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((root, draft)): Path<(String, String)>,
+) -> Result<Json<CommitReceipt>, ApiError> {
+    let root = id(&root)?;
+    let draft = id(&draft)?;
+    engine(&app)?
+        .tree_draft_status(&actor, &root, &draft)
+        .await?;
+    Ok(Json(
+        engine(&app)?.commit_upload(&actor, &root, &draft).await?,
     ))
 }

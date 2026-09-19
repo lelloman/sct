@@ -154,7 +154,13 @@ admitted before using the ordinary upload chunk/seal routes with the same ID.
 Whole-tree unique payload quota and every destination's metadata/payload staging
 obligation are checked before bytes; deduplication spans all files. Terminal draft
 working rows are removed in bounded recovery batches, preserving the small draft
-receipt/status record. Publication follows under SCT-33.
+receipt/status record. `POST /{draft}/commit` (also the ordinary upload commit
+route) atomically installs one directory-version pointer, rotates its snapshot
+history and moves copy accounting. No descendant entry/version rows are written.
+Unchanged subtrees retain their canonical manifests; a no-op patch can create a
+new version of the same root manifest. Commit retries return the original receipt.
+An unsealed or failed publication leaves the old tree current. Snapshot readers
+pin the containing directory version, including when rotation retires it.
 
 Migration 5 extends the existing version/pin identities with a content kind; old
 file rows default to `file`. Directory versions point at immutable manifests and
