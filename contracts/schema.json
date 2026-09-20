@@ -3626,6 +3626,9 @@
     "RootManagement": {
       "additionalProperties": false,
       "properties": {
+        "allow_relaxed": {
+          "type": "boolean"
+        },
         "capabilities": {
           "items": {
             "$ref": "#/$defs/Capability"
@@ -3652,6 +3655,12 @@
             }
           ]
         },
+        "max_versions": {
+          "$ref": "#/$defs/VersionCount"
+        },
+        "min_versions": {
+          "$ref": "#/$defs/VersionCount"
+        },
         "quota_bytes": {
           "$ref": "#/$defs/ByteCount"
         },
@@ -3670,6 +3679,9 @@
         "revision",
         "quota_bytes",
         "quota_ceiling_bytes",
+        "min_versions",
+        "max_versions",
+        "allow_relaxed",
         "capabilities"
       ],
       "type": "object"

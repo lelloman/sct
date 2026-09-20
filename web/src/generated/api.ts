@@ -299,7 +299,7 @@ export type RootId = string & { readonly __brand: "RootId" };
 
 export type RootInspection = { id: RootId, owner_id: PrincipalId, display_name: EntryName, mount_path: RootPath, revision: Revision, state: RootState, placement: Placement, quota_bytes: ByteCount, default_policy: RetentionPolicy, capabilities: Array<Capability>, };
 
-export type RootManagement = { root_id: RootId, revision: Revision, quota_bytes: ByteCount, quota_ceiling_bytes: ByteCount, expected_upload_interval_seconds: ByteCount | null, last_commit_at_ms: TimestampMs | null, capabilities: Array<Capability>, };
+export type RootManagement = { root_id: RootId, revision: Revision, quota_bytes: ByteCount, quota_ceiling_bytes: ByteCount, min_versions: VersionCount, max_versions: VersionCount, allow_relaxed: boolean, expected_upload_interval_seconds: ByteCount | null, last_commit_at_ms: TimestampMs | null, capabilities: Array<Capability>, };
 
 export type RootPage = { items: Array<RootInspection>, next_cursor: CursorToken | null, };
 

@@ -55,6 +55,9 @@ async fn root_management(
         revision: row.get::<String, _>("revision").parse()?,
         quota_bytes: (row.get::<i64, _>("quota") as u64).try_into()?,
         quota_ceiling_bytes: (row.get::<i64, _>("quota_ceiling") as u64).try_into()?,
+        min_versions: (row.get::<i64, _>("min_versions") as u64).try_into()?,
+        max_versions: (row.get::<i64, _>("max_versions") as u64).try_into()?,
+        allow_relaxed: row.get("allow_relaxed"),
         expected_upload_interval_seconds: row
             .get::<Option<i64>, _>("expected_upload_interval_seconds")
             .map(|n| ByteCount::try_from(n as u64))

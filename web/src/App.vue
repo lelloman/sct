@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import RootView from "./components/RootView.vue";
 import CredentialList from "./components/CredentialList.vue";
 import PrincipalAdmin from "./components/PrincipalAdmin.vue";
+import StorageAdmin from "./components/StorageAdmin.vue";
 import type {
   AccountInspection,
   BrowserLoginOptions,
@@ -260,6 +261,7 @@ onUnmounted(() => {
       <PrincipalAdmin
         v-else-if="account.administrator && route === '/accounts'"
       />
+      <StorageAdmin v-else-if="account.administrator && route === '/storage'" />
       <section
         v-else-if="
           account.administrator &&

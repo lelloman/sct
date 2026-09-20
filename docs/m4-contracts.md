@@ -405,3 +405,15 @@ Grants expose only delegable capabilities and confirm revocation. Browser tests
 exercise a real two-version retirement and verify a delegated reader has no
 management controls. Program file-mutation permissions remain distinct from the
 browser's management surface.
+
+### Storage administration (SCT-57)
+
+Administrators can provision and resize physical pools and root/staging
+allocations, configure local or S3 backend instances, provision/enable roots,
+and set delegated quota ceilings and retention constraints. Lists are paged;
+updates use inspected revisions and expose server capacity/conflict failures.
+Backend destination identity remains immutable; S3 credential fields accept
+server environment-variable references only. Root-management inspection now
+includes current retention bounds so forms can edit actual values. Real browser
+qualification provisions a private local backend and root, changes limits and
+allocations, and verifies that shrinking a pool below obligations is rejected.

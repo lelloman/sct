@@ -3627,6 +3627,9 @@
       "RootManagement": {
         "additionalProperties": false,
         "properties": {
+          "allow_relaxed": {
+            "type": "boolean"
+          },
           "capabilities": {
             "items": {
               "$ref": "#/components/schemas/Capability"
@@ -3653,6 +3656,12 @@
               }
             ]
           },
+          "max_versions": {
+            "$ref": "#/components/schemas/VersionCount"
+          },
+          "min_versions": {
+            "$ref": "#/components/schemas/VersionCount"
+          },
           "quota_bytes": {
             "$ref": "#/components/schemas/ByteCount"
           },
@@ -3671,6 +3680,9 @@
           "revision",
           "quota_bytes",
           "quota_ceiling_bytes",
+          "min_versions",
+          "max_versions",
+          "allow_relaxed",
           "capabilities"
         ],
         "type": "object"
