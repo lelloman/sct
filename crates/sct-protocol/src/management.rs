@@ -18,6 +18,7 @@ macro_rules! enumeration {
     )*};
 }
 enumeration! {
+    pub enum BackupFreshness { NotConfigured, NeverCommitted, OnTime, Overdue }
     pub enum MaintenanceKind { IntegrityScan, MirrorRepair }
     pub enum MaintenanceState { Queued, Running, RetryWait, Blocked, Completed, Failed }
     pub enum IntegrityFindingKind { Missing, Corrupt, Inaccessible, CatalogInconsistent }
@@ -67,6 +68,8 @@ dto! {
         pub allow_relaxed: bool,
         pub expected_upload_interval_seconds: Option<ByteCount>,
         pub last_commit_at_ms: Option<TimestampMs>,
+        pub next_expected_at_ms: Option<TimestampMs>,
+        pub backup_freshness: BackupFreshness,
         pub capabilities: Vec<Capability>,
     }
     pub struct UpdateRootManagementRequest {

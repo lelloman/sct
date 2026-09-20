@@ -144,7 +144,7 @@ impl TransferEngine {
             .bind(json(&receipt)?)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("UPDATE roots SET populated=true,revision=$2 WHERE id=$1")
+        sqlx::query("UPDATE roots SET populated=true,revision=$2,last_commit_at=clock_timestamp() WHERE id=$1")
             .bind(&s.root)
             .bind(id())
             .execute(&mut *tx)

@@ -48,7 +48,9 @@ async fn root_management(
 ) -> Result<RootManagement> {
     let capabilities = auth::capabilities(db, actor, root.as_str()).await?;
     require(!capabilities.is_empty(), ErrorCode::Forbidden)?;
-    let row = sqlx::query("SELECT *, (extract(epoch FROM last_commit_at)*1000)::bigint AS last_commit_ms FROM roots WHERE id=$1")
+    let row = sqlx::query("SELECT *, (extract(epoch FROM last_commit_at)*1000)::bigint AS last_commit_ms,
+        (extract(epoch FROM last_commit_at + expected_upload_interval_seconds * interval '1 second')*1000)::bigint AS next_expected_ms,
+        COALESCE(last_commit_at + expected_upload_interval_seconds * interval '1 second' < clock_timestamp(),false) AS overdue FROM roots WHERE id=$1")
         .bind(root.as_str()).fetch_one(db).await?;
     Ok(RootManagement {
         root_id: root.clone(),
@@ -66,6 +68,22 @@ async fn root_management(
             .get::<Option<i64>, _>("last_commit_ms")
             .map(|n| TimestampMs::try_from(n as u64))
             .transpose()?,
+        next_expected_at_ms: row
+            .get::<Option<i64>, _>("next_expected_ms")
+            .map(|n| TimestampMs::try_from(n as u64))
+            .transpose()?,
+        backup_freshness: if row
+            .get::<Option<i64>, _>("expected_upload_interval_seconds")
+            .is_none()
+        {
+            BackupFreshness::NotConfigured
+        } else if row.get::<Option<i64>, _>("last_commit_ms").is_none() {
+            BackupFreshness::NeverCommitted
+        } else if row.get::<bool, _>("overdue") {
+            BackupFreshness::Overdue
+        } else {
+            BackupFreshness::OnTime
+        },
         capabilities,
     })
 }

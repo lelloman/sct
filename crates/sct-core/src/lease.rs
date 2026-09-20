@@ -69,7 +69,9 @@ impl Writer {
         require(count == 1, ErrorCode::DestinationUnavailable)
     }
     pub async fn ready(&self) -> bool {
-        self.transaction().await.is_ok()
+        tokio::time::timeout(std::time::Duration::from_secs(2), self.transaction())
+            .await
+            .is_ok_and(|result| result.is_ok())
     }
     pub async fn release(&self) -> Result<()> {
         sqlx::query(

@@ -36,6 +36,7 @@ fn register_types(
         CredentialInspection,
         CredentialPage,
         RootManagement,
+        BackupFreshness,
         UpdateRootManagementRequest,
         UpdateQuotaCeilingRequest,
         CreatePoolRequest,

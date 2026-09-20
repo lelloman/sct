@@ -40,7 +40,13 @@ async fn api_not_implemented() -> impl IntoResponse {
 
 async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {
     match catalog {
-        Some(catalog) if catalog.ping().await.is_ok() => StatusCode::NO_CONTENT,
+        Some(catalog)
+            if tokio::time::timeout(std::time::Duration::from_secs(2), catalog.ping())
+                .await
+                .is_ok_and(|result| result.is_ok()) =>
+        {
+            StatusCode::NO_CONTENT
+        }
         _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
@@ -50,7 +56,9 @@ pub mod config;
 pub mod oidc;
 
 pub fn application(app: api::App, web_directory: PathBuf) -> Router {
-    router(Some(app.writer.catalog().clone()), web_directory).merge(api::routes(app))
+    let router =
+        router(Some(app.writer.catalog().clone()), web_directory).merge(api::routes(app.clone()));
+    observability::install(router, app)
 }
 pub fn capabilities() -> sct_protocol::Capabilities {
     use sct_protocol::*;
@@ -88,3 +96,5 @@ mod inspection_api;
 
 mod checkpoint_api;
 mod maintenance_api;
+
+mod observability;

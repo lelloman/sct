@@ -128,9 +128,29 @@ async fn directory_publication_is_atomic_replays_receipts_and_rotates_snapshots(
         e.commit_upload(&a, &r.id, &first).await.unwrap_err().0,
         ErrorCode::InvalidRequest
     );
+    assert!(
+        w.root_management(&a, &r.id)
+            .await
+            .unwrap()
+            .last_commit_at_ms
+            .is_none()
+    );
     seal(&e, &a, &r.id, &first).await;
     let one = e.commit_upload(&a, &r.id, &first).await.unwrap();
+    let committed_at = w
+        .root_management(&a, &r.id)
+        .await
+        .unwrap()
+        .last_commit_at_ms;
+    assert!(committed_at.is_some());
     assert_eq!(e.commit_upload(&a, &r.id, &first).await.unwrap(), one);
+    assert_eq!(
+        w.root_management(&a, &r.id)
+            .await
+            .unwrap()
+            .last_commit_at_ms,
+        committed_at
+    );
     assert_eq!(
         e.tree_draft_status(&a, &r.id, &first).await.unwrap().result,
         Some(one.clone())

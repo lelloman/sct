@@ -141,6 +141,13 @@ impl Catalog {
                 include_str!("../migrations/0017_checkpoint_exports.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                18,
+                "commit_freshness".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0018_commit_freshness.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

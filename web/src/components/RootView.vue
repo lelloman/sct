@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import type { RootInspection } from "../generated/api";
+import type { RootInspection, RootManagement } from "../generated/api";
 import { api, bytes, errorMessage, segment } from "../api";
 import SnapshotBrowser from "./SnapshotBrowser.vue";
 import RootSettings from "./RootSettings.vue";
@@ -11,6 +11,13 @@ import MaintenancePanel from "./MaintenancePanel.vue";
 const tab = ref("snapshots");
 const props = defineProps<{ rootId: string; administrator: boolean }>();
 const root = ref<RootInspection | null>(null);
+const management = ref<RootManagement | null>(null);
+const freshness = {
+  not_configured: "Overdue monitoring off",
+  never_committed: "No successful backup yet",
+  on_time: "Backup on time",
+  overdue: "Backup overdue",
+};
 const error = ref("");
 const loading = ref(true);
 async function load() {
@@ -19,6 +26,9 @@ async function load() {
   try {
     root.value = await api<RootInspection>(
       `/api/v1/roots/${segment(props.rootId)}`,
+    );
+    management.value = await api<RootManagement>(
+      `/api/v1/roots/${segment(props.rootId)}/management`,
     );
   } catch (failure) {
     error.value = errorMessage(failure);
@@ -30,6 +40,9 @@ async function refreshRoot() {
   try {
     root.value = await api<RootInspection>(
       `/api/v1/roots/${segment(props.rootId)}`,
+    );
+    management.value = await api<RootManagement>(
+      `/api/v1/roots/${segment(props.rootId)}/management`,
     );
   } catch (failure) {
     error.value = errorMessage(failure);
@@ -54,6 +67,25 @@ onMounted(() => void load());
         </p>
       </div>
     </div>
+    <p
+      v-if="management"
+      class="notice"
+      :class="{ error: management.backup_freshness === 'overdue' }"
+    >
+      <strong>{{ freshness[management.backup_freshness] }}</strong>
+      <span v-if="management.last_commit_at_ms">
+        · Last successful commit
+        {{
+          new Date(Number(management.last_commit_at_ms)).toLocaleString()
+        }}</span
+      >
+      <span v-if="management.next_expected_at_ms">
+        · Expected by
+        {{
+          new Date(Number(management.next_expected_at_ms)).toLocaleString()
+        }}</span
+      >
+    </p>
     <nav class="tabs" aria-label="Root sections">
       <button
         class="quiet"

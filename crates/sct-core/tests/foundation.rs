@@ -18,6 +18,8 @@ mod management_tests;
 mod mirror_repair_tests;
 #[path = "support/move_tests.rs"]
 mod move_tests;
+#[path = "support/observability_tests.rs"]
+mod observability_tests;
 #[path = "support/policy_preview_tests.rs"]
 mod policy_preview_tests;
 #[path = "support/recovery_tests.rs"]

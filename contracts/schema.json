@@ -412,6 +412,15 @@
       ],
       "type": "object"
     },
+    "BackupFreshness": {
+      "enum": [
+        "not_configured",
+        "never_committed",
+        "on_time",
+        "overdue"
+      ],
+      "type": "string"
+    },
     "BrowserLoginOptions": {
       "additionalProperties": false,
       "properties": {
@@ -3629,6 +3638,9 @@
         "allow_relaxed": {
           "type": "boolean"
         },
+        "backup_freshness": {
+          "$ref": "#/$defs/BackupFreshness"
+        },
         "capabilities": {
           "items": {
             "$ref": "#/$defs/Capability"
@@ -3661,6 +3673,16 @@
         "min_versions": {
           "$ref": "#/$defs/VersionCount"
         },
+        "next_expected_at_ms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimestampMs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "quota_bytes": {
           "$ref": "#/$defs/ByteCount"
         },
@@ -3682,6 +3704,7 @@
         "min_versions",
         "max_versions",
         "allow_relaxed",
+        "backup_freshness",
         "capabilities"
       ],
       "type": "object"

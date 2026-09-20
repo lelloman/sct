@@ -12,7 +12,10 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 #[tokio::main]
 async fn main() {
     if let Err(error) = run().await {
-        eprintln!("{error}");
+        eprintln!(
+            "{}",
+            serde_json::json!({"event":"fatal","message":error.to_string()})
+        );
         std::process::exit(1);
     }
 }
@@ -114,8 +117,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let worker = transfer.clone();
         let recovery = tokio::spawn(async move {
             loop {
-                if worker.tick().await.is_err() {
-                    eprintln!("transfer recovery will retry");
+                if let Err(error) = worker.tick().await {
+                    eprintln!(
+                        "{}",
+                        serde_json::json!({"event":"recovery_retry","code":error.0})
+                    );
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
@@ -135,7 +141,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         });
         let shutdown = lifecycle.shutdown();
         let listener = http::bind(config.bind).await?;
-        println!("ScT listening on {}", listener.local_addr()?);
+        println!(
+            "{}",
+            serde_json::json!({"event":"server_listening","address":listener.local_addr()?.to_string()})
+        );
         // Keep ownership alive while HTTP drains; stop renewing only after it finishes.
         let lease_stop = Shutdown::new();
         let stop_after_http = lease_stop.clone();
@@ -156,8 +165,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     biased;
                     _ = lease_stop.requested() => return Ok::<_, sct_core::error::Error>(()),
                     _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                        lease.renew().await?;
-                        heartbeat.heartbeat().await?;
+                        if let Err(error) = lease.renew().await {
+                            eprintln!("{}", serde_json::json!({"event":"writer_lease_lost","code":error.0}));
+                            return Err(error);
+                        }
+                        if let Err(error) = heartbeat.heartbeat().await {
+                            eprintln!("{}", serde_json::json!({"event":"worker_heartbeat_failed","code":error.0}));
+                            return Err(error);
+                        }
                     }
                 }
             }
@@ -171,7 +186,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 released
             })
             .await?;
-        println!("ScT graceful shutdown complete");
+        println!("{}", serde_json::json!({"event":"shutdown_complete"}));
         return Ok(());
     }
     if !args.is_empty() {
@@ -207,7 +222,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     lifecycle
         .run(signals.wait(), async { Ok::<_, std::io::Error>(()) })
         .await?;
-    println!("ScT graceful shutdown complete");
+    println!("{}", serde_json::json!({"event":"shutdown_complete"}));
     Ok(())
 }
 async fn local_command(

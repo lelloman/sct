@@ -63,3 +63,5 @@ pub mod maintenance;
 mod integrity;
 
 mod mirror_repair;
+
+pub mod observability;

@@ -32,7 +32,7 @@ impl IntoResponse for ApiError {
         let request_id = uuid::Uuid::new_v4().simple().to_string();
         let status =
             StatusCode::from_u16(self.0.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        let body = ErrorResponse::new(request_id.parse().unwrap(), self.0);
+        let body = ErrorResponse::new(request_id.parse().unwrap(), self.0.clone());
         let retry = matches!(body.retry, RetryGuidance::After { .. });
         let mut response = (status, Json(body)).into_response();
         response
@@ -41,6 +41,7 @@ impl IntoResponse for ApiError {
         response
             .headers_mut()
             .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+        response.extensions_mut().insert(self.0);
         if retry {
             response
                 .headers_mut()

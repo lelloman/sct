@@ -431,3 +431,15 @@ copy/verification and isolated recovery steps; it never claims export success
 means recovery qualification. Browser tests verify scan completion, downloaded
 artifact hashes and the release guard. Shared-fixture browser tests run serially
 because checkpoint catalog fences deliberately block concurrent mutations.
+
+### Observability and backup freshness (SCT-59)
+
+Administrator-only Prometheus metrics expose bounded route/state labels and
+service-wide capacity/job/freshness gauges. JSON request logs correlate responses
+without logging credentials, payloads, query strings or raw paths. Readiness
+requires live writer ownership and an open catalog gate with bounded probes.
+Root inspection now reports optional backup freshness and due time, updated only
+inside successful file/tree publication, never by commit receipt replay or failed
+attempts. Migration 18 backfills existing durable publication audit timestamps;
+checkpoint recovery requires the matching version-18 catalog schema/checksums.
+See [observability.md](observability.md) for scrape, log and monitoring semantics.
