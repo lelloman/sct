@@ -15,6 +15,10 @@ tar -xzf target/package/sct-client-0.1.0.crate -C "$sct_fixture/vendor"
 cp -R examples/standalone-client/. "$sct_fixture/"
 cp Cargo.lock "$sct_fixture/Cargo.lock"
 cd "$sct_fixture"
+# Cargo archives normalize source timestamps. Reusing the same package versions
+# in this target directory can otherwise leave stale public-crate metadata.
+# Preserve third-party caches but rebuild all three extracted/example packages.
+CARGO_TARGET_DIR="$sct_repo/target/standalone-client" cargo clean --offline -p sct-protocol -p sct-client -p sct-standalone-example
 CARGO_TARGET_DIR="$sct_repo/target/standalone-client" cargo check --offline
 cargo tree --offline --prefix none > dependencies.txt
 if rg '^sct-(core|server) ' dependencies.txt; then

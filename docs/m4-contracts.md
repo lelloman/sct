@@ -443,3 +443,15 @@ inside successful file/tree publication, never by commit receipt replay or faile
 attempts. Migration 18 backfills existing durable publication audit timestamps;
 checkpoint recovery requires the matching version-18 catalog schema/checksums.
 See [observability.md](observability.md) for scrape, log and monitoring semantics.
+
+### Standalone management SDK (SCT-60)
+
+The public Rust client now covers account credentials, principals, assigned-root
+settings, grants and policy constraints, backend/pool/allocation administration,
+usage/activity/audit, integrity/repair maintenance and checkpoint export workflows.
+Paginated calls preserve opaque cursor/limit bindings; revisions, acknowledgments
+and retry decisions remain explicit. Checkpoint artifacts stream to caller-owned
+output and verify descriptor hashes before reporting success. The management HTTP
+qualification exercises permissions, pagination, stale revisions, 204 revocation,
+checkpoint release acknowledgment and corrupt-artifact rejection. Packaging checks
+compile management usage outside the workspace without core/server dependencies.

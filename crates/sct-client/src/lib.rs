@@ -1,6 +1,8 @@
 //! Standalone transport foundation. Storage operations follow their protocol contracts.
 
 use std::time::Duration;
+mod management;
+pub use management::CheckpointArtifact;
 mod transfer;
 mod tree;
 pub use transfer::UploadJob;
@@ -108,13 +110,13 @@ impl Client {
         self.token = Some(token);
         Ok(self)
     }
-    async fn request<T: serde::de::DeserializeOwned>(
+    async fn request_response(
         &self,
         method: reqwest::Method,
         path: &str,
         query: Vec<(&str, String)>,
         body: Option<serde_json::Value>,
-    ) -> Result<T, Error> {
+    ) -> Result<reqwest::Response, Error> {
         let mut url = self.origin.clone();
         url.set_path(path);
         let mut request = self.http.request(method, url).query(&query);
@@ -132,7 +134,34 @@ impl Client {
                 Err(_) => Error::UnexpectedStatus(status),
             });
         }
-        response.json().await.map_err(Error::Transport)
+        Ok(response)
+    }
+    async fn request<T: serde::de::DeserializeOwned>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: Vec<(&str, String)>,
+        body: Option<serde_json::Value>,
+    ) -> Result<T, Error> {
+        self.request_response(method, path, query, body)
+            .await?
+            .json()
+            .await
+            .map_err(Error::Transport)
+    }
+    async fn request_empty(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: Vec<(&str, String)>,
+        body: Option<serde_json::Value>,
+    ) -> Result<(), Error> {
+        let response = self.request_response(method, path, query, body).await?;
+        if response.status() == reqwest::StatusCode::NO_CONTENT {
+            Ok(())
+        } else {
+            Err(Error::UnexpectedStatus(response.status().as_u16()))
+        }
     }
     pub async fn capabilities(&self) -> Result<protocol::Capabilities, Error> {
         self.request(reqwest::Method::GET, "/api/v1/capabilities", vec![], None)

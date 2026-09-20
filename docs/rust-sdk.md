@@ -76,3 +76,38 @@ Destructive lifecycle calls never auto-approve effects: the caller constructs
 Persist these request keys to recover an uncertain response. Inspect and advance
 the returned job; blocked jobs require explicit authorized resume. No rollback
 or cancel promise is exposed after apply.
+
+## Accounts, storage administration and recovery exports
+
+The standalone `Client` also exposes typed account/principal/credential operations,
+root settings and quota ceilings, policy constraints, grants, backend configuration,
+pools and allocations, usage/session/job/audit inspection, integrity scans and
+mirror repair, and checkpoint creation/inspection/inventory/descriptor/release.
+All list methods accept `ListRequest`; carry the returned opaque cursor forward
+with the same scope and limit. Revision-checked mutations take the protocol's
+explicit request DTOs and return structured server errors, including request ID,
+retry guidance and conflict details. The client never auto-approves retention
+changes, resumes blocked maintenance, releases checkpoint pins, or silently retries
+management mutations. Persist idempotency keys for checkpoint/maintenance starts.
+
+`issue_credential` returns its secret once. Supply it through `with_token` and keep
+it in a secret store; inspection responses contain no credential secrets. Revocation
+methods handle the API's 204 response without attempting JSON decoding. The SDK
+continues to expose program uploads and file/tree mutations; the browser restriction
+does not limit authorized program callers.
+
+`download_checkpoint_artifact_to` accepts a `CheckpointArtifact` enum and streams
+into caller-owned temporary output. It checks catalog/inventory SHA-256 against
+the authenticated descriptor; descriptor downloads must match that inspection.
+Only the small descriptor is buffered, with a 64 KiB bound. A failed stream or hash
+check leaves an untrusted partial destination: discard it and promote only after
+success. No artifact download constitutes independent payload copying or recovery
+verification. `release_checkpoint` requires the caller's explicit revision and
+acknowledgment. Follow [checkpoint recovery](checkpoint-recovery.md) for independent
+payload copying, verification and isolated recovery.
+
+`check_readiness` checks writer/catalog availability, while `check_liveness` checks
+only the process. Neither promises that every configured storage provider is
+reachable. The client owns no scheduler, source-capture or application-restore
+policy. `examples/standalone-client` is compiled from packaged public crates outside
+the workspace by `scripts/check-client`, including management/freshness inspection.
