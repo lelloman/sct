@@ -2398,6 +2398,9 @@
           "processed": {
             "$ref": "#/components/schemas/ByteCount"
           },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
           "root_id": {
             "$ref": "#/components/schemas/RootId"
           },
@@ -2407,6 +2410,7 @@
         },
         "required": [
           "id",
+          "revision",
           "root_id",
           "kind",
           "state",

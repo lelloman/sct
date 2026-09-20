@@ -219,3 +219,30 @@ Audit merges management and transfer events in descending timestamp order, with
 source/sequence tie breakers so equal timestamps cannot lose or duplicate rows.
 Cursors bind the principal, root/filter and page size and recheck authorization
 on every page. Audit details contain metadata, never credential secrets or bytes.
+
+## Maintenance execution framework (SCT-47)
+
+Jobs persist their original idempotency owner separately from the administrator
+currently authorizing execution. Reusing a key with a different request conflicts.
+The scheduler selects at most eight eligible jobs per pass and one bounded batch
+per job. Busy roots remain queued without stealing their owner; rescheduled work
+rotates behind older eligible jobs. Each claim increments independent worker and
+root-operation fences. A new server can reclaim an old claim immediately after
+writer takeover; late progress from the old server/worker is rejected.
+
+Executors return a durable cursor, processed delta and completion flag. Progress
+and terminal state commit together. Root ownership cannot complete while physical
+I/O, staging charges or reservations remain unresolved. The coordinator renews
+its lease every ten seconds while awaiting a batch and caps a batch at 120 seconds.
+Cancellation stops renewal so another worker can recover after lease expiry.
+Provider executors must preserve exact-generation I/O fencing independently of
+this metadata coordinator; scan/repair integrations follow in SCT-48/SCT-49.
+No scan/repair operation is advertised before those integrations land.
+
+Transient failures persist retry deadlines with exponential backoff and fail
+visibly after five consecutive attempts. Success clears the consecutive-attempt
+counter. Authorization and configuration/capacity failures block. Blocked/failed
+jobs retain ownership conservatively. Revision-checked explicit resume resets
+backoff and binds the current administrator's credential, leaving original
+idempotency ownership intact. Every claim, renewal and progress commit rechecks
+authority. Failed attempts and blocked/resumed/completed transitions are audited.

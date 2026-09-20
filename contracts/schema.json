@@ -2397,6 +2397,9 @@
         "processed": {
           "$ref": "#/$defs/ByteCount"
         },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        },
         "root_id": {
           "$ref": "#/$defs/RootId"
         },
@@ -2406,6 +2409,7 @@
       },
       "required": [
         "id",
+        "revision",
         "root_id",
         "kind",
         "state",

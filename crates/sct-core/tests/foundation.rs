@@ -6,6 +6,8 @@ mod graph_work_tests;
 mod inspection_tests;
 #[path = "support/lifecycle_tests.rs"]
 mod lifecycle_tests;
+#[path = "support/maintenance_tests.rs"]
+mod maintenance_tests;
 #[path = "support/management_tests.rs"]
 mod management_tests;
 #[path = "support/move_tests.rs"]

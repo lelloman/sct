@@ -148,6 +148,7 @@ dto! {
     }
     pub struct MaintenanceJob {
         pub id: OperationId,
+        pub revision: Revision,
         pub root_id: RootId,
         pub kind: MaintenanceKind,
         pub state: MaintenanceState,

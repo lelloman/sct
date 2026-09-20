@@ -195,8 +195,8 @@ async fn management_catalog_rejects_invalid_states_and_rolls_back_audit() {
     sqlx::raw_sql("INSERT INTO principals(id) VALUES('p');
         INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision)
         VALUES('r','p','root','/','rev','disabled','{}',1000,'{}','policy','rev');
-        INSERT INTO maintenance_jobs(id,root_id,principal_id,key,request,kind,revision)
-        VALUES('j','r','p','key','{}','integrity_scan','rev');
+        INSERT INTO maintenance_jobs(id,root_id,principal_id,run_principal_id,key,request,kind,revision)
+        VALUES('j','r','p','p','key','{}','integrity_scan','rev');
         INSERT INTO checkpoints(id,principal_id,key,revision) VALUES('c','p','checkpoint-key','rev');")
         .execute(&pool).await.unwrap();
     for statement in [
@@ -206,7 +206,7 @@ async fn management_catalog_rejects_invalid_states_and_rolls_back_audit() {
         "UPDATE checkpoints SET state='complete'",
         "UPDATE checkpoints SET generation_watermark=-1",
         "INSERT INTO checkpoint_objects VALUES('c','missing-generation')",
-        "INSERT INTO maintenance_jobs(id,root_id,principal_id,key,request,kind,revision) VALUES('j2','r','p','key','{}','mirror_repair','rev')",
+        "INSERT INTO maintenance_jobs(id,root_id,principal_id,run_principal_id,key,request,kind,revision) VALUES('j2','r','p','p','key','{}','mirror_repair','rev')",
         "INSERT INTO integrity_findings(id,root_id,job_id,digest,kind) VALUES('f','r','missing-job',repeat('a',64),'missing')",
     ] {
         assert!(

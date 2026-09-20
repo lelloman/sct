@@ -193,7 +193,7 @@ export type ListGrantsQuery = { root_id: RootId, limit: PageSize, cursor: Cursor
 
 export type ListRequest = { limit: PageSize, cursor: CursorToken | null, };
 
-export type MaintenanceJob = { id: OperationId, root_id: RootId, kind: MaintenanceKind, state: MaintenanceState, processed: ByteCount, attempts: number, next_attempt_at_ms: TimestampMs | null, failure: ErrorCode | null, };
+export type MaintenanceJob = { id: OperationId, revision: Revision, root_id: RootId, kind: MaintenanceKind, state: MaintenanceState, processed: ByteCount, attempts: number, next_attempt_at_ms: TimestampMs | null, failure: ErrorCode | null, };
 
 export type MaintenanceKind = "integrity_scan" | "mirror_repair";
 
