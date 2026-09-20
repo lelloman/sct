@@ -124,6 +124,22 @@
       ],
       "type": "object"
     },
+    "AllocationManagement": {
+      "additionalProperties": false,
+      "properties": {
+        "inspection": {
+          "$ref": "#/$defs/AllocationInspection"
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "inspection",
+        "revision"
+      ],
+      "type": "object"
+    },
     "AllocationOwner": {
       "oneOf": [
         {
@@ -796,6 +812,26 @@
       ],
       "type": "object"
     },
+    "CreateAllocationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "pool_id": {
+          "$ref": "#/$defs/PoolId"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        }
+      },
+      "required": [
+        "pool_id",
+        "root_id",
+        "capacity_bytes"
+      ],
+      "type": "object"
+    },
     "CreateCheckpointRequest": {
       "additionalProperties": false,
       "properties": {
@@ -856,6 +892,26 @@
         "root_id",
         "principal_id",
         "capabilities"
+      ],
+      "type": "object"
+    },
+    "CreatePoolRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "capacity_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "id": {
+          "$ref": "#/$defs/PoolId"
+        },
+        "staging_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        }
+      },
+      "required": [
+        "id",
+        "capacity_bytes",
+        "staging_bytes"
       ],
       "type": "object"
     },

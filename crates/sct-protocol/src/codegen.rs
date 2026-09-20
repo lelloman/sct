@@ -37,6 +37,9 @@ fn register_types(
         RootManagement,
         UpdateRootManagementRequest,
         UpdateQuotaCeilingRequest,
+        CreatePoolRequest,
+        CreateAllocationRequest,
+        AllocationManagement,
         UpdatePoolRequest,
         ResizeAllocationRequest,
         ConfigureBackendRequest,
@@ -633,15 +636,23 @@ pub fn operations() -> Vec<Value> {
         "GET",
         "/admin/backends",
         "ListRequest",
-        None::<&str>,
+        "BackendPage",
         "M4"
     );
     op!(
         "configure_backend",
         "PUT",
         "/admin/backends/{backend}",
+        "ConfigureBackendRequest",
+        "BackendConfiguration",
+        "M4"
+    );
+    op!(
+        "backend_configuration",
+        "GET",
+        "/admin/backends/{backend}/configuration",
         None::<&str>,
-        "BackendInspection",
+        "BackendConfiguration",
         "M4"
     );
     op!(
@@ -649,14 +660,22 @@ pub fn operations() -> Vec<Value> {
         "GET",
         "/admin/pools",
         "ListRequest",
-        None::<&str>,
+        "PoolPage",
+        "M4"
+    );
+    op!(
+        "create_pool",
+        "POST",
+        "/admin/pools",
+        "CreatePoolRequest",
+        "PoolInspection",
         "M4"
     );
     op!(
         "configure_pool",
-        "PUT",
+        "PATCH",
         "/admin/pools/{pool}",
-        None::<&str>,
+        "UpdatePoolRequest",
         "PoolInspection",
         "M4"
     );
@@ -669,11 +688,27 @@ pub fn operations() -> Vec<Value> {
         "M1"
     );
     op!(
+        "create_allocation",
+        "POST",
+        "/admin/allocations",
+        "CreateAllocationRequest",
+        "AllocationManagement",
+        "M4"
+    );
+    op!(
         "configure_allocation",
         "PUT",
         "/admin/allocations/{allocation}",
+        "ResizeAllocationRequest",
+        "AllocationManagement",
+        "M4"
+    );
+    op!(
+        "allocation_management",
+        "GET",
+        "/admin/allocations/{allocation}/management",
         None::<&str>,
-        "AllocationInspection",
+        "AllocationManagement",
         "M4"
     );
     op!(

@@ -134,7 +134,7 @@ pub(crate) async fn remember(
     Ok(())
 }
 impl Writer {
-    /// Startup-only infrastructure reconciliation under the exclusive writer lease.
+    /// Import infrastructure once; persisted administration owns subsequent restarts.
     pub async fn configure(
         &self,
         registry: &Registry,
@@ -142,6 +142,15 @@ impl Writer {
         backends: &[BackendSetup],
     ) -> Result<()> {
         let mut tx = self.transaction().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(73628492)")
+            .execute(&mut *tx)
+            .await?;
+        let imported: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM configuration_state)")
+            .fetch_one(&mut *tx)
+            .await?;
+        if imported {
+            return Ok(());
+        }
         let configured: Vec<String> = backends
             .iter()
             .map(|b| b.inspection.id.as_str().to_owned())
@@ -186,6 +195,19 @@ impl Writer {
             sqlx::query("INSERT INTO backends VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET inspection=EXCLUDED.inspection")
               .bind(inspection.id.as_str()).bind(backend.pool_id.as_str()).bind(&inspection.adapter_kind).bind(identity).bind(json(&inspection)?).execute(&mut *tx).await?;
         }
+        for backend in backends {
+            sqlx::query(
+                "INSERT INTO backend_configurations(backend_id,revision,settings) VALUES($1,$2,$3)",
+            )
+            .bind(backend.inspection.id.as_str())
+            .bind(id())
+            .bind(&backend.settings)
+            .execute(&mut *tx)
+            .await?;
+        }
+        sqlx::query("INSERT INTO configuration_state(singleton) VALUES(true)")
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM backends WHERE NOT id=ANY($1)")
             .bind(&configured)
             .execute(&mut *tx)
@@ -252,7 +274,7 @@ impl Writer {
         sqlx::query("INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision) VALUES($1,$2,$3,$4,$5,'disabled',$6,$7,$8,$9,$10)")
           .bind(&root).bind(request.owner_id.as_str()).bind(request.display_name.as_str()).bind(mount).bind(id()).bind(json(&request.placement)?).bind(request.quota_bytes.get() as i64).bind(json(&request.default_policy)?).bind(policy).bind(id()).execute(&mut *tx).await?;
         for backend in members(&request.placement) {
-            sqlx::query("INSERT INTO root_backends VALUES($1,$2)")
+            sqlx::query("INSERT INTO root_backends VALUES($1,$2) ON CONFLICT DO NOTHING")
                 .bind(&root)
                 .bind(backend.as_str())
                 .execute(&mut *tx)
@@ -372,12 +394,17 @@ impl Writer {
         }
         sqlx::query("UPDATE roots SET display_name=$2,state=$3,placement=$4,quota=$5,quota_ceiling=GREATEST(quota_ceiling,$5),revision=$6 WHERE id=$1")
           .bind(root.as_str()).bind(request.display_name.as_str()).bind(json(&request.state)?.as_str().unwrap()).bind(json(&request.placement)?).bind(request.quota_bytes.get() as i64).bind(id()).execute(&mut *tx).await?;
-        sqlx::query("DELETE FROM root_backends WHERE root_id=$1")
+        let target_members: Vec<_> = members(&request.placement)
+            .iter()
+            .map(|b| b.as_str())
+            .collect();
+        sqlx::query("DELETE FROM root_backends WHERE root_id=$1 AND NOT backend_id=ANY($2)")
             .bind(root.as_str())
+            .bind(&target_members)
             .execute(&mut *tx)
             .await?;
         for backend in members(&request.placement) {
-            sqlx::query("INSERT INTO root_backends VALUES($1,$2)")
+            sqlx::query("INSERT INTO root_backends VALUES($1,$2) ON CONFLICT DO NOTHING")
                 .bind(root.as_str())
                 .bind(backend.as_str())
                 .execute(&mut *tx)

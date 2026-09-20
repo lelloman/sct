@@ -13,6 +13,8 @@ export type AllocationId = string & { readonly __brand: "AllocationId" };
 
 export type AllocationInspection = { id: AllocationId, pool_id: PoolId, owner: AllocationOwner, capacity_bytes: ByteCount, reserved_bytes: ByteCount, occupied_bytes: ByteCount, pending_cleanup_bytes: ByteCount, };
 
+export type AllocationManagement = { inspection: AllocationInspection, revision: Revision, };
+
 export type AllocationOwner = { "kind": "root", root_id: RootId, } | { "kind": "server_staging" };
 
 export type AllocationPage = { items: Array<AllocationInspection>, next_cursor: CursorToken | null, };
@@ -75,11 +77,15 @@ export type CopyAcknowledgement = "pending" | "acknowledged" | "unavailable" | "
 
 export type CopyProgress = { backend_id: BackendId, acknowledged_bytes: ByteCount, state: CopyAcknowledgement, };
 
+export type CreateAllocationRequest = { pool_id: PoolId, root_id: RootId, capacity_bytes: ByteCount, };
+
 export type CreateCheckpointRequest = { idempotency_key: IdempotencyKey, };
 
 export type CreateDirectoryRequest = { idempotency_key: IdempotencyKey, parent_id: EntryId, expected_parent_revision: Revision, name: EntryName, versioning: VersioningMode, };
 
 export type CreateGrantRequest = { root_id: RootId, principal_id: PrincipalId, capabilities: Array<Capability>, };
+
+export type CreatePoolRequest = { id: PoolId, capacity_bytes: ByteCount, staging_bytes: ByteCount, };
 
 export type CreatePrincipalRequest = { id: PrincipalId, };
 

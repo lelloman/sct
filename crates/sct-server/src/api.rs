@@ -196,6 +196,7 @@ pub fn routes(state: App) -> Router {
         .merge(crate::tree_api::routes())
         .merge(crate::lifecycle_api::routes())
         .merge(crate::management_api::routes())
+        .merge(crate::storage_api::routes())
         .layer(simple_server::axum::extract::DefaultBodyLimit::max(65536))
         .layer(middleware::from_fn(response_headers))
         .with_state(state)

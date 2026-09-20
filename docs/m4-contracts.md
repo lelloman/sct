@@ -164,3 +164,36 @@ compatible: a higher quota also raises its ceiling in the same transaction.
 Existing grant routes prevent delegation of capabilities the caller does not
 hold, including after waiting for the root lock. Committed account, credential,
 grant and delegated-setting mutations record audit metadata without secrets.
+
+## Storage administration (SCT-45)
+
+Administrator routes now list/create pools, resize pools and allocations, create
+root allocations, and list/configure backend destinations. Allocation management
+inspection carries its revision separately from the original accounting DTO.
+Only committed changes enter the audit log; settings and resolved credentials
+are omitted from audit. Adapter validation rejects raw credential fields and
+credential-bearing endpoint URLs. S3 configuration contains environment references;
+local destinations require an existing private service-owned directory.
+
+Bootstrap TOML infrastructure is imported once, atomically with a durable marker.
+Subsequent restarts load catalog backend settings and retain administrator changes
+to budgets, hints and credential references. TOML still controls process and
+identity-provider configuration. An M3 upgrade imports its existing destinations
+on first M4 startup; conflicting identities or insufficient budgets fail that
+import without partial changes. Edit storage through administration after import.
+
+Backend updates require the current revision. Kind, destination identity and pool
+membership are immutable; unsupported relocation is rejected. A successfully
+opened new runtime store is published after the catalog commit. Concurrent runtime
+changes serialize; in-flight I/O keeps its handle to the same destination. Startup
+reopens committed settings after a crash between commit and runtime publication.
+An instance's observed health is derived by its adapter, never accepted from the
+request's claimed health. Provider availability may still be unknown.
+
+Pool capacity cannot undercut allocations. Allocation shrink cannot undercut
+reserved plus occupied bytes (including pending cleanup), or the root quota's
+required placement copies. Root allocation changes wait for exclusive root work;
+staging resize uses the existing pool/allocation accounting locks. A root may be
+allocated space in another pool before an allowed empty-root placement change.
+Populated roots keep their membership; updating read order or other settings
+preserves backend references to existing copy generations.

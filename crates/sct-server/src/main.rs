@@ -72,7 +72,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             None => None,
         };
         let mut stores = std::collections::BTreeMap::new();
-        for backend in &config.backends {
+        for backend in writer.configured_backends().await? {
             if backend.inspection.adapter_kind != "test" {
                 stores.insert(
                     backend.inspection.id.as_str().to_owned(),

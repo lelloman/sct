@@ -125,6 +125,22 @@
         ],
         "type": "object"
       },
+      "AllocationManagement": {
+        "additionalProperties": false,
+        "properties": {
+          "inspection": {
+            "$ref": "#/components/schemas/AllocationInspection"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "inspection",
+          "revision"
+        ],
+        "type": "object"
+      },
       "AllocationOwner": {
         "oneOf": [
           {
@@ -797,6 +813,26 @@
         ],
         "type": "object"
       },
+      "CreateAllocationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "pool_id": {
+            "$ref": "#/components/schemas/PoolId"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "pool_id",
+          "root_id",
+          "capacity_bytes"
+        ],
+        "type": "object"
+      },
       "CreateCheckpointRequest": {
         "additionalProperties": false,
         "properties": {
@@ -857,6 +893,26 @@
           "root_id",
           "principal_id",
           "capabilities"
+        ],
+        "type": "object"
+      },
+      "CreatePoolRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PoolId"
+          },
+          "staging_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "id",
+          "capacity_bytes",
+          "staging_bytes"
         ],
         "type": "object"
       },
@@ -4459,6 +4515,132 @@
             "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
           }
         }
+      },
+      "post": {
+        "operationId": "create_allocation",
+        "parameters": [
+          {
+            "description": "Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAllocationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllocationManagement"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
       }
     },
     "/api/v1/admin/allocations/{allocation}": {
@@ -4578,6 +4760,393 @@
             "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
           }
         }
+      },
+      "put": {
+        "operationId": "configure_allocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "allocation",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResizeAllocationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllocationManagement"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      }
+    },
+    "/api/v1/admin/allocations/{allocation}/management": {
+      "get": {
+        "operationId": "allocation_management",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "allocation",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllocationManagement"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      }
+    },
+    "/api/v1/admin/backends": {
+      "get": {
+        "operationId": "list_backends",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CursorToken"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PageSize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
       }
     },
     "/api/v1/admin/backends/{backend}": {
@@ -4601,6 +5170,261 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BackendInspection"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      },
+      "put": {
+        "operationId": "configure_backend",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "backend",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigureBackendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendConfiguration"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      }
+    },
+    "/api/v1/admin/backends/{backend}/configuration": {
+      "get": {
+        "operationId": "backend_configuration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "backend",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackendConfiguration"
                 }
               }
             },
@@ -5347,6 +6171,264 @@
         }
       }
     },
+    "/api/v1/admin/pools": {
+      "get": {
+        "operationId": "list_pools",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CursorToken"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PageSize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_pool",
+        "parameters": [
+          {
+            "description": "Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePoolRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolInspection"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      }
+    },
     "/api/v1/admin/pools/{pool}": {
       "get": {
         "operationId": "inspect_pool",
@@ -5362,6 +6444,142 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolInspection"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      },
+      "patch": {
+        "operationId": "configure_pool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pool",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePoolRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -14289,39 +15507,57 @@
       "response_schema": null
     },
     {
-      "implemented": false,
+      "implemented": true,
       "method": "GET",
       "milestone": "M4",
       "operation_id": "list_backends",
       "path": "/api/v1/admin/backends",
       "request_schema": "ListRequest",
-      "response_schema": null
+      "response_schema": "BackendPage"
     },
     {
-      "implemented": false,
+      "implemented": true,
       "method": "PUT",
       "milestone": "M4",
       "operation_id": "configure_backend",
       "path": "/api/v1/admin/backends/{backend}",
-      "request_schema": null,
-      "response_schema": "BackendInspection"
+      "request_schema": "ConfigureBackendRequest",
+      "response_schema": "BackendConfiguration"
     },
     {
-      "implemented": false,
+      "implemented": true,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "backend_configuration",
+      "path": "/api/v1/admin/backends/{backend}/configuration",
+      "request_schema": null,
+      "response_schema": "BackendConfiguration"
+    },
+    {
+      "implemented": true,
       "method": "GET",
       "milestone": "M4",
       "operation_id": "list_pools",
       "path": "/api/v1/admin/pools",
       "request_schema": "ListRequest",
-      "response_schema": null
+      "response_schema": "PoolPage"
     },
     {
-      "implemented": false,
-      "method": "PUT",
+      "implemented": true,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "create_pool",
+      "path": "/api/v1/admin/pools",
+      "request_schema": "CreatePoolRequest",
+      "response_schema": "PoolInspection"
+    },
+    {
+      "implemented": true,
+      "method": "PATCH",
       "milestone": "M4",
       "operation_id": "configure_pool",
       "path": "/api/v1/admin/pools/{pool}",
-      "request_schema": null,
+      "request_schema": "UpdatePoolRequest",
       "response_schema": "PoolInspection"
     },
     {
@@ -14334,13 +15570,31 @@
       "response_schema": "AllocationPage"
     },
     {
-      "implemented": false,
+      "implemented": true,
+      "method": "POST",
+      "milestone": "M4",
+      "operation_id": "create_allocation",
+      "path": "/api/v1/admin/allocations",
+      "request_schema": "CreateAllocationRequest",
+      "response_schema": "AllocationManagement"
+    },
+    {
+      "implemented": true,
       "method": "PUT",
       "milestone": "M4",
       "operation_id": "configure_allocation",
       "path": "/api/v1/admin/allocations/{allocation}",
+      "request_schema": "ResizeAllocationRequest",
+      "response_schema": "AllocationManagement"
+    },
+    {
+      "implemented": true,
+      "method": "GET",
+      "milestone": "M4",
+      "operation_id": "allocation_management",
+      "path": "/api/v1/admin/allocations/{allocation}/management",
       "request_schema": null,
-      "response_schema": "AllocationInspection"
+      "response_schema": "AllocationManagement"
     },
     {
       "implemented": false,

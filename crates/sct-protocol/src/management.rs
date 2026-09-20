@@ -75,6 +75,9 @@ dto! {
         pub expected_revision: Revision,
         pub quota_ceiling_bytes: ByteCount,
     }
+    pub struct CreatePoolRequest { pub id: PoolId, pub capacity_bytes: ByteCount, pub staging_bytes: ByteCount }
+    pub struct CreateAllocationRequest { pub pool_id: PoolId, pub root_id: RootId, pub capacity_bytes: ByteCount }
+    pub struct AllocationManagement { pub inspection: AllocationInspection, pub revision: Revision }
     pub struct UpdatePoolRequest {
         pub expected_revision: Revision,
         pub capacity_bytes: ByteCount,

@@ -14,7 +14,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct TransferEngine {
     pub(crate) writer: Writer,
-    pub(crate) stores: Arc<Stores>,
+    pub(crate) stores: Arc<std::sync::RwLock<Stores>>,
+    configuration: Arc<tokio::sync::Mutex<()>>,
     pub(crate) ingress: Arc<tokio::sync::Semaphore>,
     pub(crate) slots: Arc<tokio::sync::Semaphore>,
     pub(crate) expiry_seconds: u32,
@@ -27,7 +28,8 @@ impl TransferEngine {
         )?;
         Ok(Self {
             writer,
-            stores: Arc::new(stores),
+            stores: Arc::new(std::sync::RwLock::new(stores)),
+            configuration: Arc::new(tokio::sync::Mutex::new(())),
             ingress: Arc::new(tokio::sync::Semaphore::new(workers as usize)),
             slots: Arc::new(tokio::sync::Semaphore::new(workers as usize)),
             expiry_seconds,
@@ -41,9 +43,42 @@ impl TransferEngine {
     }
     pub(crate) fn store(&self, backend: &str) -> Result<Arc<dyn ObjectStore>> {
         self.stores
+            .read()
+            .map_err(|_| Error(ErrorCode::InternalError))?
             .get(backend)
             .cloned()
             .ok_or(Error(ErrorCode::DestinationUnavailable))
+    }
+    /// Publish runtime configuration after its durable commit. In-flight I/O keeps
+    /// its existing handle; the immutable destination identity cannot change.
+    pub async fn configure_backend(
+        &self,
+        actor: &crate::auth::Actor,
+        registry: &crate::backend::Registry,
+        request: &ConfigureBackendRequest,
+    ) -> Result<BackendConfiguration> {
+        self.writer.require_admin(actor).await?;
+        let _configuration = self.configuration.lock().await;
+        let store = if request.inspection.adapter_kind == "test" {
+            None
+        } else {
+            Some(
+                registry
+                    .get(&request.inspection.adapter_kind)?
+                    .open(&request.settings)?,
+            )
+        };
+        let result = self
+            .writer
+            .configure_backend(actor, registry, request)
+            .await?;
+        if let Some(store) = store {
+            self.stores
+                .write()
+                .map_err(|_| Error(ErrorCode::InternalError))?
+                .insert(result.inspection.id.as_str().into(), store);
+        }
+        Ok(result)
     }
     /// Persist intent/charge before issuing I/O; replays reuse an available copy.
     pub async fn write_copy(

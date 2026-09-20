@@ -81,3 +81,5 @@ mod transfer_api;
 mod tree_api;
 
 mod management_api;
+
+mod storage_api;
