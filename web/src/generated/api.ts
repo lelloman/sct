@@ -37,6 +37,8 @@ export type BackendInspection = { id: BackendId, display_name: string, adapter_k
 
 export type BackendPage = { backends: Array<BackendConfiguration>, next_cursor: CursorToken | null, };
 
+export type BrowserLoginOptions = { oidc_enabled: boolean, };
+
 export type ByteCount = number;
 
 export type BytesPerSecond = number;

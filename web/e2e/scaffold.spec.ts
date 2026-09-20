@@ -9,7 +9,11 @@ test("built Vue application runs from the Rust server", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Stipa ca Truova" }),
   ).toBeVisible();
-  await expect(page.getByText("In development", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Sign in with a program or recovery credential", {
+      exact: true,
+    }),
+  ).toBeVisible();
   expect(errors).toEqual([]);
 });
 

@@ -412,6 +412,18 @@
       ],
       "type": "object"
     },
+    "BrowserLoginOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "oidc_enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "oidc_enabled"
+      ],
+      "type": "object"
+    },
     "ByteCount": {
       "format": "uint64",
       "maximum": 9007199254740991,

@@ -25,6 +25,7 @@ enumeration! {
     pub enum RecoveryPackageState { CatalogOnly, PayloadVerified }
 }
 dto! {
+    pub struct BrowserLoginOptions { pub oidc_enabled: bool }
     pub struct AccountInspection {
         pub principal_id: PrincipalId,
         pub administrator: bool,

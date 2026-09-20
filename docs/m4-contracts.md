@@ -358,3 +358,18 @@ The drill restores committed file and tree bytes with original storage offline,
 rejects missing/corrupt payloads and populated targets, and writes a fresh backup
 after recovery. [The operator procedure](checkpoint-recovery.md) documents the
 commands, independent-storage responsibility and partial-failure behavior.
+
+### Browser foundation (SCT-53)
+
+The browser shell loads the current account and assigned roots, pages root lists,
+and separates regular-account navigation from administrator areas. It uses
+same-origin session cookies and CSRF headers; an expired session clears visible
+account data. Identity-provider sign-in is offered only when configured. An
+explicit credential sign-in exchanges a valid bearer credential at
+`POST /auth/session` for the same 12-hour HttpOnly session/CSRF cookies used by
+OIDC. The exchange requires the exact service origin; browser code never persists
+the bearer credential. Logout revokes the session and clears both cookies.
+
+The responsive shell includes loading, empty, permission and request-error states.
+Program file mutations remain API/SDK operations. Browser snapshot controls in
+the following tasks are limited to browsing, history and downloading.

@@ -26,6 +26,48 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
             .unwrap()
     });
     let http = reqwest::Client::new();
+    assert!(
+        !http
+            .get(format!("{origin}/auth/options"))
+            .send()
+            .await
+            .unwrap()
+            .json::<BrowserLoginOptions>()
+            .await
+            .unwrap()
+            .oidc_enabled
+    );
+    for origin_header in [None, Some("https://foreign.invalid")] {
+        let mut request = http
+            .post(format!("{origin}/auth/session"))
+            .bearer_auth(&admin.secret);
+        if let Some(origin) = origin_header {
+            request = request.header("origin", origin);
+        }
+        assert_eq!(request.send().await.unwrap().status(), 403);
+    }
+    let browser = http
+        .post(format!("{origin}/auth/session"))
+        .bearer_auth(&admin.secret)
+        .header("origin", &origin)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(browser.status(), 200);
+    let cookies: Vec<_> = browser
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|v| v.to_str().unwrap().to_owned())
+        .collect();
+    assert!(cookies.iter().any(|c| c.starts_with("sct_session=")
+        && c.contains("HttpOnly")
+        && c.contains("SameSite=Lax")));
+    assert!(
+        cookies
+            .iter()
+            .any(|c| c.starts_with("sct_csrf=") && !c.contains("HttpOnly"))
+    );
     let account = http
         .get(format!("{origin}/api/v1/account"))
         .bearer_auth(&admin.secret)

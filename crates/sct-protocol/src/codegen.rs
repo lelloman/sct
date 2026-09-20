@@ -28,6 +28,7 @@ fn register_types(
         CheckpointState,
         RecoveryPackageState,
         AccountInspection,
+        BrowserLoginOptions,
         PrincipalInspection,
         PrincipalPage,
         CreatePrincipalRequest,

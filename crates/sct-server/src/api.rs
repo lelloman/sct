@@ -161,8 +161,9 @@ pub fn routes(state: App) -> Router {
     Router::new()
         .route("/health/ready", get(ready))
         .route("/auth/login", get(login))
+        .route("/auth/options", get(login_options))
         .route("/auth/callback", get(callback))
-        .route("/auth/session", get(session))
+        .route("/auth/session", get(session).post(token_session))
         .route("/auth/logout", post(logout))
         .route("/auth/tokens", post(issue_token))
         .route("/auth/tokens/{credential}", delete(revoke_token))
@@ -552,6 +553,45 @@ async fn session(Auth(a): Auth) -> Result<Json<SessionInspection>> {
     Ok(Json(SessionInspection {
         principal_id: identifier(a.principal_id())?,
     }))
+}
+async fn login_options(State(s): State<App>) -> Json<BrowserLoginOptions> {
+    Json(BrowserLoginOptions {
+        oidc_enabled: s.oidc.is_some(),
+    })
+}
+async fn token_session(
+    State(s): State<App>,
+    Auth(a): Auth,
+    headers: HeaderMap,
+) -> Result<Response> {
+    if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok())
+        != Some(s.public_url.trim_end_matches('/'))
+        || !headers.contains_key(header::AUTHORIZATION)
+    {
+        return Err(ApiError(ErrorCode::Forbidden));
+    }
+    let issued = s.writer.browser_session(&a).await?;
+    let mut response = Json(SessionInspection {
+        principal_id: identifier(a.principal_id())?,
+    })
+    .into_response();
+    set_cookie(
+        &mut response,
+        session_name(&s),
+        &issued.secret,
+        43200,
+        true,
+        s.secure_cookies,
+    );
+    set_cookie(
+        &mut response,
+        csrf_name(&s),
+        issued.csrf.as_deref().unwrap(),
+        43200,
+        false,
+        s.secure_cookies,
+    );
+    Ok(response)
 }
 async fn logout(State(s): State<App>, Auth(a): Auth, headers: HeaderMap) -> Result<Response> {
     let token = cookie(&headers, session_name(&s)).ok_or(ApiError(ErrorCode::Unauthorized))?;

@@ -90,6 +90,23 @@ async fn issue(db: &mut PgConnection, principal: &str, session: bool) -> Result<
     Ok(credential)
 }
 impl Writer {
+    /// Exchange an authenticated program credential for a short-lived browser
+    /// session; the browser receives only secure session/CSRF cookies.
+    pub async fn browser_session(&self, actor: &Actor) -> Result<IssuedCredential> {
+        let mut tx = self.transaction().await?;
+        administrator(&mut tx, actor).await?;
+        let credential = issue(&mut tx, &actor.principal, true).await?;
+        crate::management::audit(
+            &mut tx,
+            actor,
+            None,
+            "session.created",
+            serde_json::json!({"credential_id":credential.id}),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(credential)
+    }
     /// Local process administration only. Requires the exclusive writer lease;
     /// run with the server stopped. Replaces all credentials of the local admin.
     pub async fn recover_administrator(&self) -> Result<IssuedCredential> {
