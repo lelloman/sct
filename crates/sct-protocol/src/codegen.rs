@@ -265,7 +265,7 @@ pub fn operations() -> Vec<Value> {
     let mut result = Vec::new();
     macro_rules! op {
         ($id:literal, $method:literal, $path:literal, $request:expr, $response:expr, $milestone:literal) => {
-            result.push(json!({"operation_id": $id, "method": $method, "path": concat!("/api/v1", $path), "request_schema": $request, "response_schema": $response, "milestone": $milestone, "implemented": (FOUNDATION_OPERATIONS.contains(&$id) || TRANSFER_OPERATIONS.contains(&$id) || TREE_OPERATIONS.contains(&$id))}));
+            result.push(json!({"operation_id": $id, "method": $method, "path": concat!("/api/v1", $path), "request_schema": $request, "response_schema": $response, "milestone": $milestone, "implemented": (FOUNDATION_OPERATIONS.contains(&$id) || TRANSFER_OPERATIONS.contains(&$id) || TREE_OPERATIONS.contains(&$id) || MANAGEMENT_OPERATIONS.contains(&$id))}));
         };
     }
     op!(
@@ -517,35 +517,91 @@ pub fn operations() -> Vec<Value> {
         "M2"
     );
     op!(
+        "account",
+        "GET",
+        "/account",
+        None::<&str>,
+        "AccountInspection",
+        "M4"
+    );
+    op!(
         "list_principals",
         "GET",
-        "/admin/principals",
+        "/principals",
         "ListRequest",
-        None::<&str>,
+        "PrincipalPage",
         "M4"
     );
     op!(
         "create_principal",
         "POST",
-        "/admin/principals",
+        "/principals",
+        "CreatePrincipalRequest",
+        "PrincipalInspection",
+        "M4"
+    );
+    op!(
+        "inspect_principal",
+        "GET",
+        "/principals/{principal}",
         None::<&str>,
-        None::<&str>,
+        "PrincipalInspection",
+        "M4"
+    );
+    op!(
+        "update_principal",
+        "PATCH",
+        "/principals/{principal}",
+        "UpdatePrincipalRequest",
+        "PrincipalInspection",
+        "M4"
+    );
+    op!(
+        "list_credentials",
+        "GET",
+        "/principals/{principal}/credentials",
+        "ListRequest",
+        "CredentialPage",
         "M4"
     );
     op!(
         "create_credential",
         "POST",
-        "/admin/credentials",
+        "/principals/{principal}/credentials",
         None::<&str>,
-        None::<&str>,
+        "IssuedToken",
         "M4"
     );
     op!(
         "revoke_credential",
         "DELETE",
-        "/admin/credentials/{credential}",
+        "/credentials/{credential}",
         None::<&str>,
         None::<&str>,
+        "M4"
+    );
+    op!(
+        "root_management",
+        "GET",
+        "/roots/{root}/management",
+        None::<&str>,
+        "RootManagement",
+        "M4"
+    );
+    op!(
+        "update_root_management",
+        "PATCH",
+        "/roots/{root}/management",
+        "UpdateRootManagementRequest",
+        "RootManagement",
+        "M4"
+    );
+    op!(
+        "update_quota_ceiling",
+        "PATCH",
+        "/roots/{root}/quota-ceiling",
+        "UpdateQuotaCeilingRequest",
+        "RootManagement",
         "M4"
     );
     op!(

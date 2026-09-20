@@ -370,7 +370,7 @@ impl Writer {
                 ErrorCode::QuotaExhausted,
             )?;
         }
-        sqlx::query("UPDATE roots SET display_name=$2,state=$3,placement=$4,quota=$5,revision=$6 WHERE id=$1")
+        sqlx::query("UPDATE roots SET display_name=$2,state=$3,placement=$4,quota=$5,quota_ceiling=GREATEST(quota_ceiling,$5),revision=$6 WHERE id=$1")
           .bind(root.as_str()).bind(request.display_name.as_str()).bind(json(&request.state)?.as_str().unwrap()).bind(json(&request.placement)?).bind(request.quota_bytes.get() as i64).bind(id()).execute(&mut *tx).await?;
         sqlx::query("DELETE FROM root_backends WHERE root_id=$1")
             .bind(root.as_str())
@@ -383,6 +383,7 @@ impl Writer {
                 .execute(&mut *tx)
                 .await?;
         }
+        crate::management::audit(&mut tx, actor, Some(root.as_str()), "root.updated", serde_json::json!({"quota_bytes":request.quota_bytes,"quota_ceiling_bytes":request.quota_bytes.get().max(row.get::<i64,_>("quota_ceiling") as u64)})).await?;
         let result = inspect(&mut tx, actor, root.as_str()).await?;
         tx.commit().await?;
         Ok(result)

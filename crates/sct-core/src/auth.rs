@@ -75,6 +75,7 @@ pub fn all_capabilities() -> Vec<Capability> {
         Capability::Delete,
         Capability::Purge,
         Capability::ManageGrants,
+        Capability::ManageRoot,
     ]
 }
 
@@ -129,6 +130,14 @@ impl Writer {
             .bind(principal.as_str())
             .execute(&mut *tx)
             .await?;
+        crate::management::audit(
+            &mut tx,
+            actor,
+            None,
+            "principal.created",
+            serde_json::json!({"principal_id":principal}),
+        )
+        .await?;
         tx.commit().await?;
         Ok(())
     }
@@ -143,7 +152,22 @@ impl Writer {
             is_admin || actor.principal == principal.as_str(),
             ErrorCode::Forbidden,
         )?;
+        let enabled: bool =
+            sqlx::query_scalar("SELECT NOT disabled FROM principals WHERE id=$1 FOR SHARE")
+                .bind(principal.as_str())
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or(Error(ErrorCode::NotFound))?;
+        require(enabled, ErrorCode::InvalidRequest)?;
         let result = issue(&mut tx, principal.as_str(), false).await?;
+        crate::management::audit(
+            &mut tx,
+            actor,
+            None,
+            "credential.issued",
+            serde_json::json!({"principal_id": principal,"credential_id":result.id}),
+        )
+        .await?;
         tx.commit().await?;
         Ok(result)
     }
@@ -164,6 +188,14 @@ impl Writer {
             .bind(credential)
             .execute(&mut *tx)
             .await?;
+        crate::management::audit(
+            &mut tx,
+            actor,
+            None,
+            "credential.revoked",
+            serde_json::json!({"credential_id":credential,"principal_id":principal}),
+        )
+        .await?;
         tx.commit().await?;
         Ok(())
     }

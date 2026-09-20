@@ -114,3 +114,18 @@ pub const TREE_OPERATIONS: &[&str] = &[
     "advance_lifecycle_job",
     "resume_lifecycle_job",
 ];
+
+/// Implemented human-management operations (M4).
+pub const MANAGEMENT_OPERATIONS: &[&str] = &[
+    "account",
+    "list_principals",
+    "create_principal",
+    "inspect_principal",
+    "update_principal",
+    "list_credentials",
+    "create_credential",
+    "revoke_credential",
+    "root_management",
+    "update_root_management",
+    "update_quota_ceiling",
+];

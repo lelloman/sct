@@ -73,6 +73,14 @@ impl Writer {
             .bind(json(&request.capabilities)?)
             .fetch_one(&mut *tx)
             .await?;
+        crate::management::audit(
+            &mut tx,
+            actor,
+            Some(&row.get::<String, _>("root_id")),
+            "grant.created",
+            json(&inspect(&row)?)?,
+        )
+        .await?;
         tx.commit().await?;
         inspect(&row)
     }
@@ -99,7 +107,7 @@ impl Writer {
         let root: String = row.get("root_id");
         check(&mut tx, actor, &root, &request.capabilities).await?;
         lock_root(&mut tx, &root).await?;
-        authorize(&mut tx, actor, &root, Capability::ManageGrants).await?;
+        check(&mut tx, actor, &root, &request.capabilities).await?;
         let row = grant_row(&mut tx, grant).await?;
         revision(&row, &request.expected_revision)?;
         let row =
@@ -109,6 +117,14 @@ impl Writer {
                 .bind(json(&request.capabilities)?)
                 .fetch_one(&mut *tx)
                 .await?;
+        crate::management::audit(
+            &mut tx,
+            actor,
+            Some(&row.get::<String, _>("root_id")),
+            "grant.updated",
+            json(&inspect(&row)?)?,
+        )
+        .await?;
         tx.commit().await?;
         inspect(&row)
     }
@@ -129,6 +145,14 @@ impl Writer {
             .bind(grant.as_str())
             .execute(&mut *tx)
             .await?;
+        crate::management::audit(
+            &mut tx,
+            actor,
+            Some(&root),
+            "grant.revoked",
+            serde_json::json!({"grant_id":grant}),
+        )
+        .await?;
         tx.commit().await?;
         Ok(())
     }

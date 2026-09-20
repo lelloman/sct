@@ -165,6 +165,7 @@ fn generation_is_deterministic_and_does_not_advertise_planned_routes() {
             .iter()
             .chain(TRANSFER_OPERATIONS)
             .chain(TREE_OPERATIONS)
+            .chain(MANAGEMENT_OPERATIONS)
             .any(|id| *id == operation["operation_id"].as_str().unwrap());
         assert_eq!(operation["implemented"], implemented);
         let path = operation["path"].as_str().unwrap();

@@ -60,6 +60,7 @@ pub fn capabilities() -> sct_protocol::Capabilities {
             .iter()
             .chain(TRANSFER_OPERATIONS)
             .chain(TREE_OPERATIONS)
+            .chain(MANAGEMENT_OPERATIONS)
             .map(|s| (*s).into())
             .collect(),
         storage_format_versions: vec![1],
@@ -78,3 +79,5 @@ pub fn capabilities() -> sct_protocol::Capabilities {
 mod lifecycle_api;
 mod transfer_api;
 mod tree_api;
+
+mod management_api;

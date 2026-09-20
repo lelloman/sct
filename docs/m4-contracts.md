@@ -137,3 +137,30 @@ Copy creation sequences are backfilled and immutable; physical generation IDs,
 root owners, reservations, occupied bytes and pending cleanup are preserved.
 This migration supplies storage for later executors; it does not activate jobs
 or silently change running configuration.
+
+## Account and root APIs (SCT-44)
+
+`GET /api/v1/account` identifies the current principal and administrator status.
+`/api/v1/principals` supports administrator listing and creation. Inspecting a
+principal is allowed to that account or an administrator; revision-checked PATCH
+is administrator-only. Disabling or demoting the last enabled administrator is
+rejected. Disabled accounts cannot authenticate or receive new credentials.
+
+`/api/v1/principals/{principal}/credentials` lists metadata or issues a token for
+that account, subject to self/admin authorization. Listing never returns hashes,
+CSRF values or secrets. `DELETE /api/v1/credentials/{credential}` revokes a token
+or session immediately; existing `/auth/tokens` routes remain available. Token
+issuance returns its secret exactly once: clients must not automatically retry
+an ambiguous response; inspect/revoke the orphaned credential before replacement.
+All responses use `Cache-Control: no-store`; cookie mutations require origin and
+CSRF validation. Opaque pagination cursors are bound to principal, scope and limit.
+
+`GET/PATCH /api/v1/roots/{root}/management` exposes permitted settings and requires
+`manage_root` for changes. Changes serialize against root work and recheck grants;
+quota cannot exceed either the ceiling or current physical allocation. The
+administrator-only `PATCH /api/v1/roots/{root}/quota-ceiling` cannot lower a ceiling
+below the current quota. The older administrator-only root PATCH remains backward
+compatible: a higher quota also raises its ceiling in the same transaction.
+Existing grant routes prevent delegation of capabilities the caller does not
+hold, including after waiting for the root lock. Committed account, credential,
+grant and delegated-setting mutations record audit metadata without secrets.
