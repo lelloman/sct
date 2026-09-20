@@ -106,6 +106,13 @@ impl Catalog {
                 include_str!("../migrations/0012_purge.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                13,
+                "management".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0013_management.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

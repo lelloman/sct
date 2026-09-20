@@ -123,3 +123,17 @@ visible. Prometheus labels are bounded categories, never root/principal/object
 IDs or paths. Optional overdue indicators compare the configured expected
 interval with the last successful snapshot commit, never session creation,
 failed uploads or maintenance activity. They do not schedule backups.
+
+## Catalog migration (SCT-43)
+
+Migration 13 adds the management catalog without rewriting prior migrations.
+Existing roots receive their current quota as their ceiling; old root creation
+paths initialize a ceiling at insert. Existing grants are unchanged. Principal
+and allocation revisions, backend configuration import state, audit records,
+maintenance progress/findings, checkpoints, their barrier and exact-generation
+inventory have durable tables. No checkpoint barrier or pin is activated during
+upgrade. Missing expected intervals and last-commit timestamps remain unknown.
+Copy creation sequences are backfilled and immutable; physical generation IDs,
+root owners, reservations, occupied bytes and pending cleanup are preserved.
+This migration supplies storage for later executors; it does not activate jobs
+or silently change running configuration.

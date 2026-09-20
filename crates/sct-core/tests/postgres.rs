@@ -79,3 +79,149 @@ async fn migrations_constraints_and_rollback() {
     catalog.close().await;
     pool.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL; run scripts/test-integration"]
+async fn management_upgrade_preserves_m3_accounting_and_generation_identity() {
+    let (catalog, pool) = support::database_through(Some(12)).await;
+    sqlx::raw_sql("INSERT INTO principals(id) VALUES('owner');
+        INSERT INTO pools VALUES('pool','revision',10000);
+        INSERT INTO backends VALUES('backend','pool','local','unique','{}');
+        INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision)
+        VALUES('root','owner','root','/','revision','enabled','{}',4000,'{}','policy','revision');
+        INSERT INTO root_backends VALUES('root','backend');
+        INSERT INTO allocations(id,pool_id,root_id,capacity,reserved,occupied,pending_cleanup)
+        VALUES('allocation','pool','root',9000,100,200,50);
+        INSERT INTO operations(id,root_id,principal_id,kind,state,server_epoch) VALUES('operation','root','owner','upload','active',1);
+        INSERT INTO content_objects(root_id,digest,kind,length) VALUES('root',repeat('a',64),'chunk',200);
+        INSERT INTO object_copies(generation,root_id,digest,backend_id,allocation_id,operation_id,bytes,state,worker_epoch,server_epoch)
+        VALUES('generation','root',repeat('a',64),'backend','allocation','operation',200,'available',1,1);
+        INSERT INTO grants VALUES('grant','root','owner','revision','[\"write\"]');")
+        .execute(&pool).await.unwrap();
+    catalog.migrate().await.unwrap();
+    catalog.migrate().await.unwrap();
+    let accounting: (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT capacity,reserved,occupied,pending_cleanup FROM allocations WHERE id='allocation'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(accounting, (9000, 100, 200, 50));
+    let root: (i64, i64, Option<i64>) = sqlx::query_as(
+        "SELECT quota,quota_ceiling,expected_upload_interval_seconds FROM roots WHERE id='root'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(root, (4000, 4000, None));
+    let grant: serde_json::Value =
+        sqlx::query_scalar("SELECT capabilities FROM grants WHERE id='grant'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(grant, serde_json::json!(["write"]));
+    let sequence: i64 = sqlx::query_scalar(
+        "SELECT created_sequence FROM object_copies WHERE generation='generation'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(sequence > 0);
+    assert!(
+        sqlx::query("UPDATE object_copies SET created_sequence=created_sequence+1")
+            .execute(&pool)
+            .await
+            .is_err()
+    );
+    sqlx::query("UPDATE object_copies SET state='deleting'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT created_sequence FROM object_copies WHERE generation='generation'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
+        sequence
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM checkpoint_barrier")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(
+        sqlx::query("UPDATE allocations SET capacity=299")
+            .execute(&pool)
+            .await
+            .is_err()
+    );
+    assert!(
+        sqlx::query("UPDATE pools SET capacity=8999")
+            .execute(&pool)
+            .await
+            .is_err()
+    );
+    assert!(
+        sqlx::query("UPDATE roots SET expected_upload_interval_seconds=59")
+            .execute(&pool)
+            .await
+            .is_err()
+    );
+    assert!(
+        sqlx::query("UPDATE roots SET quota_ceiling=-1")
+            .execute(&pool)
+            .await
+            .is_err()
+    );
+    sqlx::query("INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision) VALUES('new','owner','new','/new','revision','disabled','{}',300,'{}','new-policy','revision')")
+        .execute(&pool).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT quota_ceiling FROM roots WHERE id='new'")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        300
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL; run scripts/test-integration"]
+async fn management_catalog_rejects_invalid_states_and_rolls_back_audit() {
+    let (_, pool) = support::database().await;
+    sqlx::raw_sql("INSERT INTO principals(id) VALUES('p');
+        INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision)
+        VALUES('r','p','root','/','rev','disabled','{}',1000,'{}','policy','rev');
+        INSERT INTO maintenance_jobs(id,root_id,principal_id,key,request,kind,revision)
+        VALUES('j','r','p','key','{}','integrity_scan','rev');
+        INSERT INTO checkpoints(id,principal_id,key,revision) VALUES('c','p','checkpoint-key','rev');")
+        .execute(&pool).await.unwrap();
+    for statement in [
+        "UPDATE maintenance_jobs SET state='unknown'",
+        "UPDATE maintenance_jobs SET attempts=-1",
+        "UPDATE maintenance_jobs SET processed=-1",
+        "UPDATE checkpoints SET state='complete'",
+        "UPDATE checkpoints SET generation_watermark=-1",
+        "INSERT INTO checkpoint_objects VALUES('c','missing-generation')",
+        "INSERT INTO maintenance_jobs(id,root_id,principal_id,key,request,kind,revision) VALUES('j2','r','p','key','{}','mirror_repair','rev')",
+        "INSERT INTO integrity_findings(id,root_id,job_id,digest,kind) VALUES('f','r','missing-job',repeat('a',64),'missing')",
+    ] {
+        assert!(
+            sqlx::query(statement).execute(&pool).await.is_err(),
+            "{statement}"
+        );
+    }
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO management_audit(root_id,principal_id,event,details) VALUES('r','p','root.updated','{}')").execute(&mut *tx).await.unwrap();
+    tx.rollback().await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM management_audit")
+            .fetch_one(&pool)
+            .await
+            .unwrap(),
+        0
+    );
+}
