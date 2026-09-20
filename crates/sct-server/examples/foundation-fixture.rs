@@ -47,7 +47,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     catalog.close().await;
     let port = std::env::var("SCT_E2E_PORT").unwrap_or_else(|_| "18080".into());
     let web = std::env::current_dir()?.join("web/dist");
-    let config = json!({"bind":format!("127.0.0.1:{port}"),"public_url":format!("http://127.0.0.1:{port}"),"web_dir":web,"database_url_env":"SCT_E2E_DATABASE_URL","development":true,"enable_test_adapter":true,"pools":[{"id":"pool","capacity_bytes":10000,"overhead_bytes":0,"staging_bytes":1000}],"backends":[{"pool_id":"pool","settings":{"destination":"browser"},"inspection":{"id":"test_backend","display_name":"Browser test adapter","adapter_kind":"test","hints":{},"observed_health":"unknown"}}]});
+    std::fs::create_dir_all(dir.join("payloads"))?;
+    let mut config = json!({"bind":format!("127.0.0.1:{port}"),"public_url":format!("http://127.0.0.1:{port}"),"web_dir":web,"database_url_env":"SCT_E2E_DATABASE_URL","development":true,"enable_test_adapter":true,"pools":[{"id":"pool","capacity_bytes":10000,"overhead_bytes":0,"staging_bytes":1000}],"backends":[{"pool_id":"pool","settings":{"destination":"browser"},"inspection":{"id":"test_backend","display_name":"Browser test adapter","adapter_kind":"test","hints":{},"observed_health":"unknown"}}]});
+    config["checkpoint_dir"] = json!(dir.join("checkpoints"));
+    config["pools"].as_array_mut().unwrap().push(json!({"id":"browser_pool","capacity_bytes":2000000,"overhead_bytes":0,"staging_bytes":200000}));
+    config["backends"].as_array_mut().unwrap().push(json!({"pool_id":"browser_pool","settings":{"directory":dir.join("payloads")},"inspection":{"id":"browser_local","display_name":"Browser payload storage","adapter_kind":"local","hints":{},"observed_health":"unknown"}}));
     let value: toml::Value = serde_json::from_value(config)?;
     std::fs::write(dir.join("config.toml"), toml::to_string(&value)?)?;
     std::fs::write(

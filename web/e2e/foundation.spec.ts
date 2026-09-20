@@ -47,7 +47,7 @@ test("M1: provision roots and enforce grants, namespace and policy boundaries", 
     idempotency_key: "browser_root",
     owner_id: "alice",
     display_name: "Alice storage",
-    mount_path: "/",
+    mount_path: "/foundation",
     placement: {
       kind: "single",
       backend_id: "test_backend",

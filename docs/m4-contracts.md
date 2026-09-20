@@ -373,3 +373,12 @@ the bearer credential. Logout revokes the session and clears both cookies.
 The responsive shell includes loading, empty, permission and request-error states.
 Program file mutations remain API/SDK operations. Browser snapshot controls in
 the following tasks are limited to browsing, history and downloading.
+
+### Snapshot browser (SCT-54)
+
+Assigned roots now expose paged namespace browsing, retained file history and
+atomic directory snapshot traversal. Native authenticated download links stream
+current and historical file bytes without buffering backups in browser memory.
+The browser has no upload, rename, hide, purge, file-delete or application-restore
+controls, including for administrators. A real program-API fixture verifies the
+current file, a retained older version and a descendant of an atomic snapshot.

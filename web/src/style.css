@@ -396,3 +396,9 @@ h2,
 h3 {
   overflow-wrap: anywhere;
 }
+.breadcrumbs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import RootView from "./components/RootView.vue";
 import type {
   AccountInspection,
   BrowserLoginOptions,
@@ -25,6 +26,9 @@ const token = ref("");
 const roots = ref<RootInspection[]>([]);
 const cursor = ref<CursorToken | null>(null);
 const route = ref(location.hash.slice(1) || "/roots");
+const rootId = computed(
+  () => /^\/roots\/([A-Za-z0-9_-]+)$/.exec(route.value)?.[1] ?? null,
+);
 let generation = 0;
 function focusMain() {
   document.getElementById("main")?.focus();
@@ -187,7 +191,7 @@ onUnmounted(() => {
           </form>
         </details>
       </section>
-      <template v-else-if="route.startsWith('/roots')">
+      <template v-else-if="route === '/roots'">
         <div class="page-heading">
           <div>
             <p class="eyebrow">Your storage</p>
@@ -204,7 +208,11 @@ onUnmounted(() => {
         <div class="root-grid">
           <article v-for="root in roots" :key="root.id" class="panel root-card">
             <div class="row">
-              <h2>{{ root.display_name }}</h2>
+              <h2>
+                <a :href="`#/roots/${segment(root.id)}`">{{
+                  root.display_name
+                }}</a>
+              </h2>
               <span class="badge">{{ root.state }}</span>
             </div>
             <p class="mono">{{ root.mount_path }}</p>
@@ -229,6 +237,7 @@ onUnmounted(() => {
           Load more roots
         </button>
       </template>
+      <RootView v-else-if="rootId" :key="rootId" :root-id="rootId" />
       <section v-else-if="route === '/account'" class="panel">
         <h1>My account</h1>
         <dl>
