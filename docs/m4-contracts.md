@@ -417,3 +417,17 @@ server environment-variable references only. Root-management inspection now
 includes current retention bounds so forms can edit actual values. Real browser
 qualification provisions a private local backend and root, changes limits and
 allocations, and verifies that shrinking a pool below obligations is rejected.
+
+### Operations browser (SCT-58)
+
+Assigned roots expose logical/unique/physical/staging/reserved/pending-cleanup
+usage, transfer sessions, jobs, audit events and integrity findings. Administrators
+can start integrity scans or verified mirror repairs with acknowledgment, inspect
+failure/retry states, and explicitly resume maintenance after remediation.
+Service-wide operations include checkpoint creation, export progress, inventory
+paging, native artifact downloads and revision-checked acknowledged pin release.
+The UI labels exports catalog-only and explains the separate operator payload
+copy/verification and isolated recovery steps; it never claims export success
+means recovery qualification. Browser tests verify scan completion, downloaded
+artifact hashes and the release guard. Shared-fixture browser tests run serially
+because checkpoint catalog fences deliberately block concurrent mutations.

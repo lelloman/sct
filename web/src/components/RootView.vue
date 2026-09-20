@@ -6,8 +6,10 @@ import SnapshotBrowser from "./SnapshotBrowser.vue";
 import RootSettings from "./RootSettings.vue";
 import PolicyEditor from "./PolicyEditor.vue";
 import GrantEditor from "./GrantEditor.vue";
+import ActivityPanel from "./ActivityPanel.vue";
+import MaintenancePanel from "./MaintenancePanel.vue";
 const tab = ref("snapshots");
-const props = defineProps<{ rootId: string }>();
+const props = defineProps<{ rootId: string; administrator: boolean }>();
 const root = ref<RootInspection | null>(null);
 const error = ref("");
 const loading = ref(true);
@@ -84,6 +86,22 @@ onMounted(() => void load());
       >
         Grants
       </button>
+      <button
+        v-if="root.capabilities.includes('list_read')"
+        class="quiet"
+        :aria-pressed="tab === 'activity'"
+        @click="tab = 'activity'"
+      >
+        Activity
+      </button>
+      <button
+        v-if="root.capabilities.includes('list_read')"
+        class="quiet"
+        :aria-pressed="tab === 'integrity'"
+        @click="tab = 'integrity'"
+      >
+        Integrity
+      </button>
     </nav>
     <RootSettings
       v-if="tab === 'settings' && root.capabilities.includes('manage_root')"
@@ -101,6 +119,15 @@ onMounted(() => void load());
         tab === 'grants' && root.capabilities.includes('manage_grants')
       "
       :root="root"
+    />
+    <ActivityPanel
+      v-else-if="tab === 'activity' && root.capabilities.includes('list_read')"
+      :root-id="root.id"
+    />
+    <MaintenancePanel
+      v-else-if="tab === 'integrity' && root.capabilities.includes('list_read')"
+      :root-id="root.id"
+      :administrator="administrator"
     />
     <SnapshotBrowser
       v-else-if="tab === 'snapshots' && root.capabilities.includes('list_read')"

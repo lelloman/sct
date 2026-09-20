@@ -5,7 +5,9 @@ const origin = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: true,
+  // The fixture is shared: checkpoint write fences must not race other scenarios.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: true,
   retries: 0,
   reporter: [["list"], ["./e2e/acceptance-reporter.ts"]],

@@ -4,6 +4,7 @@ import RootView from "./components/RootView.vue";
 import CredentialList from "./components/CredentialList.vue";
 import PrincipalAdmin from "./components/PrincipalAdmin.vue";
 import StorageAdmin from "./components/StorageAdmin.vue";
+import OperationsAdmin from "./components/OperationsAdmin.vue";
 import type {
   AccountInspection,
   BrowserLoginOptions,
@@ -245,7 +246,12 @@ onUnmounted(() => {
           Load more roots
         </button>
       </template>
-      <RootView v-else-if="rootId" :key="rootId" :root-id="rootId" />
+      <RootView
+        v-else-if="rootId"
+        :key="rootId"
+        :root-id="rootId"
+        :administrator="account.administrator"
+      />
       <section v-else-if="route === '/account'">
         <h1>My account</h1>
         <dl>
@@ -262,18 +268,9 @@ onUnmounted(() => {
         v-else-if="account.administrator && route === '/accounts'"
       />
       <StorageAdmin v-else-if="account.administrator && route === '/storage'" />
-      <section
-        v-else-if="
-          account.administrator &&
-          (route === '/storage' || route === '/operations')
-        "
-        class="panel"
-      >
-        <h1>
-          {{ route === "/storage" ? "Storage administration" : "Operations" }}
-        </h1>
-        <p class="muted">This area is restricted to administrators.</p>
-      </section>
+      <OperationsAdmin
+        v-else-if="account.administrator && route === '/operations'"
+      />
       <section v-else class="panel">
         <h1>Page unavailable</h1>
         <p>You may not have access to this page.</p>
