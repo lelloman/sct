@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import RootView from "./components/RootView.vue";
+import CredentialList from "./components/CredentialList.vue";
+import PrincipalAdmin from "./components/PrincipalAdmin.vue";
 import type {
   AccountInspection,
   BrowserLoginOptions,
@@ -144,6 +146,11 @@ onUnmounted(() => {
       <template v-if="account.administrator">
         <p class="nav-label">Administration</p>
         <a
+          href="#/accounts"
+          :aria-current="route === '/accounts' ? 'page' : undefined"
+          >Accounts</a
+        >
+        <a
           href="#/storage"
           :aria-current="route === '/storage' ? 'page' : undefined"
           >Storage administration</a
@@ -238,7 +245,7 @@ onUnmounted(() => {
         </button>
       </template>
       <RootView v-else-if="rootId" :key="rootId" :root-id="rootId" />
-      <section v-else-if="route === '/account'" class="panel">
+      <section v-else-if="route === '/account'">
         <h1>My account</h1>
         <dl>
           <dt>Account ID</dt>
@@ -248,7 +255,11 @@ onUnmounted(() => {
             {{ account.administrator ? "Administrator" : "Regular account" }}
           </dd>
         </dl>
+        <CredentialList :principal-id="account.principal_id" />
       </section>
+      <PrincipalAdmin
+        v-else-if="account.administrator && route === '/accounts'"
+      />
       <section
         v-else-if="
           account.administrator &&

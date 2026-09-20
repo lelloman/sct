@@ -382,3 +382,13 @@ current and historical file bytes without buffering backups in browser memory.
 The browser has no upload, rename, hide, purge, file-delete or application-restore
 controls, including for administrators. A real program-API fixture verifies the
 current file, a retained older version and a descendant of an atomic snapshot.
+
+### Accounts and credentials (SCT-55)
+
+The account page lists credentials and sessions, issues program credentials with
+one-time secret display, and confirms revocation. Secrets never enter browser
+storage. Administrator account management supports creation, revision-checked
+role/disabled changes with acknowledgment, and credentials for other accounts.
+Regular accounts cannot navigate to administrative account management. Real
+browser qualification exercises issuance, authentication, revocation and account
+disabling against the server rather than mocked responses.
