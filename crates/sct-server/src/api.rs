@@ -29,7 +29,7 @@ impl From<Error> for ApiError {
 }
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let request_id = uuid::Uuid::new_v4().simple().to_string();
+        let request_id = crate::correlation::request_id();
         let status =
             StatusCode::from_u16(self.0.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let body = ErrorResponse::new(request_id.parse().unwrap(), self.0.clone());
@@ -226,7 +226,7 @@ async fn response_headers(request: Request, next: Next) -> Response {
     if !response.headers().contains_key("x-request-id") {
         response.headers_mut().insert(
             "x-request-id",
-            uuid::Uuid::new_v4().simple().to_string().parse().unwrap(),
+            crate::correlation::request_id().parse().unwrap(),
         );
     }
     response

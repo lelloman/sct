@@ -69,6 +69,13 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
             .unwrap()
             .to_owned();
         let body: ErrorResponse = response.json().await.unwrap();
+        assert_eq!(correlation.len(), 32);
+        assert_eq!(
+            uuid::Uuid::parse_str(&correlation)
+                .unwrap()
+                .get_version_num(),
+            4
+        );
         assert_eq!(correlation, body.request_id.as_str());
         assert_ne!(correlation, "untrusted-id");
     }

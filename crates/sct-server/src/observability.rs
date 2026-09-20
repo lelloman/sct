@@ -63,12 +63,7 @@ pub(crate) async fn observe(
     metrics.active.fetch_add(1, Ordering::Relaxed);
     let _active = Active(metrics.clone());
     let mut response = next.run(request).await;
-    let request_id = response
-        .headers()
-        .get("x-request-id")
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_owned)
-        .unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
+    let request_id = crate::correlation::request_id();
     response.headers_mut().insert(
         "x-request-id",
         HeaderValue::from_str(&request_id).expect("server correlation ID"),

@@ -26,7 +26,7 @@ pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
 
 async fn api_not_implemented() -> impl IntoResponse {
     // Generate server correlation IDs; never echo unvalidated request headers.
-    let id = uuid::Uuid::new_v4().simple().to_string();
+    let id = correlation::request_id();
     let body = ErrorResponse::new(
         id.parse().expect("UUID is a valid request ID"),
         ErrorCode::UnsupportedOperation,
@@ -58,7 +58,9 @@ pub mod oidc;
 pub fn application(app: api::App, web_directory: PathBuf) -> Router {
     let router =
         router(Some(app.writer.catalog().clone()), web_directory).merge(api::routes(app.clone()));
-    observability::install(router, app)
+    observability::install(router, app).layer(simple_server::axum::middleware::from_fn(
+        correlation::middleware,
+    ))
 }
 pub fn capabilities() -> sct_protocol::Capabilities {
     use sct_protocol::*;
@@ -98,3 +100,5 @@ mod checkpoint_api;
 mod maintenance_api;
 
 mod observability;
+
+mod correlation;
