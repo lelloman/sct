@@ -5,6 +5,7 @@
 //! settings and registration must not leak into namespace or retention rules.
 
 pub mod catalog;
+pub mod checkpoint;
 
 pub mod auth;
 pub mod backend;

@@ -1,3 +1,5 @@
+#[path = "support/checkpoint_tests.rs"]
+mod checkpoint_tests;
 #[path = "support/deletion_tests.rs"]
 mod deletion_tests;
 #[path = "support/graph_work_tests.rs"]

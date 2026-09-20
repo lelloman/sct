@@ -282,6 +282,13 @@ pub(crate) async fn mark_copy_deleting(
     fence: &OperationFence,
     generation: &str,
 ) -> Result<()> {
+    let barrier: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM checkpoint_barrier)")
+        .fetch_one(&mut *db)
+        .await?;
+    require(
+        !barrier && !crate::checkpoint::protected(db, generation).await?,
+        ErrorCode::RootBusy,
+    )?;
     let r=sqlx::query("WITH previous AS (SELECT generation,allocation_id,bytes,pending_charge FROM object_copies WHERE generation=$1 AND root_id=$2 AND state IN ('writing','available') FOR UPDATE), changed AS (UPDATE object_copies c SET state='deleting',operation_id=$3,pending_charge=true FROM previous p WHERE c.generation=p.generation RETURNING p.allocation_id,p.bytes,p.pending_charge) SELECT * FROM changed").bind(generation).bind(&fence.root).bind(&fence.id).fetch_optional(&mut *db).await?;
     if let Some(r) = r
         && !r.get::<bool, _>("pending_charge")
@@ -342,6 +349,9 @@ impl TransferEngine {
     /// One bounded recovery pass. The runtime repeats this without extending user
     /// inactivity. An expired worker is reclaimed; an expired session is cleaned.
     pub async fn tick(&self) -> Result<()> {
+        if self.checkpoint_tick().await? {
+            return Ok(());
+        }
         let rows = {
             let mut tx = self.writer.transaction().await?;
             sqlx::query("SELECT o.id,o.root_id,o.epoch,o.server_epoch,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) expired FROM operations o WHERE o.state IN ('active','recovering','cleaning_up') AND NOT EXISTS(SELECT 1 FROM maintenance_jobs m WHERE m.operation_id=o.id AND m.state<>'completed') AND (EXISTS(SELECT 1 FROM transfer_sessions s WHERE s.operation_id=o.id) OR EXISTS(SELECT 1 FROM tree_drafts d WHERE d.operation_id=o.id) OR EXISTS(SELECT 1 FROM lifecycle_jobs j WHERE j.operation_id=o.id) OR EXISTS(SELECT 1 FROM object_copies c WHERE c.operation_id=o.id AND c.state IN ('writing','deleting'))) ORDER BY o.worker_expires_at NULLS FIRST,o.id LIMIT 64").fetch_all(&mut *tx).await?
@@ -407,7 +417,8 @@ impl TransferEngine {
 }
 impl TransferEngine {
     pub async fn heartbeat(&self) -> Result<()> {
-        let mut tx = self.writer.transaction().await?;
+        // Lease renewal must continue while checkpoint capture fences content.
+        let mut tx = self.writer.control_transaction().await?;
         sqlx::query("UPDATE operations SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE server_epoch=$1 AND worker_expires_at>clock_timestamp() AND state IN ('active','recovering','cleaning_up') AND kind IN ('upload','policy_transition','purge')").bind(self.writer.epoch).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())

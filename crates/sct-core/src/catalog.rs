@@ -127,6 +127,13 @@ impl Catalog {
                 include_str!("../migrations/0015_mirror_repair.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                16,
+                "checkpoint_fencing".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0016_checkpoint_fencing.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

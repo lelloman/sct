@@ -109,7 +109,7 @@ impl Writer {
         csrf: Option<&str>,
     ) -> Result<Actor> {
         require(secret.len() == 64, ErrorCode::Unauthorized)?;
-        let mut tx = self.transaction().await?;
+        let mut tx = self.control_transaction().await?;
         let row = sqlx::query("SELECT c.id,c.principal_id,c.csrf_hash FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE c.secret_hash=$1 AND c.kind=$2 AND NOT c.revoked AND NOT p.disabled AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp())")
           .bind(hash(secret)).bind(if session {"session"} else {"token"}).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::Unauthorized))?;
         if let Some(csrf) = csrf {

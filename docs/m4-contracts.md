@@ -289,3 +289,21 @@ writes and deletes remain charged and are reconciled on retry. A durable target
 ledger makes replay after a lost progress acknowledgement idempotent. A missing
 healthy source blocks repair without retiring the original copy. Administrators
 can correct availability or capacity and explicitly resume blocked work.
+
+### Checkpoint fencing and pins (SCT-50)
+
+The core checkpoint coordinator persists a draining barrier before capture. New
+deletion intents wait; already issued exact-generation deletes are retried in
+bounded batches and retain their charges until confirmed. Capture starts only
+when those intents have drained and existing catalog transactions have finished.
+A shared transaction fence covers ordinary catalog writes, including publication
+and lifecycle changes. Capture then freezes those changes while pinning available
+physical generations in batches of 256, ordered by their monotonic sequence.
+The capture watermark never orders opaque generation identifiers.
+
+Checkpoint inspection and authenticated explicit release remain available during
+capture. A server replacement marks an interrupted capture failed, removes its
+service barrier and retains all recorded generation pins. Garbage collection and
+mirror repair cannot retire a pinned generation. Release requires an exact
+revision and explicit acknowledgement. This step provides the core coordinator;
+the export artifact and HTTP workflow follow in SCT-51.

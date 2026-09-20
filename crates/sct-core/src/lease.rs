@@ -23,7 +23,14 @@ impl Catalog {
             owner,
             epoch: epoch.ok_or(Error(ErrorCode::RootBusy))?,
         };
-        let mut tx = writer.transaction().await?;
+        let mut tx = writer.control_transaction().await?;
+        // An exported PostgreSQL snapshot cannot survive its owning process.
+        // Preserve every durable pin and make interruption explicit.
+        sqlx::query("UPDATE checkpoints SET state='failed',failure='destination_unavailable',revision=$1 WHERE id IN (SELECT checkpoint_id FROM checkpoint_barrier WHERE phase='capturing' AND server_epoch<>$2)").bind(id()).bind(writer.epoch).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM checkpoint_barrier WHERE phase='capturing' AND server_epoch<>$1")
+            .bind(writer.epoch)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("UPDATE operations SET state='recovering',epoch=epoch+1,worker_expires_at=NULL WHERE state IN ('active','cleaning_up') AND server_epoch<>$1")
           .bind(writer.epoch).execute(&mut *tx).await?;
         tx.commit().await?;
@@ -34,6 +41,21 @@ impl Writer {
     /// The shared lease-row lock prevents takeover while this short metadata
     /// transaction commits. No backend/network I/O may occur inside it.
     pub(crate) async fn transaction(&self) -> Result<Transaction<'_, Postgres>> {
+        let mut tx = self.control_transaction().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock_shared(hashtext(current_schema()),73628493)")
+            .execute(&mut *tx)
+            .await?;
+        let frozen: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM checkpoint_barrier WHERE phase='capturing')",
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        require(!frozen, ErrorCode::RootBusy)?;
+        Ok(tx)
+    }
+    /// Checkpoint control, authentication and lease renewal only; callers must
+    /// not mutate ordinary catalog content.
+    pub(crate) async fn control_transaction(&self) -> Result<Transaction<'_, Postgres>> {
         let mut tx = self.catalog.pool.begin().await?;
         let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM server_lease WHERE owner=$1 AND epoch=$2 AND expires_at>clock_timestamp() FOR SHARE)")
           .bind(&self.owner).bind(self.epoch).fetch_one(&mut *tx).await?;
