@@ -17,7 +17,10 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | rename_entry | POST | `/api/v1/entries/{entry}/rename` | RenameEntryRequest | EntryInspection | M1 | true |
 | effective_policy | GET | `/api/v1/policies` | PolicyScope | EffectivePolicy | M1 | true |
 | root_operation | GET | `/api/v1/roots/{root}/operation` | reserved | OperationInspection | M1 | true |
-| inspect_usage | GET | `/api/v1/roots/{root}/usage` | reserved | RootUsage | M2 | false |
+| inspect_usage | GET | `/api/v1/roots/{root}/usage` | reserved | RootCapacityUsage | M4 | true |
+| list_sessions | GET | `/api/v1/roots/{root}/sessions` | ListRequest | TransferActivityPage | M4 | true |
+| list_root_jobs | GET | `/api/v1/roots/{root}/jobs` | ListRequest | JobActivityPage | M4 | true |
+| list_root_audit | GET | `/api/v1/roots/{root}/audit` | ListRequest | AuditPage | M4 | true |
 | inspect_pool | GET | `/api/v1/admin/pools/{pool}` | reserved | PoolInspection | M1 | true |
 | inspect_allocation | GET | `/api/v1/admin/allocations/{allocation}` | reserved | AllocationInspection | M1 | true |
 | inspect_backend | GET | `/api/v1/admin/backends/{backend}` | reserved | BackendInspection | M1 | true |
@@ -60,11 +63,11 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | create_allocation | POST | `/api/v1/admin/allocations` | CreateAllocationRequest | AllocationManagement | M4 | true |
 | configure_allocation | PUT | `/api/v1/admin/allocations/{allocation}` | ResizeAllocationRequest | AllocationManagement | M4 | true |
 | allocation_management | GET | `/api/v1/admin/allocations/{allocation}/management` | reserved | AllocationManagement | M4 | true |
-| list_jobs | GET | `/api/v1/admin/jobs` | ListRequest | reserved | M4 | false |
+| list_jobs | GET | `/api/v1/admin/jobs` | ListRequest | JobActivityPage | M4 | true |
 | inspect_job | GET | `/api/v1/admin/jobs/{job}` | reserved | reserved | M4 | false |
 | start_integrity_scan | POST | `/api/v1/admin/roots/{root}/integrity` | reserved | OperationInspection | M4 | false |
 | start_repair | POST | `/api/v1/admin/roots/{root}/repair` | reserved | OperationInspection | M4 | false |
-| list_audit | GET | `/api/v1/admin/audit` | ListRequest | reserved | M4 | false |
+| list_audit | GET | `/api/v1/admin/audit` | ListRequest | AuditPage | M4 | true |
 | create_checkpoint | POST | `/api/v1/admin/checkpoints` | reserved | reserved | M4 | false |
 | inspect_checkpoint | GET | `/api/v1/admin/checkpoints/{checkpoint}` | reserved | reserved | M4 | false |
 | finish_checkpoint | POST | `/api/v1/admin/checkpoints/{checkpoint}/finish` | reserved | reserved | M4 | false |

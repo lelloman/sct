@@ -108,6 +108,20 @@ dto! {
         pub pools: Vec<PoolInspection>,
         pub next_cursor: Option<CursorToken>,
     }
+    pub struct TransferActivity {
+        pub id: UploadId,
+        pub root_id: RootId,
+        pub principal_id: PrincipalId,
+        pub kind: String,
+        pub state: SessionState,
+        pub phase: String,
+        pub admission: Option<AdmissionState>,
+        pub expires_at_ms: TimestampMs,
+        pub failure: Option<ErrorCode>,
+    }
+    pub struct TransferActivityPage { pub sessions: Vec<TransferActivity>, pub next_cursor: Option<CursorToken> }
+    pub struct JobActivity { pub operation: OperationInspection, pub phase: String, pub lifecycle: Option<LifecycleJob> }
+    pub struct JobActivityPage { pub jobs: Vec<JobActivity>, pub next_cursor: Option<CursorToken> }
     pub struct RootCapacityUsage {
         pub root_id: RootId,
         pub logical_retained_bytes: ByteCount,

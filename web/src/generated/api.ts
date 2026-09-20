@@ -177,6 +177,10 @@ export type IntegrityFindingPage = { findings: Array<IntegrityFinding>, next_cur
 
 export type IssuedToken = { id: CredentialId, secret: string, };
 
+export type JobActivity = { operation: OperationInspection, phase: string, lifecycle: LifecycleJob | null, };
+
+export type JobActivityPage = { jobs: Array<JobActivity>, next_cursor: CursorToken | null, };
+
 export type LifecycleJob = { id: OperationId, root_id: RootId, state: LifecycleState, phase: string, processed: ByteCount, total: ByteCount | null, failure: ErrorCode | null, };
 
 export type LifecycleState = "planning" | "ready" | "applying" | "cleaning_up" | "blocked" | "completed";
@@ -318,6 +322,10 @@ export type SnapshotPathQuery = { path: RootPath, };
 export type StartMaintenanceRequest = { idempotency_key: IdempotencyKey, kind: MaintenanceKind, root_id: RootId, };
 
 export type TimestampMs = number;
+
+export type TransferActivity = { id: UploadId, root_id: RootId, principal_id: PrincipalId, kind: string, state: SessionState, phase: string, admission: AdmissionState | null, expires_at_ms: TimestampMs, failure: ErrorCode | null, };
+
+export type TransferActivityPage = { sessions: Array<TransferActivity>, next_cursor: CursorToken | null, };
 
 export type TransferStatus = { upload: UploadInspection, admission: AdmissionState, failure: ErrorCode | null, };
 

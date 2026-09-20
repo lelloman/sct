@@ -46,6 +46,10 @@ fn register_types(
         BackendConfiguration,
         BackendPage,
         PoolPage,
+        TransferActivity,
+        TransferActivityPage,
+        JobActivity,
+        JobActivityPage,
         RootCapacityUsage,
         AuditEvent,
         AuditPage,
@@ -372,8 +376,32 @@ pub fn operations() -> Vec<Value> {
         "GET",
         "/roots/{root}/usage",
         None::<&str>,
-        "RootUsage",
-        "M2"
+        "RootCapacityUsage",
+        "M4"
+    );
+    op!(
+        "list_sessions",
+        "GET",
+        "/roots/{root}/sessions",
+        "ListRequest",
+        "TransferActivityPage",
+        "M4"
+    );
+    op!(
+        "list_root_jobs",
+        "GET",
+        "/roots/{root}/jobs",
+        "ListRequest",
+        "JobActivityPage",
+        "M4"
+    );
+    op!(
+        "list_root_audit",
+        "GET",
+        "/roots/{root}/audit",
+        "ListRequest",
+        "AuditPage",
+        "M4"
     );
     op!(
         "inspect_pool",
@@ -716,7 +744,7 @@ pub fn operations() -> Vec<Value> {
         "GET",
         "/admin/jobs",
         "ListRequest",
-        None::<&str>,
+        "JobActivityPage",
         "M4"
     );
     op!(
@@ -748,7 +776,7 @@ pub fn operations() -> Vec<Value> {
         "GET",
         "/admin/audit",
         "ListRequest",
-        None::<&str>,
+        "AuditPage",
         "M4"
     );
     op!(

@@ -108,6 +108,27 @@ async fn policy_jobs_resume_forward_recheck_authority_and_wait_for_pinned_cleanu
         ErrorCode::InvalidRequest
     );
     let job = e.apply_change(&operator, &r.id, &request).await.unwrap();
+    let activity = w
+        .list_job_activity(
+            &operator,
+            Some(&r.id),
+            &ListRequest {
+                limit: 100.try_into().unwrap(),
+                cursor: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        activity
+            .jobs
+            .iter()
+            .find(|item| item.operation.id == job.id)
+            .unwrap()
+            .lifecycle
+            .as_ref(),
+        Some(&job)
+    );
     assert_eq!(job.state, LifecycleState::Applying);
     assert_eq!(job.total.unwrap().get(), 130);
     assert_eq!(

@@ -2136,6 +2136,57 @@
       ],
       "type": "object"
     },
+    "JobActivity": {
+      "additionalProperties": false,
+      "properties": {
+        "lifecycle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LifecycleJob"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/OperationInspection"
+        },
+        "phase": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "phase"
+      ],
+      "type": "object"
+    },
+    "JobActivityPage": {
+      "additionalProperties": false,
+      "properties": {
+        "jobs": {
+          "items": {
+            "$ref": "#/$defs/JobActivity"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "jobs"
+      ],
+      "type": "object"
+    },
     "LifecycleJob": {
       "additionalProperties": false,
       "properties": {
@@ -3817,6 +3868,87 @@
       "maximum": 9007199254740991,
       "minimum": 0,
       "type": "integer"
+    },
+    "TransferActivity": {
+      "additionalProperties": false,
+      "properties": {
+        "admission": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdmissionState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expires_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/UploadId"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "principal_id": {
+          "$ref": "#/$defs/PrincipalId"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        },
+        "state": {
+          "$ref": "#/$defs/SessionState"
+        }
+      },
+      "required": [
+        "id",
+        "root_id",
+        "principal_id",
+        "kind",
+        "state",
+        "phase",
+        "expires_at_ms"
+      ],
+      "type": "object"
+    },
+    "TransferActivityPage": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/TransferActivity"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "sessions"
+      ],
+      "type": "object"
     },
     "TransferStatus": {
       "additionalProperties": false,

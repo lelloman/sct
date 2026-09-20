@@ -2,6 +2,8 @@
 mod deletion_tests;
 #[path = "support/graph_work_tests.rs"]
 mod graph_work_tests;
+#[path = "support/inspection_tests.rs"]
+mod inspection_tests;
 #[path = "support/lifecycle_tests.rs"]
 mod lifecycle_tests;
 #[path = "support/management_tests.rs"]
@@ -1546,6 +1548,9 @@ async fn publication_keep_one_receipts_and_pinned_outgoing_accounting() {
             .fetch_one(&pool)
             .await
             .unwrap();
+    let usage = writer.root_usage(&actor, &root.id).await.unwrap();
+    assert_eq!(usage.pending_cleanup_bytes.get(), pending as u64);
+    assert!(usage.staging_occupied_bytes.get() >= usage.pending_cleanup_bytes.get());
     assert!(pending > 0);
     assert_eq!(
         engine

@@ -197,3 +197,25 @@ staging resize uses the existing pool/allocation accounting locks. A root may be
 allocated space in another pool before an allowed empty-root placement change.
 Populated roots keep their membership; updating read order or other settings
 preserves backend references to existing copy generations.
+
+## Inspection and audit (SCT-46)
+
+`GET /roots/{root}/usage` returns one catalog snapshot. Logical retained bytes
+sum retained version lengths, unique retained bytes count distinct reachable
+payload chunks, and physical occupied bytes include metadata and every charged
+copy generation. Staging occupied and pending cleanup are subsets of physical
+occupied, not extra usage to add again. Reservations are separate commitments
+owned by that root, including its use of shared staging. Retired versions held
+by readers remain physically charged even though excluded from retained usage.
+PostgreSQL computes graph unions and aggregates; application memory receives one
+summary, never a flattened content graph.
+
+Root-scoped `/sessions`, `/jobs` and `/audit` GET routes require `list_read`.
+Session activity includes directory drafts before payload admission and never
+renews expiry, claims an operation or exposes write access. Job pages include
+terminal operations and lifecycle progress without disclosing worker leases or
+credentials. Administrator `/admin/jobs` and `/admin/audit` pages cover all roots.
+Audit merges management and transfer events in descending timestamp order, with
+source/sequence tie breakers so equal timestamps cannot lose or duplicate rows.
+Cursors bind the principal, root/filter and page size and recheck authorization
+on every page. Audit details contain metadata, never credential secrets or bytes.
