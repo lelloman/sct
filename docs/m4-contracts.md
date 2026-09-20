@@ -392,3 +392,16 @@ role/disabled changes with acknowledgment, and credentials for other accounts.
 Regular accounts cannot navigate to administrative account management. Real
 browser qualification exercises issuance, authentication, revocation and account
 disabling against the server rather than mocked responses.
+
+### Delegated root management (SCT-56)
+
+Root pages expose settings, retention and grants only for the corresponding
+capabilities. Quota changes retain exact revisions and enforce administrator
+ceilings; the optional expected interval configures monitoring, never scheduling.
+Policy changes use bounded server previews, paged affected-version inspection,
+explicit retention acknowledgment and durable lifecycle jobs. Both root defaults
+and resolved entry scopes support this flow, including parent-policy inheritance.
+Grants expose only delegable capabilities and confirm revocation. Browser tests
+exercise a real two-version retirement and verify a delegated reader has no
+management controls. Program file-mutation permissions remain distinct from the
+browser's management surface.

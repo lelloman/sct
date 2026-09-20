@@ -3,6 +3,10 @@ import { onMounted, ref } from "vue";
 import type { RootInspection } from "../generated/api";
 import { api, bytes, errorMessage, segment } from "../api";
 import SnapshotBrowser from "./SnapshotBrowser.vue";
+import RootSettings from "./RootSettings.vue";
+import PolicyEditor from "./PolicyEditor.vue";
+import GrantEditor from "./GrantEditor.vue";
+const tab = ref("snapshots");
 const props = defineProps<{ rootId: string }>();
 const root = ref<RootInspection | null>(null);
 const error = ref("");
@@ -18,6 +22,15 @@ async function load() {
     error.value = errorMessage(failure);
   } finally {
     loading.value = false;
+  }
+}
+async function refreshRoot() {
+  try {
+    root.value = await api<RootInspection>(
+      `/api/v1/roots/${segment(props.rootId)}`,
+    );
+  } catch (failure) {
+    error.value = errorMessage(failure);
   }
 }
 onMounted(() => void load());
@@ -39,8 +52,58 @@ onMounted(() => void load());
         </p>
       </div>
     </div>
+    <nav class="tabs" aria-label="Root sections">
+      <button
+        class="quiet"
+        :aria-pressed="tab === 'snapshots'"
+        @click="tab = 'snapshots'"
+      >
+        Snapshots
+      </button>
+      <button
+        v-if="root.capabilities.includes('manage_root')"
+        class="quiet"
+        :aria-pressed="tab === 'settings'"
+        @click="tab = 'settings'"
+      >
+        Settings
+      </button>
+      <button
+        v-if="root.capabilities.includes('manage_policy')"
+        class="quiet"
+        :aria-pressed="tab === 'policy'"
+        @click="tab = 'policy'"
+      >
+        Retention
+      </button>
+      <button
+        v-if="root.capabilities.includes('manage_grants')"
+        class="quiet"
+        :aria-pressed="tab === 'grants'"
+        @click="tab = 'grants'"
+      >
+        Grants
+      </button>
+    </nav>
+    <RootSettings
+      v-if="tab === 'settings' && root.capabilities.includes('manage_root')"
+      :root="root"
+      @updated="refreshRoot"
+    />
+    <PolicyEditor
+      v-else-if="
+        tab === 'policy' && root.capabilities.includes('manage_policy')
+      "
+      :root="root"
+    />
+    <GrantEditor
+      v-else-if="
+        tab === 'grants' && root.capabilities.includes('manage_grants')
+      "
+      :root="root"
+    />
     <SnapshotBrowser
-      v-if="root.capabilities.includes('list_read')"
+      v-else-if="tab === 'snapshots' && root.capabilities.includes('list_read')"
       :root="root"
     />
     <p v-else class="notice">
