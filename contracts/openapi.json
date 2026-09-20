@@ -1,6 +1,22 @@
 {
   "components": {
     "schemas": {
+      "AccountInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "administrator": {
+            "type": "boolean"
+          },
+          "principal_id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          }
+        },
+        "required": [
+          "principal_id",
+          "administrator"
+        ],
+        "type": "object"
+      },
       "AdapterDocumentation": {
         "additionalProperties": false,
         "description": "Administrator-facing behavior documentation, not certified guarantees or provider settings.",
@@ -216,12 +232,101 @@
         ],
         "type": "object"
       },
+      "AuditEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "details": true,
+          "event": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "principal_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "root_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RootId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "details",
+          "created_at_ms"
+        ],
+        "type": "object"
+      },
+      "AuditPage": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      },
       "AvailabilityHint": {
         "enum": [
           "intermittent",
           "normally_available"
         ],
         "type": "string"
+      },
+      "BackendConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "inspection": {
+            "$ref": "#/components/schemas/BackendInspection"
+          },
+          "pool_id": {
+            "$ref": "#/components/schemas/PoolId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "settings": true
+        },
+        "required": [
+          "inspection",
+          "pool_id",
+          "revision",
+          "settings"
+        ],
+        "type": "object"
       },
       "BackendId": {
         "maxLength": 128,
@@ -264,6 +369,31 @@
           "adapter_kind",
           "hints",
           "observed_health"
+        ],
+        "type": "object"
+      },
+      "BackendPage": {
+        "additionalProperties": false,
+        "properties": {
+          "backends": {
+            "items": {
+              "$ref": "#/components/schemas/BackendConfiguration"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "backends"
         ],
         "type": "object"
       },
@@ -328,7 +458,8 @@
           "manage_policy",
           "delete",
           "purge",
-          "manage_grants"
+          "manage_grants",
+          "manage_root"
         ],
         "type": "string"
       },
@@ -384,10 +515,180 @@
         ],
         "type": "object"
       },
+      "CheckpointDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog_digest": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "checkpoint_id": {
+            "$ref": "#/components/schemas/OperationId"
+          },
+          "format": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "generation_watermark": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "inventory_digest": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "package_state": {
+            "$ref": "#/components/schemas/RecoveryPackageState"
+          },
+          "storage_format_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "format",
+          "checkpoint_id",
+          "generation_watermark",
+          "catalog_digest",
+          "inventory_digest",
+          "package_state",
+          "storage_format_version"
+        ],
+        "type": "object"
+      },
       "CheckpointId": {
         "maxLength": 128,
         "minLength": 1,
         "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "CheckpointInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "generation_watermark": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "id": {
+            "$ref": "#/components/schemas/OperationId"
+          },
+          "pinned_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CheckpointState"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "state",
+          "generation_watermark",
+          "pinned_bytes",
+          "created_at_ms"
+        ],
+        "type": "object"
+      },
+      "CheckpointInventoryPage": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/CheckpointObject"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "objects"
+        ],
+        "type": "object"
+      },
+      "CheckpointObject": {
+        "additionalProperties": false,
+        "properties": {
+          "backend_id": {
+            "$ref": "#/components/schemas/BackendId"
+          },
+          "bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "root_id",
+          "backend_id",
+          "digest",
+          "generation",
+          "bytes"
+        ],
+        "type": "object"
+      },
+      "CheckpointPage": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoints": {
+            "items": {
+              "$ref": "#/components/schemas/CheckpointInspection"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "checkpoints"
+        ],
+        "type": "object"
+      },
+      "CheckpointState": {
+        "enum": [
+          "fencing",
+          "exporting",
+          "exported",
+          "failed",
+          "released"
+        ],
         "type": "string"
       },
       "ChunkDigest": {
@@ -439,6 +740,34 @@
         "minimum": 0,
         "type": "integer"
       },
+      "ConfigureBackendRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Revision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inspection": {
+            "$ref": "#/components/schemas/BackendInspection"
+          },
+          "pool_id": {
+            "$ref": "#/components/schemas/PoolId"
+          },
+          "settings": true
+        },
+        "required": [
+          "inspection",
+          "pool_id",
+          "settings"
+        ],
+        "type": "object"
+      },
       "CopyAcknowledgement": {
         "enum": [
           "pending",
@@ -465,6 +794,18 @@
           "backend_id",
           "acknowledged_bytes",
           "state"
+        ],
+        "type": "object"
+      },
+      "CreateCheckpointRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          }
+        },
+        "required": [
+          "idempotency_key"
         ],
         "type": "object"
       },
@@ -516,6 +857,18 @@
           "root_id",
           "principal_id",
           "capabilities"
+        ],
+        "type": "object"
+      },
+      "CreatePrincipalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          }
+        },
+        "required": [
+          "id"
         ],
         "type": "object"
       },
@@ -612,6 +965,65 @@
         "minLength": 1,
         "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
         "type": "string"
+      },
+      "CredentialInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/CredentialId"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "principal_id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "principal_id",
+          "kind",
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "CredentialPage": {
+        "additionalProperties": false,
+        "properties": {
+          "credentials": {
+            "items": {
+              "$ref": "#/components/schemas/CredentialInspection"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "credentials"
+        ],
+        "type": "object"
       },
       "CursorToken": {
         "maxLength": 2048,
@@ -1575,6 +1987,84 @@
         },
         "type": "object"
       },
+      "IntegrityFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "backend_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackendId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "digest": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "generation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IntegrityFindingKind"
+          },
+          "repaired": {
+            "type": "boolean"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "digest",
+          "kind",
+          "repaired"
+        ],
+        "type": "object"
+      },
+      "IntegrityFindingKind": {
+        "enum": [
+          "missing",
+          "corrupt",
+          "inaccessible",
+          "catalog_inconsistent"
+        ],
+        "type": "string"
+      },
+      "IntegrityFindingPage": {
+        "additionalProperties": false,
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrityFinding"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "findings"
+        ],
+        "type": "object"
+      },
       "IssuedToken": {
         "additionalProperties": false,
         "properties": {
@@ -1763,6 +2253,103 @@
           "limit"
         ],
         "type": "object"
+      },
+      "MaintenanceJob": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/OperationId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MaintenanceKind"
+          },
+          "next_attempt_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processed": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MaintenanceState"
+          }
+        },
+        "required": [
+          "id",
+          "root_id",
+          "kind",
+          "state",
+          "processed",
+          "attempts"
+        ],
+        "type": "object"
+      },
+      "MaintenanceKind": {
+        "enum": [
+          "integrity_scan",
+          "mirror_repair"
+        ],
+        "type": "string"
+      },
+      "MaintenancePage": {
+        "additionalProperties": false,
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/MaintenanceJob"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "MaintenanceState": {
+        "enum": [
+          "queued",
+          "running",
+          "retry_wait",
+          "blocked",
+          "completed",
+          "failed"
+        ],
+        "type": "string"
       },
       "ManifestId": {
         "maxLength": 64,
@@ -2283,6 +2870,31 @@
         ],
         "type": "object"
       },
+      "PoolPage": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pools": {
+            "items": {
+              "$ref": "#/components/schemas/PoolInspection"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pools"
+        ],
+        "type": "object"
+      },
       "PreviewChangeRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2379,6 +2991,55 @@
         "minLength": 1,
         "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
         "type": "string"
+      },
+      "PrincipalInspection": {
+        "additionalProperties": false,
+        "properties": {
+          "administrator": {
+            "type": "boolean"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "id",
+          "administrator",
+          "disabled",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "PrincipalPage": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "principals": {
+            "items": {
+              "$ref": "#/components/schemas/PrincipalInspection"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "principals"
+        ],
+        "type": "object"
       },
       "PurgeRequest": {
         "additionalProperties": false,
@@ -2502,6 +3163,29 @@
         ],
         "type": "object"
       },
+      "RecoveryPackageState": {
+        "enum": [
+          "catalog_only",
+          "payload_verified"
+        ],
+        "type": "string"
+      },
+      "ReleaseCheckpointRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_release": {
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "acknowledge_release"
+        ],
+        "type": "object"
+      },
       "RenameEntryRequest": {
         "additionalProperties": false,
         "description": "V1 foundation rejects moves across effective-policy or atomic-versioning boundaries.",
@@ -2566,6 +3250,22 @@
           "max_manifest_page_bytes",
           "max_manifest_page_entries",
           "max_chunk_batch"
+        ],
+        "type": "object"
+      },
+      "ResizeAllocationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "capacity_bytes"
         ],
         "type": "object"
       },
@@ -2704,6 +3404,42 @@
         ],
         "type": "object"
       },
+      "RootCapacityUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "logical_retained_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "pending_cleanup_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "physical_occupied_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "reserved_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "staging_occupied_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "unique_retained_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "root_id",
+          "logical_retained_bytes",
+          "unique_retained_bytes",
+          "physical_occupied_bytes",
+          "staging_occupied_bytes",
+          "reserved_bytes",
+          "pending_cleanup_bytes"
+        ],
+        "type": "object"
+      },
       "RootId": {
         "maxLength": 128,
         "minLength": 1,
@@ -2757,6 +3493,57 @@
           "placement",
           "quota_bytes",
           "default_policy",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "RootManagement": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "expected_upload_interval_seconds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ByteCount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_commit_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quota_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "quota_ceiling_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "root_id",
+          "revision",
+          "quota_bytes",
+          "quota_ceiling_bytes",
           "capabilities"
         ],
         "type": "object"
@@ -2950,6 +3737,26 @@
         ],
         "type": "object"
       },
+      "StartMaintenanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "$ref": "#/components/schemas/IdempotencyKey"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MaintenanceKind"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "kind",
+          "root_id"
+        ],
+        "type": "object"
+      },
       "TimestampMs": {
         "format": "uint64",
         "maximum": 9007199254740991,
@@ -3066,6 +3873,88 @@
         "required": [
           "expected_revision",
           "capabilities"
+        ],
+        "type": "object"
+      },
+      "UpdatePoolRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "capacity_bytes"
+        ],
+        "type": "object"
+      },
+      "UpdatePrincipalRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "administrator": {
+            "type": "boolean"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "disabled",
+          "administrator"
+        ],
+        "type": "object"
+      },
+      "UpdateQuotaCeilingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "quota_ceiling_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "quota_ceiling_bytes"
+        ],
+        "type": "object"
+      },
+      "UpdateRootManagementRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "expected_upload_interval_seconds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ByteCount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quota_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "display_name",
+          "quota_bytes"
         ],
         "type": "object"
       },

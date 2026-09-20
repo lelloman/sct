@@ -11,6 +11,7 @@ pub enum Capability {
     Delete,
     Purge,
     ManageGrants,
+    ManageRoot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
