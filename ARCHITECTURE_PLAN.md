@@ -4,7 +4,7 @@ Architecture and implementation plan.
 
 The project is branded **ScT**, expanded as **Stipa ca Truova**. Use `sct` for the repository, directory, domain label, and code identifiers; Rust crates use the `sct-` prefix.
 
-Status: M1 foundation (SCT-6–13) and M2 independent-file storage (SCT-14–27) are implemented. Atomic trees/deletion (M3), administration/checkpoints (M4), and broader release qualification (M5) remain pending. M2 measurements and limits are in `docs/m2-qualification.md`. See `docs/foundation.md` for implemented behavior and `contracts/README.md` for wire conventions.
+Status: M1–M4 (SCT-6–61) are implemented: foundations, file transfers, atomic trees, browser management, maintenance and isolated checkpoint recovery. M5 scale and release qualification remains pending. See `docs/m2-qualification.md`, `docs/m3-qualification.md` and `docs/m4-qualification.md` for measured coverage and limits.
 
 Date: 2026-09-14. Backend abstraction revised: 2026-09-15.
 
@@ -629,7 +629,7 @@ Exit criteria: acceptance tests pass, limits are documented, the full web/SDK st
 | Security | Cross-user/root ID guessing, hash probing, revoked credentials, missing capabilities, CSRF, traversal, secret redaction |
 | Maintenance | Interrupted pruning/deletion/repair; job lease loss; retry exhaustion; catalog/backends temporarily unavailable |
 | Recovery | Checkpoint pins survive normal pruning; failed checkpoint is visible; recovered catalog and payload inventory produce valid paths and downloads |
-| Browser | Root creation, grants, browse/history/download, policy preview/apply, hidden entries, upload failure/progress, mirror health, keyboard operation |
+| Browser | Root creation, grants, browse/history/download, policy preview/apply, hidden entries, program transfer status, mirror health, keyboard operation; no browser content mutation controls |
 
 Run integration suites against temporary PostgreSQL, real filesystem storage, and a real S3-compatible endpoint. Test AWS S3 before claiming AWS integration support. Record tested endpoints and adapter behavior; these engineering checks do not certify provider durability or become a runtime root-enablement gate. An emulator-only pass does not establish compatibility with arbitrary S3 providers.
 

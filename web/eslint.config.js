@@ -26,6 +26,7 @@ export default ts.config(
         Event: "readonly",
         URL: "readonly",
         URLSearchParams: "readonly",
+        HTMLInputElement: "readonly",
         crypto: "readonly",
         AbortController: "readonly",
       },

@@ -2,15 +2,17 @@
 
 # ScT — Stipa ca Truova
 
-Self-hosted versioned storage. **M1–M3 are implemented**: authenticated roots,
+Self-hosted versioned storage. **M1–M4 are implemented**: authenticated roots,
 namespace/policies, metadata-first file upload admission, immutable local/S3/mirrored
 storage, resumable Rust SDK jobs, keep-N history and verified full/range downloads.
 Atomic snapshots, hide/purge and acknowledged policy transitions are available through
-the HTTP API and standalone Rust SDK. Administration UI and checkpoints remain M4;
-broader release qualification remains M5.
+the HTTP API and standalone Rust SDK. The browser supports management, browsing and
+downloads; programs own backup content changes. M4 adds maintenance, integrity,
+checkpoint export and isolated recovery. Broader release qualification remains M5.
 
 See [service setup](docs/foundation.md), [transfer operations](docs/transfers.md),
-[the Rust SDK](docs/rust-sdk.md), [M2 qualification](docs/m2-qualification.md) and [M3 qualification](docs/m3-qualification.md).
+[the Rust SDK](docs/rust-sdk.md), [M2 qualification](docs/m2-qualification.md) and [M3 qualification](docs/m3-qualification.md),
+[browser management](docs/browser-management.md) and [M4 qualification](docs/m4-qualification.md).
 
 The primary repository is hosted on Fucina. The public
 [GitHub mirror](https://github.com/lelloman/sct) updates automatically on pushes
@@ -46,8 +48,8 @@ passing acceptance. To require complete product acceptance, use:
 npm --prefix web run test:acceptance
 ```
 
-The second command **currently fails intentionally** because the two M4–M5 milestone
-acceptance scenarios remain pending; M1 browser and M2/M3 HTTP/SDK scenarios execute. These gates must be expanded into the detailed
+The second command **currently fails intentionally** because the M5 milestone
+acceptance scenario remains pending; M1–M4 browser and HTTP/SDK scenarios execute. These gates must be expanded into the detailed
 workflows in [the acceptance matrix](ARCHITECTURE_PLAN.md#16-test-and-acceptance-matrix),
 not simply removed to obtain a green result.
 
@@ -116,8 +118,8 @@ repository is needed.
 - [Approved icon and shared palette](docs/branding.md)
 - [Protocol contracts, generation and wire conventions](contracts/README.md)
 
-Next: refine M4 administration controls and checkpoint creation/recovery.
-M3 tasks SCT-28–41 are implemented; browser tree/lifecycle controls remain part of M4.
+Next: refine M5 scale and release qualification. M1–M4 tasks are implemented;
+see [M4 qualification](docs/m4-qualification.md) for current coverage and limits.
 
 Technical references: [Axum serving](https://docs.rs/axum/0.8.9/axum/fn.serve.html),
 [SQLx PostgreSQL wiring](https://docs.rs/crate/sqlx/0.8.6/source/README.md),

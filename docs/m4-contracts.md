@@ -455,3 +455,14 @@ output and verify descriptor hashes before reporting success. The management HTT
 qualification exercises permissions, pagination, stale revisions, 204 revocation,
 checkpoint release acknowledgment and corrupt-artifact rejection. Packaging checks
 compile management usage outside the workspace without core/server dependencies.
+
+## SCT-61 qualification
+
+M4 acceptance executes browser maintenance/checkpoint management and the real
+SDK/HTTP/operator-CLI independent recovery drill. The drill removes original
+payload storage before recovering into an empty isolated catalog, verifies file
+and atomic-tree bytes, rejects old credentials and expires unfinished uploads.
+Browser storage qualification also covers adapter documentation, configured hints
+versus observed health and revision-checked placement/read-policy settings.
+See [M4 qualification](m4-qualification.md) for reproduction, coverage and limits.
+M5 remains the only pending milestone acceptance scenario.

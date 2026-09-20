@@ -9,6 +9,8 @@ import type {
   BackendId,
 } from "../generated/api";
 import { api, bytes, errorMessage, segment } from "../api";
+import PlacementEditor from "./PlacementEditor.vue";
+const editedPlacement = ref<Placement | null>(null);
 const roots = ref<RootInspection[]>([]);
 const cursor = ref<CursorToken | null>(null);
 const selected = ref<RootInspection | null>(null);
@@ -60,6 +62,9 @@ async function edit(root: RootInspection) {
   management.value = await api<RootManagement>(
     `/api/v1/roots/${segment(root.id)}/management`,
   );
+  editedPlacement.value = JSON.parse(
+    JSON.stringify(selected.value.placement),
+  ) as Placement;
   name.value = selected.value.display_name;
   quota.value = selected.value.quota_bytes;
   enabled.value = selected.value.state === "enabled";
@@ -88,7 +93,7 @@ async function save() {
           expected_revision: selected.value.revision,
           display_name: name.value,
           state: enabled.value ? "enabled" : "disabled",
-          placement: selected.value.placement,
+          placement: editedPlacement.value ?? selected.value.placement,
           quota_bytes: quota.value,
         },
       );
@@ -324,6 +329,10 @@ onMounted(() => void run(() => load()));
           copies in that pool.
         </p></template
       >
+      <PlacementEditor
+        v-if="selected && editedPlacement"
+        v-model="editedPlacement"
+      />
       <p v-if="selected" class="muted">
         Placement: {{ selected.placement.kind }}. Retention and grants are
         managed on the root's page.

@@ -39,8 +39,8 @@ they do not claim a million-file payload upload or checkpoint restore benchmark.
 Tree manifests separately use 128-entry leaves and 64-reference branches, while
 graph, version-retirement and purge frontiers have fixed batch limits.
 
-M4 and M5 remain explicit pending acceptance scenarios. Full-product acceptance
-must continue to report them as pending.
+At M3 handoff, M4 and M5 were pending. M4 is now qualified separately in
+[M4 qualification](m4-qualification.md); M5 remains explicitly pending.
 
 ## Recorded results (2026-09-19)
 

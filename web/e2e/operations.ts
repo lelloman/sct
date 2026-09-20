@@ -1,13 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, type APIRequestContext } from "@playwright/test";
 import { createRoot, uploadFile } from "./program";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-test("administrator inspects usage, scans integrity and exports a catalog-only checkpoint with explicit release", async ({
-  page,
-  request,
-}) => {
-  test.setTimeout(90000);
+export async function operationsWorkflow(
+  page: Page,
+  request: APIRequestContext,
+) {
   const root = await createRoot(request, "Operations browser root");
   await uploadFile(request, root, "report.txt", "checkpoint backup bytes");
   await page.goto("/");
@@ -110,4 +109,4 @@ test("administrator inspects usage, scans integrity and exports a catalog-only c
       name: /upload|delete files|purge|restore backup|backup now/i,
     }),
   ).toHaveCount(0);
-});
+}

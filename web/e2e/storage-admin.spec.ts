@@ -6,6 +6,7 @@ import type {
   RootPage,
   RootManagement,
   AllocationPage,
+  BackendConfiguration,
 } from "../src/generated/api";
 
 test("administrator provisions physical storage and root limits with guarded allocation resizing", async ({
@@ -47,10 +48,30 @@ test("administrator provisions physical storage and root limits with guarded all
     await page.getByLabel("Backend pool ID").fill(pool);
     await page.getByLabel("Local storage directory").fill(directory);
     await page
+      .getByLabel("Expected initial response in milliseconds")
+      .fill("250");
+    await page
+      .getByLabel("Expected availability")
+      .selectOption("normally_available");
+    await expect(
+      page.getByRole("region", { name: "Adapter documentation" }),
+    ).toContainText("fsync");
+    await page
       .getByRole("button", { name: "Save backend", exact: true })
       .click();
     await expect(page.getByRole("status")).toHaveText("Backend saved.");
     await expect(page.getByLabel("Local storage directory")).toBeDisabled();
+    const backendConfig = await program<BackendConfiguration>(
+      request,
+      "GET",
+      `/api/v1/admin/backends/${backend}/configuration`,
+    );
+    expect(backendConfig.inspection.hints.expected_initial_response_ms).toBe(
+      250,
+    );
+    expect(backendConfig.inspection.hints.expected_availability).toBe(
+      "normally_available",
+    );
     await page.getByRole("button", { name: "Roots", exact: true }).click();
     await page.getByLabel("Root display name").fill(display);
     await page.getByLabel("Root quota in bytes", { exact: true }).fill("10000");
@@ -64,6 +85,9 @@ test("administrator provisions physical storage and root limits with guarded all
     await page.getByRole("button", { name: "Save root", exact: true }).click();
     await expect(page.getByRole("status")).toHaveText("Root saved.");
     await page.getByLabel("Enable root", { exact: true }).check();
+    await page
+      .getByLabel("Connection timeout in milliseconds", { exact: true })
+      .fill("6500");
     await page.getByRole("button", { name: "Save root", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Save root", exact: true }),
@@ -87,6 +111,9 @@ test("administrator provisions physical storage and root limits with guarded all
     );
     const root = roots.items.find((root) => root.display_name === display)!;
     expect(root.state).toBe("enabled");
+    expect(root.placement.read_policy.candidates[0].connection_timeout_ms).toBe(
+      6500,
+    );
     const management = await program<RootManagement>(
       request,
       "GET",

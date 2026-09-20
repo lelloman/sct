@@ -2,8 +2,8 @@
 
 This freezes the approved M3 behavior. M2 file/chunk objects retain their exact
 encoding. M3 routes are advertised only as their implementation lands. The HTTP
-and standalone SDK are in scope; browser controls and checkpoint export/restore
-remain M4. Populated directories never change versioning mode in v1.
+and standalone SDK implement content mutations; M4 adds browser management/downloads
+and checkpoint export/recovery. Populated directories never change versioning mode in v1.
 
 ## Immutable directory representation
 
@@ -237,7 +237,7 @@ M3 qualification includes real local/S3/mirrored operations, late generation del
 both pin/retirement orderings, crash/replay, protected hidden history, policy-inherit
 boundaries, stale previews, revocation, and million-entry bounded/resumable work.
 Generalized graph roots reserve a checkpoint pin kind; M4 supplies actual checkpoint
-creation/export/restore. M1/M2 checks remain executable and M4/M5 gates stay pending.
+creation/export/restore. M1–M4 checks are executable; the M5 gate stays pending.
 
 ## Purge API and recovery
 

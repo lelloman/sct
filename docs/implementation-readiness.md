@@ -1,10 +1,10 @@
 # Implementation readiness — 2026-09-16
 
-Update, 2026-09-19: M1–M3 (SCT-6–41) are implemented with executable acceptance.
+Update, 2026-09-19: M1–M4 (SCT-6–61) are implemented with executable acceptance.
 M2 freezes immutable format, physical ledger/recovery, metadata-first admission,
 keep-N publication and pinned reads. See [qualification](m2-qualification.md).
 M3 adds atomic snapshots, explicit purge and resumable preview/apply transitions; see
-[M3 qualification](m3-qualification.md). Remaining prerequisites apply to M4/M5. The full product is not yet implementation-complete or acceptance-ready.
+[M3 qualification](m3-qualification.md). M4 adds browser management, maintenance and isolated recovery; see [M4 qualification](m4-qualification.md). Remaining release qualification applies to M5. The full product is not yet implementation-complete or acceptance-ready.
 
 The following are design prerequisites for later features, not reasons to delay the
 scaffold. Resolve them in the architecture and relevant task before implementing
@@ -24,7 +24,7 @@ retention lifetime. Reject individual descendant purge while snapshots reference
 This avoids silently adding independent file retention to an atomic directory.
 The approved purge and preview/apply rules are frozen in [tree lifecycle](tree-lifecycle.md).
 M3 tasks SCT-28–41 and their 15 dependency edges are implemented through the API and
-standalone SDK. Browser controls remain M4.
+standalone SDK. M4 implements browser management and downloads; backup content mutations remain API/SDK operations.
 
 M2 requires real staging reservations, physical capacity checks and publication
 accounting. The agreed 2026-09-19 scope includes independent-file history, keep-N
@@ -38,5 +38,5 @@ children (SCT-14–27) and 17 dependency edges were created and verified in Crum
 The M2 capacity/recovery and immutable-format design gates are closed by
 `capacity-recovery.md`, `immutable-format.md`, executable ledger tests, real adapter
 qualification and the M2 acceptance scenario. Atomic deletion and forward-only lifecycle recovery are implemented and tested.
-Checkpoint creation/restore remains an M4 prerequisite; full product acceptance
-still fails while M4/M5 remain pending.
+Checkpoint export, independent copying/verification and isolated recovery are implemented
+and qualified. Full product acceptance still fails while M5 remains pending.

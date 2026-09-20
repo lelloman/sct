@@ -23,7 +23,10 @@ allocation/backend inspection and root operation status. The generated operation
 map records each operation's implementation status. OpenAPI `paths` and runtime
 capabilities include only implemented routes. M2 adds root-scoped upload sessions,
 metadata admission, verified chunk transfer, publication/history and ranged downloads;
-see [the normative immutable contract](../docs/immutable-format.md).
+see [the normative immutable contract](../docs/immutable-format.md). M3 adds atomic
+trees and acknowledged lifecycle operations. M4 adds account/delegated-root and
+admin management, durable maintenance, integrity, checkpoints, verified artifact
+streaming and observability. See [M4 contracts](../docs/m4-contracts.md).
 
 The configured service requires a database and a valid writer lease. The frontend
 scaffold (without `SCT_CONFIG`) returns `404 unsupported_operation` for application

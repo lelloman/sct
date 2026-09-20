@@ -160,3 +160,50 @@ capacity rejection creates zero physical copies. The separate million-entry
 qualification passed. `git diff --check` is clean. Logs are local artifacts at
 `/tmp/sct-m3-final-check.log` and `/tmp/sct-m3-scale.log`; durable results and
 reproduction instructions are in `docs/m3-qualification.md`.
+
+# M4 implementation
+
+Approved scope: SCT-42–61, twenty tasks. Programs retain all authorized content
+mutation APIs/SDK operations; the browser provides downloads, inspection and
+management only. Regular users operate within grants and administrator ceilings;
+administrators manage service-wide storage, maintenance and checkpoints.
+
+Scoped commits:
+
+- SCT-42 `63d2195`: management/recovery contracts.
+- SCT-43 `407bed2`: catalog schema.
+- SCT-44 `3a8684c`: account/delegated-root APIs.
+- SCT-45 `b81c2a0`: persisted administrator storage management.
+- SCT-46 `b9a21f1`: usage/activity/audit inspection.
+- SCT-47 `3158799`: durable maintenance scheduling and retries.
+- SCT-48 `53935b8`: integrity scans/findings.
+- SCT-49 `b5b70c8`: verified mirror repair.
+- SCT-50 `ba50fbd`: checkpoint barriers and generation pins.
+- SCT-51 `1d67616`: consistent catalog/inventory exports.
+- SCT-52 `1655eb2`: independent isolated recovery.
+- SCT-53 `ecd36d5`: browser sessions/navigation.
+- SCT-54 `eef58bc`: retained snapshot browsing/downloads.
+- SCT-55 `d28a102`: credentials/principals UI.
+- SCT-56 `b8102c2`: delegated root settings/policies/grants UI.
+- SCT-57 `f1d26b8`: storage administration UI.
+- SCT-58 `fd9296c`: activity/maintenance/checkpoints UI.
+- SCT-59 `d5a586d`: metrics, readiness, logs and commit freshness.
+- SCT-60 `117734c`: complete standalone management SDK.
+- SCT-61: final qualification/docs, executable M4 acceptance and storage UI
+  acceptance gaps (adapter documentation/hints and placement/read-policy editing);
+  its scoped commit carries the ticket link.
+
+The independent recovery drill passed with the original payload directory removed:
+file and atomic-tree bytes recovered through the SDK, old credentials rejected,
+and unfinished upload expired. Focused M4 browser/recovery and storage-administration
+checks passed (2 cases). Durable reproduction and limits are documented in
+`docs/m4-qualification.md`; operator instructions are in
+`docs/browser-management.md`, `docs/checkpoint-recovery.md` and
+`docs/observability.md`. Final suite results are recorded below.
+
+Final validation: `./scripts/check` exited 0. Rust formatting, workspace Clippy,
+unit/HTTP tests, generated contracts, frontend checks/build, standalone SDK package
+checks, PostgreSQL integrations (including 47 core foundation cases and isolated
+recovery), real MinIO conformance and Chromium all passed. Browser/acceptance:
+12 passed, exactly 1 pending (M5). `git diff --check` is clean. Local full-suite log:
+`/tmp/sct-m4-final-check.log`. No push or deployment was requested.

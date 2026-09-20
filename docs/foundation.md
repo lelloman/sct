@@ -1,11 +1,11 @@
-# Service foundation (M1–M3)
+# Service foundation (M1–M4)
 
 SCT-8–13 implement the database-backed foundation; SCT-14–27 add independent-file
 transfers, local/S3/mirrored payloads, basic retention and history. See
 [transfer operations](transfers.md). SCT-28–41 implement atomic trees, explicit
-purge and policy jobs; see [tree lifecycle](tree-lifecycle.md). Checkpoints and
-the administration UI remain M4; release qualification remains M5.
-The landing page is still a development page.
+purge and policy jobs; see [tree lifecycle](tree-lifecycle.md). SCT-42–61 add checkpoints and
+browser administration; see [browser management](browser-management.md) and
+[checkpoint recovery](checkpoint-recovery.md). Release qualification remains M5.
 
 ## Starting a development installation
 
@@ -159,5 +159,5 @@ creates/lists/renames a directory, checks policy revisions and authorization, an
 rejects traversal. HTTP tests additionally run a signed mock OIDC provider, invalid
 claim cases, CSRF, revocation, safe error envelopes and SDK calls. Process tests
 cover writer exclusion, SIGTERM release, crash fencing and local recovery with
-an unavailable identity provider. M4/M5 remain pending and the full-product
-`npm --prefix web run test:acceptance` command must continue to fail until they land.
+an unavailable identity provider. M4 management/recovery acceptance is active. M5 remains pending, so the full-product
+`npm --prefix web run test:acceptance` command continues to fail until it lands.

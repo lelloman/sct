@@ -6,8 +6,8 @@ this does not mark the milestone parent complete or change older M1 ticket state
 See `WORK_LOG.md` and `docs/m2-qualification.md`.
 
 M3 update: the approved 14 tasks SCT-28–41 are implemented through HTTP and the
-standalone SDK. See `docs/tree-lifecycle.md` and `docs/m3-qualification.md`. M4/M5
-remain pending; their detailed implementation breakdown is the next planning work.
+standalone SDK. See `docs/tree-lifecycle.md` and `docs/m3-qualification.md`. M4 tasks SCT-42–61 are also implemented; see `docs/m4-qualification.md`.
+M5 scale and release qualification remains the next planning work.
 
 Refinement update, 2026-09-19: M2 now includes independent-file history, keep-N
 rotation and admission-time relaxed reclamation before payloads. See
