@@ -246,3 +246,28 @@ jobs retain ownership conservatively. Revision-checked explicit resume resets
 backoff and binds the current administrator's credential, leaving original
 idempotency ownership intact. Every claim, renewal and progress commit rechecks
 authority. Failed attempts and blocked/resumed/completed transitions are audited.
+
+## Integrity scanning (SCT-48)
+
+Administrators queue scans through `POST /admin/maintenance` with kind
+`integrity_scan`. The runtime executes them automatically on idle roots. Root
+readers can inspect `/roots/{root}/maintenance`, an individual job beneath that
+path, and `/roots/{root}/integrity-findings`; service-wide listing and explicit
+resume remain administrator-only. Findings carry their scan job ID so historical
+reports remain distinguishable. Repair remains a separate capability.
+
+Scans reuse the durable graph frontier, then inspect at most sixteen reachable
+catalog objects per batch. A batch buffers one physical object at a time, verifies
+SHA-256 and length for each configured replica, and compares canonical metadata
+with catalog kind, height, length and ordered edges. Missing catalog copies and
+missing provider objects are reported separately from corrupt bytes, inaccessible
+providers and inconsistent catalog metadata. Reads have a ten-second budget;
+batches yield after fifteen seconds between objects, preserving their cursor.
+A timeout is an accessibility finding, never evidence of corruption.
+
+Progress survives writer replacement. If graph generation changes, traversal is
+rebuilt conservatively. Findings are idempotent per job/object/generation/type;
+a crash before progress commit may repeat reads but cannot duplicate findings.
+Neither successful reads nor findings promote copies, delete bytes, or release
+charges. Completed means the scan finished; health requires reviewing its findings.
+Ordinary transfer cleanup cannot take over a maintenance-owned operation.

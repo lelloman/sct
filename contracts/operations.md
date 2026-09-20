@@ -65,7 +65,12 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | allocation_management | GET | `/api/v1/admin/allocations/{allocation}/management` | reserved | AllocationManagement | M4 | true |
 | list_jobs | GET | `/api/v1/admin/jobs` | ListRequest | JobActivityPage | M4 | true |
 | inspect_job | GET | `/api/v1/admin/jobs/{job}` | reserved | reserved | M4 | false |
-| start_integrity_scan | POST | `/api/v1/admin/roots/{root}/integrity` | reserved | OperationInspection | M4 | false |
+| start_integrity_scan | POST | `/api/v1/admin/maintenance` | StartMaintenanceRequest | MaintenanceJob | M4 | true |
+| list_maintenance | GET | `/api/v1/admin/maintenance` | ListRequest | MaintenancePage | M4 | true |
+| list_root_maintenance | GET | `/api/v1/roots/{root}/maintenance` | ListRequest | MaintenancePage | M4 | true |
+| maintenance_job | GET | `/api/v1/roots/{root}/maintenance/{job}` | reserved | MaintenanceJob | M4 | true |
+| resume_maintenance | POST | `/api/v1/admin/maintenance/{job}/resume` | ExpectedRevision | MaintenanceJob | M4 | true |
+| list_integrity_findings | GET | `/api/v1/roots/{root}/integrity-findings` | ListRequest | IntegrityFindingPage | M4 | true |
 | start_repair | POST | `/api/v1/admin/roots/{root}/repair` | reserved | OperationInspection | M4 | false |
 | list_audit | GET | `/api/v1/admin/audit` | ListRequest | AuditPage | M4 | true |
 | create_checkpoint | POST | `/api/v1/admin/checkpoints` | reserved | reserved | M4 | false |

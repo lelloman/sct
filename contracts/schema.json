@@ -2067,6 +2067,9 @@
         "id": {
           "type": "string"
         },
+        "job_id": {
+          "$ref": "#/$defs/OperationId"
+        },
         "kind": {
           "$ref": "#/$defs/IntegrityFindingKind"
         },
@@ -2079,6 +2082,7 @@
       },
       "required": [
         "id",
+        "job_id",
         "root_id",
         "digest",
         "kind",

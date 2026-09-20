@@ -758,9 +758,49 @@ pub fn operations() -> Vec<Value> {
     op!(
         "start_integrity_scan",
         "POST",
-        "/admin/roots/{root}/integrity",
+        "/admin/maintenance",
+        "StartMaintenanceRequest",
+        "MaintenanceJob",
+        "M4"
+    );
+    op!(
+        "list_maintenance",
+        "GET",
+        "/admin/maintenance",
+        "ListRequest",
+        "MaintenancePage",
+        "M4"
+    );
+    op!(
+        "list_root_maintenance",
+        "GET",
+        "/roots/{root}/maintenance",
+        "ListRequest",
+        "MaintenancePage",
+        "M4"
+    );
+    op!(
+        "maintenance_job",
+        "GET",
+        "/roots/{root}/maintenance/{job}",
         None::<&str>,
-        "OperationInspection",
+        "MaintenanceJob",
+        "M4"
+    );
+    op!(
+        "resume_maintenance",
+        "POST",
+        "/admin/maintenance/{job}/resume",
+        "ExpectedRevision",
+        "MaintenanceJob",
+        "M4"
+    );
+    op!(
+        "list_integrity_findings",
+        "GET",
+        "/roots/{root}/integrity-findings",
+        "ListRequest",
+        "IntegrityFindingPage",
         "M4"
     );
     op!(

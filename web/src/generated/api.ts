@@ -169,7 +169,7 @@ export type IdempotencyKey = string & { readonly __brand: "IdempotencyKey" };
 
 export type InstanceHints = { expected_initial_response_ms: Milliseconds | null, expected_bytes_per_second: BytesPerSecond | null, expected_availability: AvailabilityHint | null, };
 
-export type IntegrityFinding = { id: string, root_id: RootId, backend_id: BackendId | null, digest: ChunkDigest, generation: string | null, kind: IntegrityFindingKind, repaired: boolean, };
+export type IntegrityFinding = { id: string, job_id: OperationId, root_id: RootId, backend_id: BackendId | null, digest: ChunkDigest, generation: string | null, kind: IntegrityFindingKind, repaired: boolean, };
 
 export type IntegrityFindingKind = "missing" | "corrupt" | "inaccessible" | "catalog_inconsistent";
 

@@ -4,6 +4,8 @@ mod deletion_tests;
 mod graph_work_tests;
 #[path = "support/inspection_tests.rs"]
 mod inspection_tests;
+#[path = "support/integrity_tests.rs"]
+mod integrity_tests;
 #[path = "support/lifecycle_tests.rs"]
 mod lifecycle_tests;
 #[path = "support/maintenance_tests.rs"]

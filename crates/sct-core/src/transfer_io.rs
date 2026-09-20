@@ -344,7 +344,7 @@ impl TransferEngine {
     pub async fn tick(&self) -> Result<()> {
         let rows = {
             let mut tx = self.writer.transaction().await?;
-            sqlx::query("SELECT o.id,o.root_id,o.epoch,o.server_epoch,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) expired FROM operations o WHERE o.state IN ('active','recovering','cleaning_up') AND (EXISTS(SELECT 1 FROM transfer_sessions s WHERE s.operation_id=o.id) OR EXISTS(SELECT 1 FROM tree_drafts d WHERE d.operation_id=o.id) OR EXISTS(SELECT 1 FROM lifecycle_jobs j WHERE j.operation_id=o.id) OR EXISTS(SELECT 1 FROM object_copies c WHERE c.operation_id=o.id AND c.state IN ('writing','deleting'))) ORDER BY o.worker_expires_at NULLS FIRST,o.id LIMIT 64").fetch_all(&mut *tx).await?
+            sqlx::query("SELECT o.id,o.root_id,o.epoch,o.server_epoch,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) expired FROM operations o WHERE o.state IN ('active','recovering','cleaning_up') AND NOT EXISTS(SELECT 1 FROM maintenance_jobs m WHERE m.operation_id=o.id AND m.state<>'completed') AND (EXISTS(SELECT 1 FROM transfer_sessions s WHERE s.operation_id=o.id) OR EXISTS(SELECT 1 FROM tree_drafts d WHERE d.operation_id=o.id) OR EXISTS(SELECT 1 FROM lifecycle_jobs j WHERE j.operation_id=o.id) OR EXISTS(SELECT 1 FROM object_copies c WHERE c.operation_id=o.id AND c.state IN ('writing','deleting'))) ORDER BY o.worker_expires_at NULLS FIRST,o.id LIMIT 64").fetch_all(&mut *tx).await?
         };
         for r in rows {
             let operation: OperationId = r.get::<String, _>("id").parse()?;
@@ -401,6 +401,7 @@ impl TransferEngine {
             }
         }
         self.cleanup_terminal_tree_work().await?;
+        self.writer.run_maintenance(self).await?;
         Ok(())
     }
 }

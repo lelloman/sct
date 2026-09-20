@@ -163,6 +163,7 @@ dto! {
     }
     pub struct IntegrityFinding {
         pub id: String,
+        pub job_id: OperationId,
         pub root_id: RootId,
         pub backend_id: Option<BackendId>,
         pub digest: ChunkDigest,
