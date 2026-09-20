@@ -20,6 +20,8 @@ mod mirror_repair_tests;
 mod move_tests;
 #[path = "support/policy_preview_tests.rs"]
 mod policy_preview_tests;
+#[path = "support/recovery_tests.rs"]
+mod recovery_tests;
 #[path = "support/storage_management_tests.rs"]
 mod storage_management_tests;
 mod support;

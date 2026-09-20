@@ -19,6 +19,28 @@ async fn main() {
 
 async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Recovery has an explicit destination and never loads production config.
+    match args.as_slice() {
+        [command,package,sources,destination,ack] if command=="copy-checkpoint-payloads" && ack=="--acknowledge-independent" => {
+            copy_checkpoint(package,sources,destination).await?;
+            return Ok(());
+        }
+        [command,package,payloads] if command=="verify-checkpoint" => {
+            let descriptor=sct_core::recovery::verify_checkpoint_package(std::path::Path::new(package),std::path::Path::new(payloads)).await?;
+            println!("{}",serde_json::to_string(&descriptor)?);
+            return Ok(());
+        }
+        [command,package,payloads,destination,option,variable,ack] if command=="recover-checkpoint" && option=="--database-url-env" && ack=="--acknowledge-isolated" => {
+            let url=std::env::var(variable).map_err(|_|"recovery database environment variable missing")?;
+            let catalog=Catalog::new(&url).map_err(|_|"invalid recovery database configuration")?;
+            let descriptor=catalog.recover_checkpoint(std::path::Path::new(package),std::path::Path::new(payloads),std::path::Path::new(destination),true).await?;
+            catalog.close().await;
+            println!("{}",serde_json::to_string(&descriptor)?);
+            return Ok(());
+        }
+        [command,..] if command=="copy-checkpoint-payloads" || command=="verify-checkpoint" || command=="recover-checkpoint" => return Err("usage: copy-checkpoint-payloads PACKAGE SOURCE_MAP EMPTY_DEST --acknowledge-independent | verify-checkpoint PACKAGE PAYLOADS | recover-checkpoint PACKAGE PAYLOADS EMPTY_DEST --database-url-env VARIABLE --acknowledge-isolated".into()),
+        _=>{}
+    }
     let config_path = match std::env::var("SCT_CONFIG") {
         Ok(value) => Some(value),
         Err(std::env::VarError::NotPresent) => None,
@@ -216,5 +238,55 @@ fn require_web(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error +
     if !path.join("index.html").is_file() {
         return Err("web build missing; run npm --prefix web run build or set SCT_WEB_DIR".into());
     }
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CopySource {
+    kind: String,
+    settings: serde_json::Value,
+}
+async fn copy_checkpoint(
+    package: &str,
+    sources: &str,
+    destination: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use tokio::io::AsyncReadExt;
+    let mut bytes = Vec::new();
+    tokio::fs::File::open(sources)
+        .await?
+        .take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .await?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("source map is too large".into());
+    }
+    let sources: std::collections::BTreeMap<String, CopySource> =
+        serde_json::from_slice(&bytes).map_err(|_| "invalid source map")?;
+    let destination = std::fs::canonicalize(destination)?;
+    let mut registry = sct_core::backend::Registry::default();
+    registry.register(Arc::new(sct_core::local_store::LocalAdapter))?;
+    registry.register(Arc::new(sct_core::s3_store::S3Adapter))?;
+    let mut stores = std::collections::BTreeMap::new();
+    for (backend, source) in sources {
+        let _: sct_protocol::BackendId = backend.parse()?;
+        let adapter = registry.get(&source.kind)?;
+        let identity = adapter.validate(&source.settings)?;
+        if let Some(path) = identity.strip_prefix("local:") {
+            let path = std::path::Path::new(path);
+            if destination.starts_with(path) || path.starts_with(&destination) {
+                return Err("payload destination must be independent of source storage".into());
+            }
+        }
+        stores.insert(backend, adapter.open(&source.settings)?);
+    }
+    let descriptor = sct_core::recovery::copy_checkpoint_payloads(
+        std::path::Path::new(package),
+        &stores,
+        &destination,
+    )
+    .await?;
+    println!("{}", serde_json::to_string(&descriptor)?);
     Ok(())
 }

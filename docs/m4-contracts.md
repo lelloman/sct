@@ -341,3 +341,20 @@ catalog data and is served only to administrators. Export failure or server
 interruption preserves the recorded pins; success also retains them until an
 explicit release. Operator-controlled payload copying and independent validation
 are the recovery workflow in SCT-52.
+
+### Isolated recovery (SCT-52)
+
+The operator CLI can explicitly copy inventoried generations from supplied local
+or S3 adapter settings, verify an independent payload directory, and recover into
+an empty isolated catalog and payload destination. These commands bypass normal
+production configuration loading. Recovery validates hashes, format/schema,
+namespace and retained graph coverage before activating the imported catalog;
+normal SQL constraints remain enabled. All destination backends are rewritten to
+new local storage. Old credentials are revoked, leases and temporary pins are
+cleared, unfinished uploads expire, and privileged maintenance requires explicit
+review/resume. Offline `recover-admin` provides access without the IdP.
+
+The drill restores committed file and tree bytes with original storage offline,
+rejects missing/corrupt payloads and populated targets, and writes a fresh backup
+after recovery. [The operator procedure](checkpoint-recovery.md) documents the
+commands, independent-storage responsibility and partial-failure behavior.
