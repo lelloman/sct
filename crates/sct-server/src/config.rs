@@ -9,6 +9,8 @@ pub struct Config {
     pub bind: SocketAddr,
     pub public_url: String,
     pub web_dir: PathBuf,
+    #[serde(default = "checkpoint_directory_default")]
+    pub checkpoint_dir: PathBuf,
     pub database_url_env: String,
     #[serde(default)]
     pub development: bool,
@@ -27,6 +29,9 @@ pub struct Config {
 }
 fn worker_default() -> u16 {
     4
+}
+fn checkpoint_directory_default() -> PathBuf {
+    "checkpoints".into()
 }
 fn expiry_default() -> u32 {
     86400

@@ -19,6 +19,8 @@ pub struct TransferEngine {
     pub(crate) ingress: Arc<tokio::sync::Semaphore>,
     pub(crate) slots: Arc<tokio::sync::Semaphore>,
     pub(crate) expiry_seconds: u32,
+    pub(crate) checkpoint_directory: Option<std::path::PathBuf>,
+    pub(crate) checkpoint_export: Arc<tokio::sync::Mutex<()>>,
 }
 impl TransferEngine {
     pub fn new(writer: Writer, stores: Stores, workers: u16, expiry_seconds: u32) -> Result<Self> {
@@ -33,6 +35,8 @@ impl TransferEngine {
             ingress: Arc::new(tokio::sync::Semaphore::new(workers as usize)),
             slots: Arc::new(tokio::sync::Semaphore::new(workers as usize)),
             expiry_seconds,
+            checkpoint_directory: None,
+            checkpoint_export: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
     pub fn writer(&self) -> &Writer {

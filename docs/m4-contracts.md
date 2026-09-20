@@ -307,3 +307,37 @@ service barrier and retains all recorded generation pins. Garbage collection and
 mirror repair cannot retire a pinned generation. Release requires an exact
 revision and explicit acknowledgement. This step provides the core coordinator;
 the export artifact and HTTP workflow follow in SCT-51.
+
+### Checkpoint export (SCT-51)
+
+`POST /api/v1/admin/checkpoints` accepts an idempotency key and returns a queued
+checkpoint. The runtime drains, captures and exports it automatically; callers
+poll the inspection route instead of declaring an export finished. The earlier
+placeholder `/finish` operation is replaced by artifact and descriptor reads.
+The administrator-only collection, inspection, inventory, descriptor and artifact
+routes use the same current-credential authorization as other management APIs.
+`POST /admin/checkpoints/{checkpoint}/abandon` explicitly releases protection with
+the current revision and `acknowledge_release: true`.
+
+`checkpoint_dir` defaults to `checkpoints` and must be private storage outside the
+web asset directory. Each checkpoint gets a private directory containing
+`catalog.jsonl`, `inventory.jsonl` and `descriptor.json`. Files are created without
+overwriting existing artifacts, flushed and synced before export is reported as
+complete. Only an exported checkpoint exposes artifact downloads. Partial files
+from failed exports remain private for operator inspection.
+
+The exporter establishes a PostgreSQL repeatable-read snapshot while the catalog
+capture barrier is active. It then releases that barrier and streams bounded
+catalog batches without holding the writer-lease row lock. The JSONL catalog
+header identifies its format, schema migration version/checksum, checkpoint and
+watermark; subsequent records bind table names to complete catalog rows. Runtime
+ownership is included for explicit reinitialization during isolated recovery.
+The deterministic inventory lists exact physical generations in catalog sequence
+order. Both files have SHA-256 digests in the versioned descriptor.
+
+The descriptor always reports `catalog_only`. This export contains no payload
+copy and is not an independent backup. It can contain sensitive administrative
+catalog data and is served only to administrators. Export failure or server
+interruption preserves the recorded pins; success also retains them until an
+explicit release. Operator-controlled payload copying and independent validation
+are the recovery workflow in SCT-52.

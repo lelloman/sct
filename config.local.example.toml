@@ -2,6 +2,7 @@
 bind = "127.0.0.1:8080"
 public_url = "http://127.0.0.1:8080"
 web_dir = "web/dist"
+checkpoint_dir = "checkpoints"
 database_url_env = "SCT_DATABASE_URL"
 development = true
 enable_test_adapter = false

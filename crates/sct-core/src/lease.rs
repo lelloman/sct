@@ -24,6 +24,7 @@ impl Catalog {
             epoch: epoch.ok_or(Error(ErrorCode::RootBusy))?,
         };
         let mut tx = writer.control_transaction().await?;
+        sqlx::query("UPDATE checkpoints SET state='failed',failure='destination_unavailable',revision=$1 WHERE state='exporting' AND export_server_epoch IS NOT NULL AND export_server_epoch<>$2").bind(id()).bind(writer.epoch).execute(&mut *tx).await?;
         // An exported PostgreSQL snapshot cannot survive its owning process.
         // Preserve every durable pin and make interruption explicit.
         sqlx::query("UPDATE checkpoints SET state='failed',failure='destination_unavailable',revision=$1 WHERE id IN (SELECT checkpoint_id FROM checkpoint_barrier WHERE phase='capturing' AND server_epoch<>$2)").bind(id()).bind(writer.epoch).execute(&mut *tx).await?;

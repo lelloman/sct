@@ -87,7 +87,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             stores,
             config.workers,
             config.session_expiry_seconds,
-        )?;
+        )?
+        .with_checkpoint_directory(config.checkpoint_dir.clone());
         let worker = transfer.clone();
         let recovery = tokio::spawn(async move {
             loop {

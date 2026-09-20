@@ -73,10 +73,13 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | list_integrity_findings | GET | `/api/v1/roots/{root}/integrity-findings` | ListRequest | IntegrityFindingPage | M4 | true |
 | start_repair | POST | `/api/v1/admin/roots/{root}/repair` | StartMaintenanceRequest | MaintenanceJob | M4 | true |
 | list_audit | GET | `/api/v1/admin/audit` | ListRequest | AuditPage | M4 | true |
-| create_checkpoint | POST | `/api/v1/admin/checkpoints` | reserved | reserved | M4 | false |
-| inspect_checkpoint | GET | `/api/v1/admin/checkpoints/{checkpoint}` | reserved | reserved | M4 | false |
-| finish_checkpoint | POST | `/api/v1/admin/checkpoints/{checkpoint}/finish` | reserved | reserved | M4 | false |
-| abandon_checkpoint | POST | `/api/v1/admin/checkpoints/{checkpoint}/abandon` | reserved | reserved | M4 | false |
+| create_checkpoint | POST | `/api/v1/admin/checkpoints` | CreateCheckpointRequest | CheckpointInspection | M4 | true |
+| inspect_checkpoint | GET | `/api/v1/admin/checkpoints/{checkpoint}` | reserved | CheckpointInspection | M4 | true |
+| list_checkpoints | GET | `/api/v1/admin/checkpoints` | ListRequest | CheckpointPage | M4 | true |
+| abandon_checkpoint | POST | `/api/v1/admin/checkpoints/{checkpoint}/abandon` | ReleaseCheckpointRequest | CheckpointInspection | M4 | true |
+| checkpoint_inventory | GET | `/api/v1/admin/checkpoints/{checkpoint}/inventory` | ListRequest | CheckpointInventoryPage | M4 | true |
+| checkpoint_descriptor | GET | `/api/v1/admin/checkpoints/{checkpoint}/descriptor` | reserved | CheckpointDescriptor | M4 | true |
+| checkpoint_artifact | GET | `/api/v1/admin/checkpoints/{checkpoint}/artifacts/{artifact}` | reserved | reserved | M4 | true |
 | set_policy | PATCH | `/api/v1/policies` | SetPolicyRequest | EffectivePolicy | M1 | true |
 | policy_constraints | PATCH | `/api/v1/admin/roots/{root}/policy-constraints` | PolicyConstraintsRequest | RootInspection | M1 | true |
 | create_tree_draft | POST | `/api/v1/roots/{root}/tree-drafts` | CreateTreeDraftRequest | TreeDraftStatus | M3 | true |

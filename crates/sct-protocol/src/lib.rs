@@ -117,6 +117,13 @@ pub const TREE_OPERATIONS: &[&str] = &[
 
 /// Implemented human-management operations (M4).
 pub const MANAGEMENT_OPERATIONS: &[&str] = &[
+    "create_checkpoint",
+    "list_checkpoints",
+    "inspect_checkpoint",
+    "abandon_checkpoint",
+    "checkpoint_inventory",
+    "checkpoint_descriptor",
+    "checkpoint_artifact",
     "start_repair",
     "start_integrity_scan",
     "list_maintenance",

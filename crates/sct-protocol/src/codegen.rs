@@ -823,8 +823,8 @@ pub fn operations() -> Vec<Value> {
         "create_checkpoint",
         "POST",
         "/admin/checkpoints",
-        None::<&str>,
-        None::<&str>,
+        "CreateCheckpointRequest",
+        "CheckpointInspection",
         "M4"
     );
     op!(
@@ -832,21 +832,45 @@ pub fn operations() -> Vec<Value> {
         "GET",
         "/admin/checkpoints/{checkpoint}",
         None::<&str>,
-        None::<&str>,
+        "CheckpointInspection",
         "M4"
     );
     op!(
-        "finish_checkpoint",
-        "POST",
-        "/admin/checkpoints/{checkpoint}/finish",
-        None::<&str>,
-        None::<&str>,
+        "list_checkpoints",
+        "GET",
+        "/admin/checkpoints",
+        "ListRequest",
+        "CheckpointPage",
         "M4"
     );
     op!(
         "abandon_checkpoint",
         "POST",
         "/admin/checkpoints/{checkpoint}/abandon",
+        "ReleaseCheckpointRequest",
+        "CheckpointInspection",
+        "M4"
+    );
+    op!(
+        "checkpoint_inventory",
+        "GET",
+        "/admin/checkpoints/{checkpoint}/inventory",
+        "ListRequest",
+        "CheckpointInventoryPage",
+        "M4"
+    );
+    op!(
+        "checkpoint_descriptor",
+        "GET",
+        "/admin/checkpoints/{checkpoint}/descriptor",
+        None::<&str>,
+        "CheckpointDescriptor",
+        "M4"
+    );
+    op!(
+        "checkpoint_artifact",
+        "GET",
+        "/admin/checkpoints/{checkpoint}/artifacts/{artifact}",
         None::<&str>,
         None::<&str>,
         "M4"

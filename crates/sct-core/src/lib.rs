@@ -6,6 +6,7 @@
 
 pub mod catalog;
 pub mod checkpoint;
+pub mod checkpoint_export;
 
 pub mod auth;
 pub mod backend;

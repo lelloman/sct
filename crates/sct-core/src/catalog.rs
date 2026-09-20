@@ -134,6 +134,13 @@ impl Catalog {
                 include_str!("../migrations/0016_checkpoint_fencing.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                17,
+                "checkpoint_exports".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0017_checkpoint_exports.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

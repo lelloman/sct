@@ -53,7 +53,11 @@ async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status(
         )
         .await
         .unwrap();
-    let engine = TransferEngine::new(writer.clone(), Default::default(), 1, 3600).unwrap();
+    let checkpoint_directory =
+        std::env::temp_dir().join(format!("sct-http-checkpoint-{}", uuid::Uuid::new_v4()));
+    let engine = TransferEngine::new(writer.clone(), Default::default(), 1, 3600)
+        .unwrap()
+        .with_checkpoint_directory(checkpoint_directory.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
@@ -185,5 +189,107 @@ async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status(
             .status(),
         403
     );
+    let checkpoint_url = format!("{origin}/api/v1/admin/checkpoints");
+    let create = json!({"idempotency_key":"checkpoint"});
+    assert_eq!(
+        http.post(&checkpoint_url)
+            .bearer_auth(&reader.secret)
+            .json(&create)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+    let response = http
+        .post(&checkpoint_url)
+        .bearer_auth(&admin.secret)
+        .json(&create)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 202);
+    let checkpoint: CheckpointInspection = response.json().await.unwrap();
+    let artifact_url = format!(
+        "{checkpoint_url}/{}/artifacts/catalog.jsonl",
+        checkpoint.id.as_str()
+    );
+    assert!(
+        !http
+            .get(&artifact_url)
+            .bearer_auth(&admin.secret)
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success()
+    );
+    for _ in 0..5 {
+        engine.tick().await.unwrap();
+        if writer
+            .checkpoint(&actor, &checkpoint.id)
+            .await
+            .unwrap()
+            .state
+            == CheckpointState::Exported
+        {
+            break;
+        }
+    }
+    assert_eq!(
+        http.get(&artifact_url)
+            .bearer_auth(&reader.secret)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+    let artifact = http
+        .get(&artifact_url)
+        .bearer_auth(&admin.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(artifact.status(), 200);
+    assert_eq!(artifact.headers()["cache-control"], "no-store");
+    assert!(artifact.text().await.unwrap().contains("schema_digest"));
+    let status = writer.checkpoint(&actor, &checkpoint.id).await.unwrap();
+    let release_url = format!("{checkpoint_url}/{}/abandon", checkpoint.id.as_str());
+    let request = json!({"expected_revision":status.revision,"acknowledge_release":false});
+    assert_eq!(
+        http.post(&release_url)
+            .bearer_auth(&admin.secret)
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        400
+    );
+    let request = json!({"expected_revision":status.revision,"acknowledge_release":true});
+    assert_eq!(
+        http.post(&release_url)
+            .bearer_auth(&admin.secret)
+            .json(&request)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        200
+    );
+    assert!(
+        !http
+            .get(&artifact_url)
+            .bearer_auth(&admin.secret)
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success()
+    );
     server.abort();
+    tokio::fs::remove_dir_all(checkpoint_directory)
+        .await
+        .unwrap();
 }

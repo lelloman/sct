@@ -278,6 +278,7 @@ impl crate::transfer_io::TransferEngine {
             }
         }
         self.writer.advance_checkpoint().await?;
+        self.export_ready_checkpoint().await?;
         Ok(true)
     }
 }

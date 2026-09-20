@@ -86,4 +86,5 @@ mod storage_api;
 
 mod inspection_api;
 
+mod checkpoint_api;
 mod maintenance_api;
