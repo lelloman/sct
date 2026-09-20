@@ -120,6 +120,13 @@ impl Catalog {
                 include_str!("../migrations/0014_maintenance_execution.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                15,
+                "mirror_repair".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0015_mirror_repair.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

@@ -277,7 +277,7 @@ impl TransferEngine {
         Ok(completed)
     }
 }
-async fn mark_copy_deleting(
+pub(crate) async fn mark_copy_deleting(
     db: &mut sqlx::PgConnection,
     fence: &OperationFence,
     generation: &str,

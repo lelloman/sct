@@ -92,6 +92,20 @@ impl Writer {
             ErrorCode::IdempotencyConflict,
         )?;
         if inserted == 1 {
+            if request.kind == MaintenanceKind::MirrorRepair {
+                let placement: serde_json::Value =
+                    sqlx::query_scalar("SELECT placement FROM roots WHERE id=$1")
+                        .bind(request.root_id.as_str())
+                        .fetch_one(&mut *tx)
+                        .await?;
+                require(
+                    matches!(
+                        serde_json::from_value::<Placement>(placement)?,
+                        Placement::Mirror { .. }
+                    ),
+                    ErrorCode::UnsupportedOperation,
+                )?;
+            }
             audit(
                 &mut tx,
                 actor,

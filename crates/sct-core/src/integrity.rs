@@ -14,7 +14,7 @@ use crate::{
 use sct_protocol::*;
 use sqlx::{Row, postgres::PgRow};
 type Edges = Vec<(String, u64, u64)>;
-fn shape(row: &PgRow) -> Result<Edges> {
+pub(crate) fn shape(row: &PgRow) -> Result<Edges> {
     let kind: String = row.get("kind");
     let length = row.get::<i64, _>("length") as u64;
     let height: Option<i32> = row.get("height");
@@ -270,7 +270,7 @@ impl MaintenanceExecutor for TransferEngine {
     async fn advance(&self, claim: &MaintenanceClaim) -> Result<MaintenanceProgress> {
         match claim.kind {
             MaintenanceKind::IntegrityScan => self.integrity_batch(claim).await,
-            MaintenanceKind::MirrorRepair => Err(Error(ErrorCode::UnsupportedOperation)),
+            MaintenanceKind::MirrorRepair => self.repair_batch(claim).await,
         }
     }
 }

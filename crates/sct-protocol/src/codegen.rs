@@ -807,8 +807,8 @@ pub fn operations() -> Vec<Value> {
         "start_repair",
         "POST",
         "/admin/roots/{root}/repair",
-        None::<&str>,
-        "OperationInspection",
+        "StartMaintenanceRequest",
+        "MaintenanceJob",
         "M4"
     );
     op!(

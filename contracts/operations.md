@@ -71,7 +71,7 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | maintenance_job | GET | `/api/v1/roots/{root}/maintenance/{job}` | reserved | MaintenanceJob | M4 | true |
 | resume_maintenance | POST | `/api/v1/admin/maintenance/{job}/resume` | ExpectedRevision | MaintenanceJob | M4 | true |
 | list_integrity_findings | GET | `/api/v1/roots/{root}/integrity-findings` | ListRequest | IntegrityFindingPage | M4 | true |
-| start_repair | POST | `/api/v1/admin/roots/{root}/repair` | reserved | OperationInspection | M4 | false |
+| start_repair | POST | `/api/v1/admin/roots/{root}/repair` | StartMaintenanceRequest | MaintenanceJob | M4 | true |
 | list_audit | GET | `/api/v1/admin/audit` | ListRequest | AuditPage | M4 | true |
 | create_checkpoint | POST | `/api/v1/admin/checkpoints` | reserved | reserved | M4 | false |
 | inspect_checkpoint | GET | `/api/v1/admin/checkpoints/{checkpoint}` | reserved | reserved | M4 | false |

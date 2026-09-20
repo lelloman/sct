@@ -58,3 +58,5 @@ mod inspection;
 pub mod maintenance;
 
 mod integrity;
+
+mod mirror_repair;

@@ -12,6 +12,8 @@ mod lifecycle_tests;
 mod maintenance_tests;
 #[path = "support/management_tests.rs"]
 mod management_tests;
+#[path = "support/mirror_repair_tests.rs"]
+mod mirror_repair_tests;
 #[path = "support/move_tests.rs"]
 mod move_tests;
 #[path = "support/policy_preview_tests.rs"]

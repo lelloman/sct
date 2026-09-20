@@ -192,8 +192,9 @@ request's claimed health. Provider availability may still be unknown.
 
 Pool capacity cannot undercut allocations. Allocation shrink cannot undercut
 reserved plus occupied bytes (including pending cleanup), or the root quota's
-required placement copies. Root allocation changes wait for exclusive root work;
-staging resize uses the existing pool/allocation accounting locks. A root may be
+required placement copies. Root allocation shrink waits for exclusive root work;
+administrators can increase capacity while a repair is blocked for space.
+Staging resize uses the existing pool/allocation accounting locks. A root may be
 allocated space in another pool before an allowed empty-root placement change.
 Populated roots keep their membership; updating read order or other settings
 preserves backend references to existing copy generations.
@@ -271,3 +272,20 @@ a crash before progress commit may repeat reads but cannot duplicate findings.
 Neither successful reads nor findings promote copies, delete bytes, or release
 charges. Completed means the scan finished; health requires reviewing its findings.
 Ordinary transfer cleanup cannot take over a maintenance-owned operation.
+
+### Verified mirror repair (SCT-49)
+
+Administrators can POST `StartMaintenanceRequest` with kind `mirror_repair` to
+`/api/v1/admin/roots/{root}/repair`. Only mirrored roots support repair. The
+maintenance coordinator retains exclusive root ownership, and existing status,
+audit and resume routes expose its progress. Work consumes outstanding physical
+integrity findings; catalog inconsistencies require operator investigation.
+
+Each repair verifies the canonical object shape and a healthy alternate's full
+length and digest before retiring a damaged generation. It reserves staging
+capacity, writes a fresh generation, verifies it, confirms deletion of the old
+generation, and transfers the charge into the retained allocation. Unknown
+writes and deletes remain charged and are reconciled on retry. A durable target
+ledger makes replay after a lost progress acknowledgement idempotent. A missing
+healthy source blocks repair without retiring the original copy. Administrators
+can correct availability or capacity and explicitly resume blocked work.

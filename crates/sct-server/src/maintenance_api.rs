@@ -24,9 +24,23 @@ pub fn routes() -> Router<App> {
     Router::new()
         .route("/api/v1/admin/maintenance", get(all).post(start))
         .route("/api/v1/admin/maintenance/{job}/resume", post(resume))
+        .route("/api/v1/admin/roots/{root}/repair", post(repair))
         .route("/api/v1/roots/{root}/maintenance", get(root_jobs))
         .route("/api/v1/roots/{root}/maintenance/{job}", get(job))
         .route("/api/v1/roots/{root}/integrity-findings", get(findings))
+}
+async fn repair(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path(root): Path<String>,
+    b: Body<StartMaintenanceRequest>,
+) -> Result<Json<MaintenanceJob>> {
+    app.writer.require_admin(&actor).await?;
+    let request = body(b)?;
+    if request.kind != MaintenanceKind::MirrorRepair || request.root_id != id::<RootId>(&root)? {
+        return Err(ApiError(ErrorCode::InvalidRequest));
+    }
+    Ok(Json(app.writer.start_maintenance(&actor, &request).await?))
 }
 async fn start(
     State(app): State<App>,

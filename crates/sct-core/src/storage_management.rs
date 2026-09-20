@@ -323,7 +323,7 @@ impl Writer {
             .ok_or(Error(ErrorCode::NotFound))?;
         let root: Option<String> = row.get("root_id");
         if let Some(root) = &root {
-            lock_root(&mut tx, root).await?;
+            crate::content_catalog::lock_content_root(&mut tx, root).await?;
         }
         // Match admission's pool-before-allocation lock order.
         sqlx::query("SELECT id FROM pools WHERE id=$1 FOR UPDATE")
@@ -335,6 +335,13 @@ impl Writer {
             .fetch_one(&mut *tx)
             .await?;
         revision(&row, &request.expected_revision)?;
+        if let Some(root) = &root
+            && request.capacity_bytes.get() < row.get::<i64, _>("capacity") as u64
+        {
+            let busy:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND state IN ('active','recovering','cleaning_up'))").bind(root).fetch_one(&mut *tx).await?;
+            require(!busy, ErrorCode::RootBusy)?;
+        }
+
         require(
             request.capacity_bytes.get()
                 >= (row.get::<i64, _>("reserved") + row.get::<i64, _>("occupied")) as u64,

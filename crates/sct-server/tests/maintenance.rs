@@ -72,6 +72,44 @@ async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status(
     let http = reqwest::Client::new();
     let request = json!({"idempotency_key":"scan","root_id":root.id,"kind":"integrity_scan"});
     let url = format!("{origin}/api/v1/admin/maintenance");
+    let repair_url = format!("{origin}/api/v1/admin/roots/{}/repair", root.id.as_str());
+    let repair = json!({"idempotency_key":"repair","root_id":root.id,"kind":"mirror_repair"});
+    assert_eq!(
+        http.post(&repair_url)
+            .bearer_auth(&reader.secret)
+            .json(&repair)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
+    let unsupported = http
+        .post(&repair_url)
+        .bearer_auth(&admin.secret)
+        .json(&repair)
+        .send()
+        .await
+        .unwrap();
+    assert!(!unsupported.status().is_success());
+    assert!(
+        unsupported
+            .text()
+            .await
+            .unwrap()
+            .contains("unsupported_operation")
+    );
+    let wrong_root = json!({"idempotency_key":"repair","root_id":"wrong","kind":"mirror_repair"});
+    assert_eq!(
+        http.post(&repair_url)
+            .bearer_auth(&admin.secret)
+            .json(&wrong_root)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        400
+    );
     assert_eq!(
         http.post(&url)
             .bearer_auth(&reader.secret)

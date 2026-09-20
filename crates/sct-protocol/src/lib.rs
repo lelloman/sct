@@ -117,6 +117,7 @@ pub const TREE_OPERATIONS: &[&str] = &[
 
 /// Implemented human-management operations (M4).
 pub const MANAGEMENT_OPERATIONS: &[&str] = &[
+    "start_repair",
     "start_integrity_scan",
     "list_maintenance",
     "list_root_maintenance",
