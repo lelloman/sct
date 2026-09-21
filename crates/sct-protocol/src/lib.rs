@@ -143,6 +143,7 @@ pub const MANAGEMENT_OPERATIONS: &[&str] = &[
     "confirm_archive_set",
     "cancel_archive_set",
     "list_archive_discs",
+    "list_archive_disc_sets",
     "list_archive_entries",
     "list_archive_objects",
     "create_checkpoint",

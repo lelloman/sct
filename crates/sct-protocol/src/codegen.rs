@@ -434,6 +434,14 @@ pub fn operations() -> Vec<Value> {
         "DiscArchive"
     );
     op!(
+        "list_archive_disc_sets",
+        "GET",
+        "/archives/{collection}/discs/{disc}/sets",
+        "ListRequest",
+        "ArchiveSetPage",
+        "DiscArchive"
+    );
+    op!(
         "list_archive_discs",
         "GET",
         "/archives/{collection}/sets/{set}/discs",

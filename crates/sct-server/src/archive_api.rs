@@ -21,6 +21,10 @@ pub fn routes() -> Router<App> {
         )
         .route("/api/v1/archives/usage", get(usage))
         .route(
+            "/api/v1/archives/{collection}/discs/{disc}/sets",
+            get(disc_sets),
+        )
+        .route(
             "/api/v1/archives/{collection}/discs/{disc}/copies",
             get(copies).post(register_copy),
         )
@@ -519,6 +523,24 @@ async fn copy_events(
                 &actor,
                 &id(&collection)?,
                 &id(&copy)?,
+                &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+
+async fn disc_sets(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((collection, disc)): Path<(String, String)>,
+    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+) -> Result<Json<ArchiveSetPage>> {
+    Ok(Json(
+        app.writer
+            .list_archive_disc_sets(
+                &actor,
+                &id(&collection)?,
+                &id(&disc)?,
                 &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
             )
             .await?,

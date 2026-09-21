@@ -244,6 +244,45 @@ impl Writer {
         tx.commit().await?;
         Ok(ArchiveSetPage { sets, next_cursor })
     }
+    /// Historical recovery points whose new discs or payload placements require
+    /// this logical disc. Authorize every returned snapshot independently.
+    pub async fn list_archive_disc_sets(
+        &self,
+        actor: &Actor,
+        collection: &ArchiveCollectionId,
+        disc: &ArchiveDiscId,
+        request: &ListRequest,
+    ) -> Result<ArchiveSetPage> {
+        let mut tx = self.transaction().await?;
+        disc_access(&mut tx, actor, collection, disc).await?;
+        let scope = format!(
+            "archive-disc-sets:{}:{}",
+            collection.as_str(),
+            disc.as_str()
+        );
+        let after = after(&mut tx, actor, &scope, request).await?;
+        let rows = sqlx::query(&format!("{SET_SELECT} WHERE s.collection_id=$1 AND s.id>$3 AND (EXISTS(SELECT 1 FROM archive_discs d WHERE d.set_id=s.id AND d.id=$2) OR EXISTS(SELECT 1 FROM archive_placements p WHERE p.set_id=s.id AND p.disc_id=$2)) ORDER BY s.id LIMIT $4"))
+            .bind(collection.as_str()).bind(disc.as_str()).bind(after)
+            .bind(request.limit.get() as i64 + 1).fetch_all(&mut *tx).await?;
+        let more = rows.len() > request.limit.get() as usize;
+        let mut sets = Vec::new();
+        for row in rows.iter().take(request.limit.get() as usize) {
+            let set = set_row(row)?;
+            source_access(&mut tx, actor, &set.selections).await?;
+            sets.push(set);
+        }
+        let next_cursor = next(
+            &mut tx,
+            actor,
+            &scope,
+            request,
+            more,
+            sets.last().map(|s| s.id.as_str()),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(ArchiveSetPage { sets, next_cursor })
+    }
     pub async fn archive_usage(&self, actor: &Actor) -> Result<ArchiveUsage> {
         let mut tx = self.transaction().await?;
         auth::administrator(&mut tx, actor).await?;

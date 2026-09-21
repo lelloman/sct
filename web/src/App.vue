@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import ArchiveView from "./components/ArchiveView.vue";
 import RootView from "./components/RootView.vue";
 import CredentialList from "./components/CredentialList.vue";
 import PrincipalAdmin from "./components/PrincipalAdmin.vue";
@@ -141,6 +142,11 @@ onUnmounted(() => {
         >Storage roots</a
       >
       <a
+        href="#/archives"
+        :aria-current="route.startsWith('/archives') ? 'page' : undefined"
+        >Disc archives</a
+      >
+      <a
         href="#/account"
         :aria-current="route === '/account' ? 'page' : undefined"
         >My account</a
@@ -246,6 +252,12 @@ onUnmounted(() => {
           Load more roots
         </button>
       </template>
+      <ArchiveView
+        v-else-if="
+          route === '/archives' || /^\/archives\/[A-Za-z0-9_-]+$/.test(route)
+        "
+        :collection-id="route.split('/')[2] ?? null"
+      />
       <RootView
         v-else-if="rootId"
         :key="rootId"

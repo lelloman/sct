@@ -157,6 +157,24 @@ impl Client {
         )
         .await
     }
+    pub async fn list_archive_disc_sets(
+        &self,
+        collection: &ArchiveCollectionId,
+        disc: &ArchiveDiscId,
+        request: &ListRequest,
+    ) -> Result<ArchiveSetPage, Error> {
+        self.request(
+            Method::GET,
+            &format!(
+                "/api/v1/archives/{}/discs/{}/sets",
+                collection.as_str(),
+                disc.as_str()
+            ),
+            archive_page_query(request),
+            None,
+        )
+        .await
+    }
     pub async fn inspect_archive_set(
         &self,
         collection: &ArchiveCollectionId,

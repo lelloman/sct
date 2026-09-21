@@ -19,6 +19,7 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | inspect_archive_set | GET | `/api/v1/archives/{collection}/sets/{set}` | reserved | ArchiveSet | DiscArchive | true |
 | confirm_archive_set | POST | `/api/v1/archives/{collection}/sets/{set}/confirm` | ArchiveSetActionRequest | ArchiveSet | DiscArchive | true |
 | cancel_archive_set | POST | `/api/v1/archives/{collection}/sets/{set}/cancel` | ArchiveSetActionRequest | ArchiveSet | DiscArchive | true |
+| list_archive_disc_sets | GET | `/api/v1/archives/{collection}/discs/{disc}/sets` | ListRequest | ArchiveSetPage | DiscArchive | true |
 | list_archive_discs | GET | `/api/v1/archives/{collection}/sets/{set}/discs` | ListRequest | ArchiveDiscPage | DiscArchive | true |
 | download_archive_iso | GET | `/api/v1/archives/{collection}/discs/{disc}/iso` | reserved | reserved | DiscArchive | true |
 | list_archive_copy_events | GET | `/api/v1/archives/{collection}/copies/{copy}/events` | ListRequest | ArchiveCopyEventPage | DiscArchive | true |
