@@ -1870,6 +1870,7 @@ dependencies = [
  "quick-xml",
  "reqwest",
  "rustix",
+ "sct-archive",
  "sct-protocol",
  "serde",
  "serde_json",

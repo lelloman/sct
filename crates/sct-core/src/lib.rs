@@ -7,6 +7,7 @@
 pub mod archive_capture;
 pub mod archive_catalog;
 mod archive_management;
+pub mod archive_planning;
 pub mod catalog;
 pub mod checkpoint;
 pub mod checkpoint_export;

@@ -293,6 +293,7 @@ impl Writer {
                 old.state == ArchiveJobState::AwaitingConfirmation && old.plan.is_some(),
                 ErrorCode::RevisionConflict,
             )?;
+            crate::archive_planning::validate_reuse(&mut tx, actor, set).await?;
             let updated=sqlx::query("UPDATE archive_sets SET state='building',frozen_at=clock_timestamp(),revision=$2 WHERE id=$1 AND expires_at>clock_timestamp()").bind(set.as_str()).bind(id()).execute(&mut *tx).await?.rows_affected();
             require(updated == 1, ErrorCode::ArchiveExpired)?;
         } else {

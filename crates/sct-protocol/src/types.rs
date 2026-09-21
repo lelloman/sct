@@ -37,6 +37,7 @@ pub enum ErrorCode {
     UploadExpired,
     ArchiveBusy,
     ArchiveResourceLimit,
+    ArchiveMediaUnavailable,
     ArchiveExpired,
     ArchiveMetadataTooLarge,
     ArchiveArtifactUnavailable,
@@ -674,6 +675,7 @@ impl ErrorCode {
         match self {
             Self::ArchiveBusy | Self::ArchiveReconciliationRequired => 409,
             Self::ArchiveResourceLimit => 507,
+            Self::ArchiveMediaUnavailable => 409,
             Self::ArchiveExpired | Self::ArchiveArtifactUnavailable => 410,
             Self::ArchiveMetadataTooLarge => 422,
             Self::Unauthorized => 401,
@@ -699,6 +701,9 @@ impl ErrorCode {
                 "An archive append is active or the account concurrency limit is reached."
             }
             Self::ArchiveResourceLimit => "An archive account resource limit has been reached.",
+            Self::ArchiveMediaUnavailable => {
+                "Required earlier archive media has no verified readable copy. Verify another copy or create a new plan."
+            }
             Self::ArchiveExpired => "The archive plan or source capture has expired.",
             Self::ArchiveMetadataTooLarge => {
                 "The complete index and recovery software cannot fit on each disc."

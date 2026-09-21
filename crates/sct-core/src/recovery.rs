@@ -118,7 +118,7 @@ async fn inspect_package(package: &Path) -> Result<CheckpointDescriptor> {
     )?;
     require(
         header.format == 1
-            && header.schema_version == 21
+            && header.schema_version == 22
             && header.checkpoint_id == descriptor.checkpoint_id
             && header.generation_watermark == descriptor.generation_watermark,
         ErrorCode::IntegrityFailure,
@@ -269,7 +269,7 @@ impl crate::catalog::Catalog {
         let descriptor = verify_checkpoint_package(package, payloads).await?;
         let header = header(package).await?;
         require(
-            header.format == 1 && header.schema_version == 21,
+            header.format == 1 && header.schema_version == 22,
             ErrorCode::UnsupportedOperation,
         )?;
         let payloads = tokio::fs::canonicalize(payloads).await.map_err(io)?;

@@ -213,7 +213,7 @@ export type EntryName = string & { readonly __brand: "EntryName" };
 
 export type EntryPage = { directory_id: EntryId, directory_revision: Revision, items: Array<EntryInspection>, next_cursor: DirectoryCursor | null, };
 
-export type ErrorCode = "unauthorized" | "forbidden" | "not_found" | "unsupported_operation" | "invalid_request" | "invalid_path" | "invalid_manifest" | "revision_conflict" | "idempotency_conflict" | "cursor_refresh_required" | "root_busy" | "policy_transition" | "quota_exhausted" | "staging_exhausted" | "destination_capacity" | "destination_unavailable" | "upload_expired" | "archive_busy" | "archive_resource_limit" | "archive_expired" | "archive_metadata_too_large" | "archive_artifact_unavailable" | "archive_reconciliation_required" | "integrity_failure" | "rate_limited" | "internal_error";
+export type ErrorCode = "unauthorized" | "forbidden" | "not_found" | "unsupported_operation" | "invalid_request" | "invalid_path" | "invalid_manifest" | "revision_conflict" | "idempotency_conflict" | "cursor_refresh_required" | "root_busy" | "policy_transition" | "quota_exhausted" | "staging_exhausted" | "destination_capacity" | "destination_unavailable" | "upload_expired" | "archive_busy" | "archive_resource_limit" | "archive_media_unavailable" | "archive_expired" | "archive_metadata_too_large" | "archive_artifact_unavailable" | "archive_reconciliation_required" | "integrity_failure" | "rate_limited" | "internal_error";
 
 export type ErrorDetails = { "kind": "capacity", required_bytes: ByteCount, available_bytes: ByteCount | null, } | { "kind": "busy", root_id: RootId, operation_id: OperationId, } | { "kind": "stale_revision", scope: RevisionScope, current_revision: Revision, };
 
