@@ -91,8 +91,29 @@ impl FromRequestParts<App> for Auth {
         } else {
             None
         };
-        Ok(Self(state.writer.authenticate(token, true, csrf).await?))
+        let actor = state.writer.authenticate(token, true, csrf).await?;
+        let route = parts
+            .extensions
+            .get::<simple_server::axum::extract::MatchedPath>()
+            .map(|path| path.as_str())
+            .unwrap_or(parts.uri.path());
+        if mutation && browser_content_mutation(route) {
+            return Err(ApiError(ErrorCode::Forbidden));
+        }
+        Ok(Self(actor))
     }
+}
+fn browser_content_mutation(route: &str) -> bool {
+    route.starts_with("/api/v1/entries/")
+        || route
+            .strip_prefix("/api/v1/roots/")
+            .and_then(|tail| tail.split_once('/'))
+            .is_some_and(|(_, tail)| {
+                matches!(
+                    tail.split('/').next(),
+                    Some("entries" | "uploads" | "tree-drafts" | "purge-jobs")
+                )
+            })
 }
 pub(crate) fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers
@@ -200,6 +221,7 @@ pub fn routes(state: App) -> Router {
         .merge(crate::tree_api::routes())
         .merge(crate::lifecycle_api::routes())
         .merge(crate::management_api::routes())
+        .merge(crate::archive_api::routes())
         .merge(crate::storage_api::routes())
         .merge(crate::inspection_api::routes())
         .merge(crate::maintenance_api::routes())

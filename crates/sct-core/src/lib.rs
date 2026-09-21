@@ -5,6 +5,7 @@
 //! settings and registration must not leak into namespace or retention rules.
 
 pub mod archive_catalog;
+mod archive_management;
 pub mod catalog;
 pub mod checkpoint;
 pub mod checkpoint_export;

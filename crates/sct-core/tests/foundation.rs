@@ -1,5 +1,7 @@
 #[path = "support/archive_catalog_tests.rs"]
 mod archive_catalog_tests;
+#[path = "support/archive_management_tests.rs"]
+mod archive_management_tests;
 #[path = "support/checkpoint_tests.rs"]
 mod checkpoint_tests;
 #[path = "support/deletion_tests.rs"]

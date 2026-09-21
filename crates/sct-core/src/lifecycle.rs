@@ -162,13 +162,7 @@ impl TransferEngine {
         let mut tx = self.writer.transaction().await?;
         let row=sqlx::query("SELECT j.*,o.kind FROM lifecycle_jobs j JOIN operations o ON o.id=j.operation_id WHERE j.root_id=$1 AND j.operation_id=$2")
             .bind(root.as_str()).bind(operation.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
-        authorize(
-            &mut tx,
-            actor,
-            root.as_str(),
-            required(&row.get::<String, _>("kind")),
-        )
-        .await?;
+        authorize_job(&mut tx, actor, &row).await?;
         inspect(&row)
     }
     pub async fn advance_lifecycle_job(
@@ -191,13 +185,7 @@ impl TransferEngine {
         lock_content_root(&mut tx, root.as_str()).await?;
         let row=sqlx::query("SELECT j.*,o.kind FROM lifecycle_jobs j JOIN operations o ON o.id=j.operation_id WHERE j.root_id=$1 AND j.operation_id=$2")
             .bind(root.as_str()).bind(operation.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
-        authorize(
-            &mut tx,
-            actor,
-            root.as_str(),
-            required(&row.get::<String, _>("kind")),
-        )
-        .await?;
+        authorize_job(&mut tx, actor, &row).await?;
         require(
             row.get::<String, _>("state") == "blocked",
             ErrorCode::InvalidRequest,

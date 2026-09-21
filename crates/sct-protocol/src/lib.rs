@@ -121,6 +121,19 @@ pub const TREE_OPERATIONS: &[&str] = &[
 
 /// Implemented human-management operations (M4).
 pub const MANAGEMENT_OPERATIONS: &[&str] = &[
+    "list_archive_collections",
+    "create_archive_collection",
+    "inspect_archive_collection",
+    "update_archive_collection",
+    "archive_usage",
+    "create_archive_plan",
+    "list_archive_sets",
+    "inspect_archive_set",
+    "confirm_archive_set",
+    "cancel_archive_set",
+    "list_archive_discs",
+    "list_archive_entries",
+    "list_archive_objects",
     "create_checkpoint",
     "list_checkpoints",
     "inspect_checkpoint",

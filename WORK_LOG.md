@@ -341,3 +341,20 @@ marks and blocks an unsafe append. Full `./scripts/check` passed (12 browser pas
 existing pending M5 gate). Logs: `/tmp/sct-disc-d03-integration.log` and
 `/tmp/sct-disc-d03-check.log`. Schema-19 service checkpoints still require their
 matching release for restore before migration; portable optical format stays v1.
+
+SCT-66 exposes scoped collection/capture/history/disc/index management, bounded
+account-bound pagination, cancellation/confirmation and audit events. Every source
+in a disc's original index must remain authorized, including sources absent from
+later snapshots. Captured-credential worker checks terminate revoked work. The
+HTTP tests exposed that existing UI restrictions were not enforced for cookie
+sessions: content mutation routes now reject them early, and core Write/Delete/
+Purge checks require program credentials even for administrators. Move/purge job
+checks retain this boundary; policy-only browser management remains permitted.
+
+SCT-66 validation: PostgreSQL tests cover unrelated accounts, mixed-source grant
+loss, credential revocation, cursor isolation, revisions and cancellation replay.
+HTTP tests cover browser CSRF, archive management, source mutation denial and admin
+access; a core administrator-session test verifies upload/hide denial. Initial HTTP
+fixture exposed the missing session boundary; the corrected integration run and
+full `./scripts/check` pass (12 browser cases; existing M5 gate pending).
+Logs: `/tmp/sct-disc-d04-integration-final.log`, `/tmp/sct-disc-d04-check.log`.

@@ -62,6 +62,20 @@ pub(crate) async fn authorize(
     root: &str,
     capability: Capability,
 ) -> Result<()> {
+    // Browser sessions manage accounts/policies/archives but never act as
+    // program content writers, even when the principal is an administrator.
+    if matches!(
+        capability,
+        Capability::Write | Capability::Delete | Capability::Purge
+    ) {
+        let kind: Option<String> =
+            sqlx::query_scalar("SELECT kind FROM credentials WHERE id=$1 AND principal_id=$2")
+                .bind(&actor.credential)
+                .bind(&actor.principal)
+                .fetch_optional(&mut *db)
+                .await?;
+        require(kind.as_deref() == Some("token"), ErrorCode::Forbidden)?;
+    }
     require(
         capabilities(db, actor, root).await?.contains(&capability),
         ErrorCode::Forbidden,

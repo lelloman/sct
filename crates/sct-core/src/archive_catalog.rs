@@ -147,14 +147,7 @@ impl Writer {
         request.validate()?;
         let mut tx = self.transaction().await?;
         let current = collection_access(&mut tx, actor, collection, true).await?;
-        let roots: std::collections::BTreeSet<_> = request
-            .selections
-            .iter()
-            .map(|s| s.root_id.as_str())
-            .collect();
-        for root in roots {
-            auth::authorize(&mut tx, actor, root, Capability::ListRead).await?;
-        }
+        crate::archive_management::source_access(&mut tx, actor, &request.selections).await?;
         let scope = format!("archive-set:{}", collection.as_str());
         let key = request.request_id.as_str().parse()?;
         if let Some(result) = replay(&mut tx, actor, &scope, &key, &json(request)?).await? {

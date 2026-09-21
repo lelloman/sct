@@ -75,3 +75,26 @@ application consistency, and never silently substitutes old file versions.
 `archive_busy` and `archive_reconciliation_required` are conflicts (409), expired
 plans/artifacts are gone (410), and an unrepresentable per-disc index is 422.
 Ordinary authority/revision/quota/integrity errors retain their shared contracts.
+
+## Enforced authority
+
+Collection/history/index pages and work batches recheck current credentials and
+root grants. A disc read authorizes every source in that disc's original complete
+index, even when a later set no longer references some of them. Pages containing
+sources the caller cannot read are denied; ownership does not reveal a partially
+redacted index. Cursor tokens are account- and query-scoped, with set revision
+binding for mutable previews. Administrators can inspect other accounts explicitly;
+ordinary account listings return only their own collections.
+
+Workers call the captured-credential authority check before each bounded batch.
+Lost grants, disabled accounts and revoked/expired credentials move active work to
+Revoked. An in-flight authorized batch or bytes already downloaded cannot be
+retracted; later reads/downloads require fresh checks. Pin/cache cleanup follows
+worker fencing. Archive requests and revocation outcomes enter the management audit.
+
+Cookie sessions are rejected on upload/tree-draft/namespace/purge mutation routes
+before parsing content bodies. Core Write/Delete/Purge authorization also requires
+a program token, including for administrator principals. This covers alternate
+entry points such as move previews or resuming purge jobs; policy-only management
+continues with ManagePolicy. The browser can create archive captures because they
+read committed sources and manage export state, not mutate source snapshots.
