@@ -23,6 +23,68 @@ export type ApplyChangeRequest = { idempotency_key: IdempotencyKey, preview_id: 
 
 export type ApplyPolicyRequest = { preview_id: PreviewId, expected_revision: Revision, expected_scope_revision: Revision, acknowledge_retention_effect: boolean, };
 
+export type ArchiveArtifact = { id: ArchiveArtifactId, state: ArchiveArtifactState, sha256: ChunkDigest | null, length: ByteCount | null, expires_at_ms: TimestampMs, download_count: ByteCount, };
+
+export type ArchiveArtifactId = string & { readonly __brand: "ArchiveArtifactId" };
+
+export type ArchiveArtifactState = "building" | "available" | "expired" | "failed";
+
+export type ArchiveCollection = { id: ArchiveCollectionId, owner: PrincipalId, label: EntryName, revision: Revision, media_capacity_bytes: ByteCount, next_disc_number: ByteCount, last_completed_set_id: ArchiveSetId | null, reconciliation_required: boolean, created_at_ms: TimestampMs, };
+
+export type ArchiveCollectionId = string & { readonly __brand: "ArchiveCollectionId" };
+
+export type ArchiveCollectionPage = { collections: Array<ArchiveCollection>, next_cursor: CursorToken | null, };
+
+export type ArchiveCopyHealth = "unknown" | "read_back_verified" | "damaged" | "missing";
+
+export type ArchiveCopyId = string & { readonly __brand: "ArchiveCopyId" };
+
+export type ArchiveCopyPage = { copies: Array<ArchivePhysicalCopy>, next_cursor: CursorToken | null, };
+
+export type ArchiveDiscId = string & { readonly __brand: "ArchiveDiscId" };
+
+export type ArchiveDiscObject = { root_id: RootId, digest: ChunkDigest, length: ByteCount, };
+
+export type ArchiveDiscPage = { discs: Array<ArchiveLogicalDisc>, next_cursor: CursorToken | null, };
+
+export type ArchiveEntry = { path: RootPath, kind: EntryKind, root_id: RootId | null, version_id: VersionId | null, length: ByteCount, };
+
+export type ArchiveEntryPage = { entries: Array<ArchiveEntry>, next_cursor: CursorToken | null, };
+
+export type ArchiveJobState = "capturing" | "planning" | "awaiting_confirmation" | "building" | "ready" | "failed" | "cancelled" | "expired" | "revoked";
+
+export type ArchiveLogicalDisc = { id: ArchiveDiscId, collection_id: ArchiveCollectionId, set_id: ArchiveSetId, number: ByteCount, index_sha256: ChunkDigest, bundle_sha256: ChunkDigest, payload_bytes: ByteCount, object_count: ByteCount, payload_inventory_sha256: ChunkDigest, planned_iso_bytes: ByteCount, artifact: ArchiveArtifact | null, };
+
+export type ArchiveMissingObject = { path: RootPath, root_id: RootId, digest: ChunkDigest, length: ByteCount, candidate_discs: Array<ArchiveDiscId>, };
+
+export type ArchiveObjectPage = { objects: Array<ArchiveDiscObject>, next_cursor: CursorToken | null, };
+
+export type ArchivePhysicalCopy = { id: ArchiveCopyId, disc_id: ArchiveDiscId, label: EntryName, revision: Revision, reported_burned_at_ms: TimestampMs | null, health: ArchiveCopyHealth, latest_report_id: ArchiveReportId | null, };
+
+export type ArchivePlanSummary = { source_files: ByteCount, source_bytes: ByteCount, new_payload_bytes: ByteCount, reused_payload_bytes: ByteCount, new_disc_count: ByteCount, required_earlier_disc_count: ByteCount, index_bytes_per_disc: ByteCount, bundle_bytes_per_disc: ByteCount, filesystem_reserve_per_disc: ByteCount, total_iso_budget_bytes: ByteCount, bundle_sha256: ChunkDigest, };
+
+export type ArchiveRecoveryCompleteness = "complete_snapshot" | "complete_files_only" | "unavailable";
+
+export type ArchiveRecoveryStatus = { completeness: ArchiveRecoveryCompleteness, complete_files: ByteCount, incomplete_files: ByteCount, missing: Array<ArchiveMissingObject>, next_cursor: CursorToken | null, };
+
+export type ArchiveReportId = string & { readonly __brand: "ArchiveReportId" };
+
+export type ArchiveReportPage = { reports: Array<ArchiveVerificationReport>, next_cursor: CursorToken | null, };
+
+export type ArchiveSelection = { root_id: RootId, version_id: VersionId, path: RootPath, };
+
+export type ArchiveSet = { id: ArchiveSetId, collection_id: ArchiveCollectionId, sequence: ByteCount, revision: Revision, state: ArchiveJobState, selections: Array<ArchiveSelection>, media_capacity_bytes: ByteCount, processed_entries: ByteCount, processed_bytes: ByteCount, plan: ArchivePlanSummary | null, failure: ErrorCode | null, created_at_ms: TimestampMs, expires_at_ms: TimestampMs, published_at_ms: TimestampMs | null, verified_complete_at_ms: TimestampMs | null, };
+
+export type ArchiveSetActionRequest = { expected_revision: Revision, request_id: RequestId, };
+
+export type ArchiveSetId = string & { readonly __brand: "ArchiveSetId" };
+
+export type ArchiveSetPage = { sets: Array<ArchiveSet>, next_cursor: CursorToken | null, };
+
+export type ArchiveUsage = { cache_bytes: ByteCount, reserved_bytes: ByteCount, quota_bytes: ByteCount, active_sets: ByteCount, };
+
+export type ArchiveVerificationReport = { id: ArchiveReportId, copy_id: ArchiveCopyId, received_at_ms: TimestampMs, observation: SubmitArchiveVerificationRequest, complete_read_back: boolean, };
+
 export type AuditEvent = { id: string, root_id: RootId | null, principal_id: PrincipalId | null, event: string, details: unknown, created_at_ms: TimestampMs, };
 
 export type AuditPage = { events: Array<AuditEvent>, next_cursor: CursorToken | null, };
@@ -82,6 +144,10 @@ export type CopyAcknowledgement = "pending" | "acknowledged" | "unavailable" | "
 export type CopyProgress = { backend_id: BackendId, acknowledged_bytes: ByteCount, state: CopyAcknowledgement, };
 
 export type CreateAllocationRequest = { pool_id: PoolId, root_id: RootId, capacity_bytes: ByteCount, };
+
+export type CreateArchiveCollectionRequest = { request_id: RequestId, label: EntryName, media_capacity_bytes: ByteCount, };
+
+export type CreateArchivePlanRequest = { request_id: RequestId, expected_revision: Revision, selections: Array<ArchiveSelection>, media_capacity_bytes: ByteCount, };
 
 export type CreateCheckpointRequest = { idempotency_key: IdempotencyKey, };
 
@@ -147,7 +213,7 @@ export type EntryName = string & { readonly __brand: "EntryName" };
 
 export type EntryPage = { directory_id: EntryId, directory_revision: Revision, items: Array<EntryInspection>, next_cursor: DirectoryCursor | null, };
 
-export type ErrorCode = "unauthorized" | "forbidden" | "not_found" | "unsupported_operation" | "invalid_request" | "invalid_path" | "invalid_manifest" | "revision_conflict" | "idempotency_conflict" | "cursor_refresh_required" | "root_busy" | "policy_transition" | "quota_exhausted" | "staging_exhausted" | "destination_capacity" | "destination_unavailable" | "upload_expired" | "integrity_failure" | "rate_limited" | "internal_error";
+export type ErrorCode = "unauthorized" | "forbidden" | "not_found" | "unsupported_operation" | "invalid_request" | "invalid_path" | "invalid_manifest" | "revision_conflict" | "idempotency_conflict" | "cursor_refresh_required" | "root_busy" | "policy_transition" | "quota_exhausted" | "staging_exhausted" | "destination_capacity" | "destination_unavailable" | "upload_expired" | "archive_busy" | "archive_expired" | "archive_metadata_too_large" | "archive_artifact_unavailable" | "archive_reconciliation_required" | "integrity_failure" | "rate_limited" | "internal_error";
 
 export type ErrorDetails = { "kind": "capacity", required_bytes: ByteCount, available_bytes: ByteCount | null, } | { "kind": "busy", root_id: RootId, operation_id: OperationId, } | { "kind": "stale_revision", scope: RevisionScope, current_revision: Revision, };
 
@@ -271,6 +337,8 @@ export type ReadPolicy = { candidates: Array<ReadCandidate>, overall_deadline_ms
 
 export type RecoveryPackageState = "catalog_only" | "payload_verified";
 
+export type RegisterArchiveCopyRequest = { request_id: RequestId, label: EntryName, reported_burned_at_ms: TimestampMs | null, };
+
 export type ReleaseCheckpointRequest = { expected_revision: Revision, acknowledge_release: boolean, };
 
 export type RenameEntryRequest = { expected_revision: Revision, expected_source_parent_revision: Revision, destination_parent_id: EntryId, expected_destination_parent_revision: Revision, name: EntryName, };
@@ -291,7 +359,7 @@ export type RetryGuidance = { "kind": "never" } | { "kind": "after", delay_ms: M
 
 export type Revision = string & { readonly __brand: "Revision" };
 
-export type RevisionScope = "entry" | "directory" | "root" | "policy" | "grant";
+export type RevisionScope = "archive_collection" | "archive_set" | "archive_copy" | "entry" | "directory" | "root" | "policy" | "grant";
 
 export type RootAllocationRequest = { pool_id: PoolId, retained_capacity_bytes: ByteCount, };
 
@@ -325,6 +393,8 @@ export type SnapshotPathQuery = { path: RootPath, };
 
 export type StartMaintenanceRequest = { idempotency_key: IdempotencyKey, kind: MaintenanceKind, root_id: RootId, };
 
+export type SubmitArchiveVerificationRequest = { request_id: RequestId, expected_revision: Revision, disc_id: ArchiveDiscId, index_sha256: ChunkDigest, bundle_sha256: ChunkDigest, payload_inventory_sha256: ChunkDigest, expected_objects: ByteCount, verified_objects: ByteCount, verified_bytes: ByteCount, metadata_verified: boolean, verifier_version: EntryName, };
+
 export type TimestampMs = number;
 
 export type TransferActivity = { id: UploadId, root_id: RootId, principal_id: PrincipalId, kind: string, state: SessionState, phase: string, admission: AdmissionState | null, expires_at_ms: TimestampMs, failure: ErrorCode | null, };
@@ -336,6 +406,10 @@ export type TransferStatus = { upload: UploadInspection, admission: AdmissionSta
 export type TreeDraftPhase = "initializing" | "editing" | "building" | "planning" | "staging" | "ready" | "committed" | "cleaning_up" | "terminal";
 
 export type TreeDraftStatus = { id: UploadId, root_id: RootId, directory_id: EntryId, operation_id: OperationId, state: SessionState, phase: TreeDraftPhase, admission: AdmissionState, processed_entries: ByteCount, expires_at_ms: TimestampMs, result: CommitReceipt | null, };
+
+export type UpdateArchiveCollectionRequest = { expected_revision: Revision, label: EntryName, media_capacity_bytes: ByteCount, };
+
+export type UpdateArchiveCopyRequest = { expected_revision: Revision, label: EntryName, health: ArchiveCopyHealth, };
 
 export type UpdateGrantRequest = { expected_revision: Revision, capabilities: Array<Capability>, };
 

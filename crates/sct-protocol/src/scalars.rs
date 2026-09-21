@@ -238,3 +238,51 @@ integer!(PageSize, 1, 1000);
 integer!(VersionCount, 1, 1_000_000);
 integer!(Milliseconds, 1, 86_400_000);
 integer!(BytesPerSecond, 1, MAX_SAFE_INTEGER);
+
+token!(
+    ArchiveCollectionId,
+    "^[A-Za-z0-9_-]+$",
+    128,
+    "string & { readonly __brand: \"ArchiveCollectionId\" }",
+    opaque
+);
+
+token!(
+    ArchiveSetId,
+    "^[A-Za-z0-9_-]+$",
+    128,
+    "string & { readonly __brand: \"ArchiveSetId\" }",
+    opaque
+);
+
+token!(
+    ArchiveDiscId,
+    "^[A-Za-z0-9_-]+$",
+    128,
+    "string & { readonly __brand: \"ArchiveDiscId\" }",
+    opaque
+);
+
+token!(
+    ArchiveArtifactId,
+    "^[A-Za-z0-9_-]+$",
+    128,
+    "string & { readonly __brand: \"ArchiveArtifactId\" }",
+    opaque
+);
+
+token!(
+    ArchiveCopyId,
+    "^[A-Za-z0-9_-]+$",
+    128,
+    "string & { readonly __brand: \"ArchiveCopyId\" }",
+    opaque
+);
+
+token!(
+    ArchiveReportId,
+    "^[A-Za-z0-9_-]+$",
+    128,
+    "string & { readonly __brand: \"ArchiveReportId\" }",
+    opaque
+);

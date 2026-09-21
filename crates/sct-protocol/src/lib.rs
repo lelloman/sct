@@ -10,6 +10,8 @@
 //! let entry: EntryId = root;
 //! ```
 
+mod archive_api;
+pub use archive_api::*;
 mod archive_format;
 pub use archive_format::*;
 mod management;

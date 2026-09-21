@@ -8,6 +8,12 @@ async fn inspect_management(client: &Client) -> Result<(), Error> {
         cursor: None,
     };
     let account = client.account().await?;
+    for collection in client.list_archive_collections(&page).await?.collections {
+        let sets = client.list_archive_sets(&collection.id, &page).await?;
+        for set in sets.sets {
+            client.list_archive_discs(&collection.id, &set.id, &page).await?;
+        }
+    }
     let roots = client.list_roots(&page).await?;
     for root in roots.items {
         let management = client.root_management(&root.id).await?;

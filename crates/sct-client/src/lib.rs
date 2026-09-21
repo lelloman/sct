@@ -1,6 +1,7 @@
 //! Standalone transport foundation. Storage operations follow their protocol contracts.
 
 use std::time::Duration;
+mod archive;
 mod management;
 pub use management::CheckpointArtifact;
 mod transfer;

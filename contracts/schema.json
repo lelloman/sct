@@ -247,6 +247,821 @@
       ],
       "type": "object"
     },
+    "ArchiveArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "download_count": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "expires_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        },
+        "id": {
+          "$ref": "#/$defs/ArchiveArtifactId"
+        },
+        "length": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ByteCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChunkDigest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/ArchiveArtifactState"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "expires_at_ms",
+        "download_count"
+      ],
+      "type": "object"
+    },
+    "ArchiveArtifactId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+      "type": "string"
+    },
+    "ArchiveArtifactState": {
+      "enum": [
+        "building",
+        "available",
+        "expired",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "ArchiveCollection": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        },
+        "id": {
+          "$ref": "#/$defs/ArchiveCollectionId"
+        },
+        "label": {
+          "$ref": "#/$defs/EntryName"
+        },
+        "last_completed_set_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArchiveSetId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "media_capacity_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "next_disc_number": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "owner": {
+          "$ref": "#/$defs/PrincipalId"
+        },
+        "reconciliation_required": {
+          "type": "boolean"
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "id",
+        "owner",
+        "label",
+        "revision",
+        "media_capacity_bytes",
+        "next_disc_number",
+        "reconciliation_required",
+        "created_at_ms"
+      ],
+      "type": "object"
+    },
+    "ArchiveCollectionId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+      "type": "string"
+    },
+    "ArchiveCollectionPage": {
+      "additionalProperties": false,
+      "properties": {
+        "collections": {
+          "items": {
+            "$ref": "#/$defs/ArchiveCollection"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "collections"
+      ],
+      "type": "object"
+    },
+    "ArchiveCopyHealth": {
+      "enum": [
+        "unknown",
+        "read_back_verified",
+        "damaged",
+        "missing"
+      ],
+      "type": "string"
+    },
+    "ArchiveCopyId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+      "type": "string"
+    },
+    "ArchiveCopyPage": {
+      "additionalProperties": false,
+      "properties": {
+        "copies": {
+          "items": {
+            "$ref": "#/$defs/ArchivePhysicalCopy"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "copies"
+      ],
+      "type": "object"
+    },
+    "ArchiveDiscId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+      "type": "string"
+    },
+    "ArchiveDiscObject": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "length": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        }
+      },
+      "required": [
+        "root_id",
+        "digest",
+        "length"
+      ],
+      "type": "object"
+    },
+    "ArchiveDiscPage": {
+      "additionalProperties": false,
+      "properties": {
+        "discs": {
+          "items": {
+            "$ref": "#/$defs/ArchiveLogicalDisc"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "discs"
+      ],
+      "type": "object"
+    },
+    "ArchiveEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EntryKind"
+        },
+        "length": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "path": {
+          "$ref": "#/$defs/RootPath"
+        },
+        "root_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RootId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VersionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "length"
+      ],
+      "type": "object"
+    },
+    "ArchiveEntryPage": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/ArchiveEntry"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "entries"
+      ],
+      "type": "object"
+    },
+    "ArchiveJobState": {
+      "enum": [
+        "capturing",
+        "planning",
+        "awaiting_confirmation",
+        "building",
+        "ready",
+        "failed",
+        "cancelled",
+        "expired",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "ArchiveLogicalDisc": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArchiveArtifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bundle_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "collection_id": {
+          "$ref": "#/$defs/ArchiveCollectionId"
+        },
+        "id": {
+          "$ref": "#/$defs/ArchiveDiscId"
+        },
+        "index_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "number": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "object_count": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "payload_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "payload_inventory_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "planned_iso_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "set_id": {
+          "$ref": "#/$defs/ArchiveSetId"
+        }
+      },
+      "required": [
+        "id",
+        "collection_id",
+        "set_id",
+        "number",
+        "index_sha256",
+        "bundle_sha256",
+        "payload_bytes",
+        "object_count",
+        "payload_inventory_sha256",
+        "planned_iso_bytes"
+      ],
+      "type": "object"
+    },
+    "ArchiveMissingObject": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_discs": {
+          "items": {
+            "$ref": "#/$defs/ArchiveDiscId"
+          },
+          "type": "array"
+        },
+        "digest": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "length": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "path": {
+          "$ref": "#/$defs/RootPath"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        }
+      },
+      "required": [
+        "path",
+        "root_id",
+        "digest",
+        "length",
+        "candidate_discs"
+      ],
+      "type": "object"
+    },
+    "ArchiveObjectPage": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "objects": {
+          "items": {
+            "$ref": "#/$defs/ArchiveDiscObject"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "objects"
+      ],
+      "type": "object"
+    },
+    "ArchivePhysicalCopy": {
+      "additionalProperties": false,
+      "properties": {
+        "disc_id": {
+          "$ref": "#/$defs/ArchiveDiscId"
+        },
+        "health": {
+          "$ref": "#/$defs/ArchiveCopyHealth"
+        },
+        "id": {
+          "$ref": "#/$defs/ArchiveCopyId"
+        },
+        "label": {
+          "$ref": "#/$defs/EntryName"
+        },
+        "latest_report_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArchiveReportId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reported_burned_at_ms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimestampMs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "id",
+        "disc_id",
+        "label",
+        "revision",
+        "health"
+      ],
+      "type": "object"
+    },
+    "ArchivePlanSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_bytes_per_disc": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "bundle_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "filesystem_reserve_per_disc": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "index_bytes_per_disc": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "new_disc_count": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "new_payload_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "required_earlier_disc_count": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "reused_payload_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "source_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "source_files": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "total_iso_budget_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        }
+      },
+      "required": [
+        "source_files",
+        "source_bytes",
+        "new_payload_bytes",
+        "reused_payload_bytes",
+        "new_disc_count",
+        "required_earlier_disc_count",
+        "index_bytes_per_disc",
+        "bundle_bytes_per_disc",
+        "filesystem_reserve_per_disc",
+        "total_iso_budget_bytes",
+        "bundle_sha256"
+      ],
+      "type": "object"
+    },
+    "ArchiveRecoveryCompleteness": {
+      "enum": [
+        "complete_snapshot",
+        "complete_files_only",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "ArchiveRecoveryStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "complete_files": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "completeness": {
+          "$ref": "#/$defs/ArchiveRecoveryCompleteness"
+        },
+        "incomplete_files": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "missing": {
+          "items": {
+            "$ref": "#/$defs/ArchiveMissingObject"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "completeness",
+        "complete_files",
+        "incomplete_files",
+        "missing"
+      ],
+      "type": "object"
+    },
+    "ArchiveReportId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+      "type": "string"
+    },
+    "ArchiveReportPage": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reports": {
+          "items": {
+            "$ref": "#/$defs/ArchiveVerificationReport"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "reports"
+      ],
+      "type": "object"
+    },
+    "ArchiveSelection": {
+      "additionalProperties": false,
+      "description": "A committed file/tree version retained at its logical source path.",
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/RootPath"
+        },
+        "root_id": {
+          "$ref": "#/$defs/RootId"
+        },
+        "version_id": {
+          "$ref": "#/$defs/VersionId"
+        }
+      },
+      "required": [
+        "root_id",
+        "version_id",
+        "path"
+      ],
+      "type": "object"
+    },
+    "ArchiveSet": {
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "$ref": "#/$defs/ArchiveCollectionId"
+        },
+        "created_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        },
+        "expires_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/ArchiveSetId"
+        },
+        "media_capacity_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArchivePlanSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "processed_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "processed_entries": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "published_at_ms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimestampMs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "selections": {
+          "items": {
+            "$ref": "#/$defs/ArchiveSelection"
+          },
+          "type": "array"
+        },
+        "sequence": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "state": {
+          "$ref": "#/$defs/ArchiveJobState"
+        },
+        "verified_complete_at_ms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimestampMs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "collection_id",
+        "sequence",
+        "revision",
+        "state",
+        "selections",
+        "media_capacity_bytes",
+        "processed_entries",
+        "processed_bytes",
+        "created_at_ms",
+        "expires_at_ms"
+      ],
+      "type": "object"
+    },
+    "ArchiveSetActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "request_id": {
+          "$ref": "#/$defs/RequestId"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "request_id"
+      ],
+      "type": "object"
+    },
+    "ArchiveSetId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+      "type": "string"
+    },
+    "ArchiveSetPage": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sets": {
+          "items": {
+            "$ref": "#/$defs/ArchiveSet"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "sets"
+      ],
+      "type": "object"
+    },
+    "ArchiveUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "active_sets": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "cache_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "quota_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "reserved_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        }
+      },
+      "required": [
+        "cache_bytes",
+        "reserved_bytes",
+        "quota_bytes",
+        "active_sets"
+      ],
+      "type": "object"
+    },
+    "ArchiveVerificationReport": {
+      "additionalProperties": false,
+      "properties": {
+        "complete_read_back": {
+          "type": "boolean"
+        },
+        "copy_id": {
+          "$ref": "#/$defs/ArchiveCopyId"
+        },
+        "id": {
+          "$ref": "#/$defs/ArchiveReportId"
+        },
+        "observation": {
+          "$ref": "#/$defs/SubmitArchiveVerificationRequest"
+        },
+        "received_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        }
+      },
+      "required": [
+        "id",
+        "copy_id",
+        "received_at_ms",
+        "observation",
+        "complete_read_back"
+      ],
+      "type": "object"
+    },
     "AuditEvent": {
       "additionalProperties": false,
       "properties": {
@@ -850,6 +1665,55 @@
         "pool_id",
         "root_id",
         "capacity_bytes"
+      ],
+      "type": "object"
+    },
+    "CreateArchiveCollectionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/EntryName"
+        },
+        "media_capacity_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "request_id": {
+          "$ref": "#/$defs/RequestId"
+        }
+      },
+      "required": [
+        "request_id",
+        "label",
+        "media_capacity_bytes"
+      ],
+      "type": "object"
+    },
+    "CreateArchivePlanRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "media_capacity_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "request_id": {
+          "$ref": "#/$defs/RequestId"
+        },
+        "selections": {
+          "items": {
+            "$ref": "#/$defs/ArchiveSelection"
+          },
+          "maxItems": 1024,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "request_id",
+        "expected_revision",
+        "selections",
+        "media_capacity_bytes"
       ],
       "type": "object"
     },
@@ -1696,6 +2560,11 @@
         "destination_capacity",
         "destination_unavailable",
         "upload_expired",
+        "archive_busy",
+        "archive_expired",
+        "archive_metadata_too_large",
+        "archive_artifact_unavailable",
+        "archive_reconciliation_required",
         "integrity_failure",
         "rate_limited",
         "internal_error"
@@ -3305,6 +4174,32 @@
       ],
       "type": "string"
     },
+    "RegisterArchiveCopyRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/EntryName"
+        },
+        "reported_burned_at_ms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimestampMs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request_id": {
+          "$ref": "#/$defs/RequestId"
+        }
+      },
+      "required": [
+        "request_id",
+        "label"
+      ],
+      "type": "object"
+    },
     "ReleaseCheckpointRequest": {
       "additionalProperties": false,
       "properties": {
@@ -3515,6 +4410,9 @@
     },
     "RevisionScope": {
       "enum": [
+        "archive_collection",
+        "archive_set",
+        "archive_copy",
         "entry",
         "directory",
         "root",
@@ -3918,6 +4816,58 @@
       ],
       "type": "object"
     },
+    "SubmitArchiveVerificationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "disc_id": {
+          "$ref": "#/$defs/ArchiveDiscId"
+        },
+        "expected_objects": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "index_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "metadata_verified": {
+          "type": "boolean"
+        },
+        "payload_inventory_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "request_id": {
+          "$ref": "#/$defs/RequestId"
+        },
+        "verified_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "verified_objects": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "verifier_version": {
+          "$ref": "#/$defs/EntryName"
+        }
+      },
+      "required": [
+        "request_id",
+        "expected_revision",
+        "disc_id",
+        "index_sha256",
+        "bundle_sha256",
+        "payload_inventory_sha256",
+        "expected_objects",
+        "verified_objects",
+        "verified_bytes",
+        "metadata_verified",
+        "verifier_version"
+      ],
+      "type": "object"
+    },
     "TimestampMs": {
       "format": "uint64",
       "maximum": 9007199254740991,
@@ -4096,6 +5046,46 @@
         "admission",
         "processed_entries",
         "expires_at_ms"
+      ],
+      "type": "object"
+    },
+    "UpdateArchiveCollectionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "label": {
+          "$ref": "#/$defs/EntryName"
+        },
+        "media_capacity_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "label",
+        "media_capacity_bytes"
+      ],
+      "type": "object"
+    },
+    "UpdateArchiveCopyRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "health": {
+          "$ref": "#/$defs/ArchiveCopyHealth"
+        },
+        "label": {
+          "$ref": "#/$defs/EntryName"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "label",
+        "health"
       ],
       "type": "object"
     },

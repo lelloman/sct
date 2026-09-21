@@ -311,3 +311,18 @@ compiler or service was available in that runtime. Final bundle manifest SHA-256
 Build/runtime logs: `/tmp/sct-disc-d09-final-build.log`,
 `/tmp/sct-disc-d09-final-runtime.log`. Full `./scripts/check` passed (12 browser
 passes, existing M5 gate pending): `/tmp/sct-disc-d09-check.log`.
+
+SCT-64 defines account archive DTOs, branded identities, explicit job/artifact/copy
+states, immutable verification observations, bounded capture selections and generated
+Rust/OpenAPI/TypeScript contracts. Planned routes are not advertised as implemented.
+The standalone SDK includes typed metadata operations and streaming ISO download
+with exact size/hash checks; the extracted package example compiles archive calls.
+The API lifecycle documents revisions/idempotency, cancellation, metadata capacity
+failure, preserved completion versus current media health, and recovered numbering.
+
+SCT-64 validation: Rust protocol/lifecycle fixtures, 55 TypeScript/schema fixtures,
+real HTTP SDK corruption/truncation cases, standalone packaged-client build and
+workspace Clippy pass. `./scripts/check` passed with 12 browser passes and the
+existing pending M5 gate (`/tmp/sct-disc-d02-check.log`). Final SDK/schema additions
+were checked again with focused Rust, Clippy, contract and extracted-client checks
+(`/tmp/sct-disc-d02-protocol.log`, `/tmp/sct-disc-d02-client.log`).

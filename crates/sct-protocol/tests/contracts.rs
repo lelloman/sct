@@ -9,6 +9,10 @@ fn decode(schema: &str, data: Value) -> Result<Value, serde_json::Error> {
         } };
     }
     decode!(
+        ArchiveCollectionId,
+        ArchiveCopyHealth,
+        ArchiveArtifact,
+        CreateArchivePlanRequest,
         RootId,
         EntryName,
         RootPath,

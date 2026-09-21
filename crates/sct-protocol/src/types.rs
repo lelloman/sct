@@ -35,6 +35,11 @@ pub enum ErrorCode {
     DestinationCapacity,
     DestinationUnavailable,
     UploadExpired,
+    ArchiveBusy,
+    ArchiveExpired,
+    ArchiveMetadataTooLarge,
+    ArchiveArtifactUnavailable,
+    ArchiveReconciliationRequired,
     IntegrityFailure,
     RateLimited,
     InternalError,
@@ -44,6 +49,9 @@ pub enum ErrorCode {
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "codegen", derive(schemars::JsonSchema, ts_rs::TS))]
 pub enum RevisionScope {
+    ArchiveCollection,
+    ArchiveSet,
+    ArchiveCopy,
     Entry,
     Directory,
     Root,
@@ -663,6 +671,9 @@ pub struct DraftEntryReference {
 impl ErrorCode {
     pub fn http_status(&self) -> u16 {
         match self {
+            Self::ArchiveBusy | Self::ArchiveReconciliationRequired => 409,
+            Self::ArchiveExpired | Self::ArchiveArtifactUnavailable => 410,
+            Self::ArchiveMetadataTooLarge => 422,
             Self::Unauthorized => 401,
             Self::Forbidden => 403,
             Self::NotFound | Self::UnsupportedOperation => 404,
@@ -682,6 +693,15 @@ impl ErrorCode {
     }
     pub fn safe_message(&self) -> &'static str {
         match self {
+            Self::ArchiveBusy => "Another append owns this archive collection.",
+            Self::ArchiveExpired => "The archive plan or source capture has expired.",
+            Self::ArchiveMetadataTooLarge => {
+                "The complete index and recovery software cannot fit on each disc."
+            }
+            Self::ArchiveArtifactUnavailable => "This ISO is no longer available for download.",
+            Self::ArchiveReconciliationRequired => {
+                "Reconcile recovered archive history before appending."
+            }
             Self::Unauthorized => "Authentication is required.",
             Self::Forbidden => "This operation is not permitted.",
             Self::NotFound => "The requested resource is not available.",
@@ -710,6 +730,7 @@ impl ErrorResponse {
     pub fn new(request_id: RequestId, code: ErrorCode) -> Self {
         let retry = match code {
             ErrorCode::RootBusy
+            | ErrorCode::ArchiveBusy
             | ErrorCode::PolicyTransition
             | ErrorCode::DestinationUnavailable
             | ErrorCode::RateLimited => RetryGuidance::After {

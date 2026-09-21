@@ -225,6 +225,44 @@
       "name": "newline is legal in a path component",
       "schema": "RootPath",
       "data": "/a\n"
+    },
+    {
+      "name": "archive collection opaque id",
+      "schema": "ArchiveCollectionId",
+      "data": "archive-1"
+    },
+    {
+      "name": "archive ISO expiry is independent of physical health",
+      "schema": "ArchiveArtifact",
+      "data": {
+        "id": "artifact-1",
+        "state": "expired",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "length": 45000000,
+        "expires_at_ms": 100000,
+        "download_count": 2
+      }
+    },
+    {
+      "name": "archive read-back health",
+      "schema": "ArchiveCopyHealth",
+      "data": "read_back_verified"
+    },
+    {
+      "name": "archive bounded capture request",
+      "schema": "CreateArchivePlanRequest",
+      "data": {
+        "request_id": "request-1",
+        "expected_revision": "r1",
+        "selections": [
+          {
+            "root_id": "root-1",
+            "version_id": "version-1",
+            "path": "/backup"
+          }
+        ],
+        "media_capacity_bytes": 25000000000
+      }
     }
   ],
   "invalid": [
@@ -441,6 +479,16 @@
       "name": "ID cannot end in a newline",
       "schema": "RootId",
       "data": "root\n"
+    },
+    {
+      "name": "archive IDs cannot change URL structure",
+      "schema": "ArchiveCollectionId",
+      "data": "archive/other"
+    },
+    {
+      "name": "download is not physical verification",
+      "schema": "ArchiveCopyHealth",
+      "data": "downloaded"
     }
   ]
 }

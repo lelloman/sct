@@ -5,6 +5,25 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 
 | Operation | Method | Path | Request | Response | Milestone | Implemented |
 | --- | --- | --- | --- | --- | --- | --- |
+| list_archive_collections | GET | `/api/v1/archives` | ListRequest | ArchiveCollectionPage | DiscArchive | false |
+| create_archive_collection | POST | `/api/v1/archives` | CreateArchiveCollectionRequest | ArchiveCollection | DiscArchive | false |
+| inspect_archive_collection | GET | `/api/v1/archives/{collection}` | reserved | ArchiveCollection | DiscArchive | false |
+| update_archive_collection | PATCH | `/api/v1/archives/{collection}` | UpdateArchiveCollectionRequest | ArchiveCollection | DiscArchive | false |
+| archive_usage | GET | `/api/v1/archives/usage` | reserved | ArchiveUsage | DiscArchive | false |
+| create_archive_plan | POST | `/api/v1/archives/{collection}/sets` | CreateArchivePlanRequest | ArchiveSet | DiscArchive | false |
+| list_archive_sets | GET | `/api/v1/archives/{collection}/sets` | ListRequest | ArchiveSetPage | DiscArchive | false |
+| inspect_archive_set | GET | `/api/v1/archives/{collection}/sets/{set}` | reserved | ArchiveSet | DiscArchive | false |
+| confirm_archive_set | POST | `/api/v1/archives/{collection}/sets/{set}/confirm` | ArchiveSetActionRequest | ArchiveSet | DiscArchive | false |
+| cancel_archive_set | POST | `/api/v1/archives/{collection}/sets/{set}/cancel` | ArchiveSetActionRequest | ArchiveSet | DiscArchive | false |
+| list_archive_discs | GET | `/api/v1/archives/{collection}/sets/{set}/discs` | ListRequest | ArchiveDiscPage | DiscArchive | false |
+| download_archive_iso | GET | `/api/v1/archives/{collection}/discs/{disc}/iso` | reserved | reserved | DiscArchive | false |
+| list_archive_copies | GET | `/api/v1/archives/{collection}/discs/{disc}/copies` | ListRequest | ArchiveCopyPage | DiscArchive | false |
+| register_archive_copy | POST | `/api/v1/archives/{collection}/discs/{disc}/copies` | RegisterArchiveCopyRequest | ArchivePhysicalCopy | DiscArchive | false |
+| update_archive_copy | PATCH | `/api/v1/archives/{collection}/copies/{copy}` | UpdateArchiveCopyRequest | ArchivePhysicalCopy | DiscArchive | false |
+| submit_archive_verification | POST | `/api/v1/archives/{collection}/copies/{copy}/reports` | SubmitArchiveVerificationRequest | ArchiveVerificationReport | DiscArchive | false |
+| list_archive_reports | GET | `/api/v1/archives/{collection}/copies/{copy}/reports` | ListRequest | ArchiveReportPage | DiscArchive | false |
+| list_archive_entries | GET | `/api/v1/archives/{collection}/sets/{set}/entries` | ListRequest | ArchiveEntryPage | DiscArchive | false |
+| list_archive_objects | GET | `/api/v1/archives/{collection}/discs/{disc}/objects` | ListRequest | ArchiveObjectPage | DiscArchive | false |
 | capabilities | GET | `/api/v1/capabilities` | reserved | Capabilities | M1 | true |
 | list_roots | GET | `/api/v1/roots` | ListRequest | RootPage | M1 | true |
 | create_root | POST | `/api/v1/roots` | CreateRootRequest | RootInspection | M1 | true |

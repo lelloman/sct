@@ -248,6 +248,821 @@
         ],
         "type": "object"
       },
+      "ArchiveArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "download_count": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "expires_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ArchiveArtifactId"
+          },
+          "length": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ByteCount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChunkDigest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ArchiveArtifactState"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "expires_at_ms",
+          "download_count"
+        ],
+        "type": "object"
+      },
+      "ArchiveArtifactId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "ArchiveArtifactState": {
+        "enum": [
+          "building",
+          "available",
+          "expired",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "ArchiveCollection": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ArchiveCollectionId"
+          },
+          "label": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "last_completed_set_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArchiveSetId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "media_capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "next_disc_number": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "reconciliation_required": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "label",
+          "revision",
+          "media_capacity_bytes",
+          "next_disc_number",
+          "reconciliation_required",
+          "created_at_ms"
+        ],
+        "type": "object"
+      },
+      "ArchiveCollectionId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "ArchiveCollectionPage": {
+        "additionalProperties": false,
+        "properties": {
+          "collections": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveCollection"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "collections"
+        ],
+        "type": "object"
+      },
+      "ArchiveCopyHealth": {
+        "enum": [
+          "unknown",
+          "read_back_verified",
+          "damaged",
+          "missing"
+        ],
+        "type": "string"
+      },
+      "ArchiveCopyId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "ArchiveCopyPage": {
+        "additionalProperties": false,
+        "properties": {
+          "copies": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivePhysicalCopy"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "copies"
+        ],
+        "type": "object"
+      },
+      "ArchiveDiscId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "ArchiveDiscObject": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "root_id",
+          "digest",
+          "length"
+        ],
+        "type": "object"
+      },
+      "ArchiveDiscPage": {
+        "additionalProperties": false,
+        "properties": {
+          "discs": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveLogicalDisc"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "discs"
+        ],
+        "type": "object"
+      },
+      "ArchiveEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/EntryKind"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "path": {
+            "$ref": "#/components/schemas/RootPath"
+          },
+          "root_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RootId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "kind",
+          "length"
+        ],
+        "type": "object"
+      },
+      "ArchiveEntryPage": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveEntry"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "type": "object"
+      },
+      "ArchiveJobState": {
+        "enum": [
+          "capturing",
+          "planning",
+          "awaiting_confirmation",
+          "building",
+          "ready",
+          "failed",
+          "cancelled",
+          "expired",
+          "revoked"
+        ],
+        "type": "string"
+      },
+      "ArchiveLogicalDisc": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArchiveArtifact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bundle_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "collection_id": {
+            "$ref": "#/components/schemas/ArchiveCollectionId"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ArchiveDiscId"
+          },
+          "index_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "number": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "object_count": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "payload_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "payload_inventory_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "planned_iso_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "set_id": {
+            "$ref": "#/components/schemas/ArchiveSetId"
+          }
+        },
+        "required": [
+          "id",
+          "collection_id",
+          "set_id",
+          "number",
+          "index_sha256",
+          "bundle_sha256",
+          "payload_bytes",
+          "object_count",
+          "payload_inventory_sha256",
+          "planned_iso_bytes"
+        ],
+        "type": "object"
+      },
+      "ArchiveMissingObject": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_discs": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveDiscId"
+            },
+            "type": "array"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "length": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "path": {
+            "$ref": "#/components/schemas/RootPath"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          }
+        },
+        "required": [
+          "path",
+          "root_id",
+          "digest",
+          "length",
+          "candidate_discs"
+        ],
+        "type": "object"
+      },
+      "ArchiveObjectPage": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveDiscObject"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "objects"
+        ],
+        "type": "object"
+      },
+      "ArchivePhysicalCopy": {
+        "additionalProperties": false,
+        "properties": {
+          "disc_id": {
+            "$ref": "#/components/schemas/ArchiveDiscId"
+          },
+          "health": {
+            "$ref": "#/components/schemas/ArchiveCopyHealth"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ArchiveCopyId"
+          },
+          "label": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "latest_report_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArchiveReportId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reported_burned_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          }
+        },
+        "required": [
+          "id",
+          "disc_id",
+          "label",
+          "revision",
+          "health"
+        ],
+        "type": "object"
+      },
+      "ArchivePlanSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_bytes_per_disc": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "bundle_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "filesystem_reserve_per_disc": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "index_bytes_per_disc": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "new_disc_count": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "new_payload_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "required_earlier_disc_count": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "reused_payload_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "source_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "source_files": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "total_iso_budget_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "source_files",
+          "source_bytes",
+          "new_payload_bytes",
+          "reused_payload_bytes",
+          "new_disc_count",
+          "required_earlier_disc_count",
+          "index_bytes_per_disc",
+          "bundle_bytes_per_disc",
+          "filesystem_reserve_per_disc",
+          "total_iso_budget_bytes",
+          "bundle_sha256"
+        ],
+        "type": "object"
+      },
+      "ArchiveRecoveryCompleteness": {
+        "enum": [
+          "complete_snapshot",
+          "complete_files_only",
+          "unavailable"
+        ],
+        "type": "string"
+      },
+      "ArchiveRecoveryStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "complete_files": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "completeness": {
+            "$ref": "#/components/schemas/ArchiveRecoveryCompleteness"
+          },
+          "incomplete_files": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveMissingObject"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "completeness",
+          "complete_files",
+          "incomplete_files",
+          "missing"
+        ],
+        "type": "object"
+      },
+      "ArchiveReportId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "ArchiveReportPage": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveVerificationReport"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "reports"
+        ],
+        "type": "object"
+      },
+      "ArchiveSelection": {
+        "additionalProperties": false,
+        "description": "A committed file/tree version retained at its logical source path.",
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/RootPath"
+          },
+          "root_id": {
+            "$ref": "#/components/schemas/RootId"
+          },
+          "version_id": {
+            "$ref": "#/components/schemas/VersionId"
+          }
+        },
+        "required": [
+          "root_id",
+          "version_id",
+          "path"
+        ],
+        "type": "object"
+      },
+      "ArchiveSet": {
+        "additionalProperties": false,
+        "properties": {
+          "collection_id": {
+            "$ref": "#/components/schemas/ArchiveCollectionId"
+          },
+          "created_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "expires_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/ArchiveSetId"
+          },
+          "media_capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArchivePlanSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processed_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "processed_entries": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "published_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "selections": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveSelection"
+            },
+            "type": "array"
+          },
+          "sequence": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ArchiveJobState"
+          },
+          "verified_complete_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "collection_id",
+          "sequence",
+          "revision",
+          "state",
+          "selections",
+          "media_capacity_bytes",
+          "processed_entries",
+          "processed_bytes",
+          "created_at_ms",
+          "expires_at_ms"
+        ],
+        "type": "object"
+      },
+      "ArchiveSetActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "request_id"
+        ],
+        "type": "object"
+      },
+      "ArchiveSetId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "type": "string"
+      },
+      "ArchiveSetPage": {
+        "additionalProperties": false,
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sets": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveSet"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sets"
+        ],
+        "type": "object"
+      },
+      "ArchiveUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "active_sets": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "cache_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "quota_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "reserved_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "cache_bytes",
+          "reserved_bytes",
+          "quota_bytes",
+          "active_sets"
+        ],
+        "type": "object"
+      },
+      "ArchiveVerificationReport": {
+        "additionalProperties": false,
+        "properties": {
+          "complete_read_back": {
+            "type": "boolean"
+          },
+          "copy_id": {
+            "$ref": "#/components/schemas/ArchiveCopyId"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ArchiveReportId"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/SubmitArchiveVerificationRequest"
+          },
+          "received_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          }
+        },
+        "required": [
+          "id",
+          "copy_id",
+          "received_at_ms",
+          "observation",
+          "complete_read_back"
+        ],
+        "type": "object"
+      },
       "AuditEvent": {
         "additionalProperties": false,
         "properties": {
@@ -851,6 +1666,55 @@
           "pool_id",
           "root_id",
           "capacity_bytes"
+        ],
+        "type": "object"
+      },
+      "CreateArchiveCollectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "media_capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          }
+        },
+        "required": [
+          "request_id",
+          "label",
+          "media_capacity_bytes"
+        ],
+        "type": "object"
+      },
+      "CreateArchivePlanRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "media_capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          },
+          "selections": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveSelection"
+            },
+            "maxItems": 1024,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision",
+          "selections",
+          "media_capacity_bytes"
         ],
         "type": "object"
       },
@@ -1697,6 +2561,11 @@
           "destination_capacity",
           "destination_unavailable",
           "upload_expired",
+          "archive_busy",
+          "archive_expired",
+          "archive_metadata_too_large",
+          "archive_artifact_unavailable",
+          "archive_reconciliation_required",
           "integrity_failure",
           "rate_limited",
           "internal_error"
@@ -3306,6 +4175,32 @@
         ],
         "type": "string"
       },
+      "RegisterArchiveCopyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "reported_burned_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          }
+        },
+        "required": [
+          "request_id",
+          "label"
+        ],
+        "type": "object"
+      },
       "ReleaseCheckpointRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3516,6 +4411,9 @@
       },
       "RevisionScope": {
         "enum": [
+          "archive_collection",
+          "archive_set",
+          "archive_copy",
           "entry",
           "directory",
           "root",
@@ -3919,6 +4817,58 @@
         ],
         "type": "object"
       },
+      "SubmitArchiveVerificationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "disc_id": {
+            "$ref": "#/components/schemas/ArchiveDiscId"
+          },
+          "expected_objects": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "index_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "metadata_verified": {
+            "type": "boolean"
+          },
+          "payload_inventory_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          },
+          "verified_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "verified_objects": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "verifier_version": {
+            "$ref": "#/components/schemas/EntryName"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision",
+          "disc_id",
+          "index_sha256",
+          "bundle_sha256",
+          "payload_inventory_sha256",
+          "expected_objects",
+          "verified_objects",
+          "verified_bytes",
+          "metadata_verified",
+          "verifier_version"
+        ],
+        "type": "object"
+      },
       "TimestampMs": {
         "format": "uint64",
         "maximum": 9007199254740991,
@@ -4097,6 +5047,46 @@
           "admission",
           "processed_entries",
           "expires_at_ms"
+        ],
+        "type": "object"
+      },
+      "UpdateArchiveCollectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "label": {
+            "$ref": "#/components/schemas/EntryName"
+          },
+          "media_capacity_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "label",
+          "media_capacity_bytes"
+        ],
+        "type": "object"
+      },
+      "UpdateArchiveCopyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "$ref": "#/components/schemas/Revision"
+          },
+          "health": {
+            "$ref": "#/components/schemas/ArchiveCopyHealth"
+          },
+          "label": {
+            "$ref": "#/components/schemas/EntryName"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "label",
+          "health"
         ],
         "type": "object"
       },
@@ -17942,6 +18932,177 @@
     }
   ],
   "x-sct-planned-operations": [
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "list_archive_collections",
+      "path": "/api/v1/archives",
+      "request_schema": "ListRequest",
+      "response_schema": "ArchiveCollectionPage"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "DiscArchive",
+      "operation_id": "create_archive_collection",
+      "path": "/api/v1/archives",
+      "request_schema": "CreateArchiveCollectionRequest",
+      "response_schema": "ArchiveCollection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "inspect_archive_collection",
+      "path": "/api/v1/archives/{collection}",
+      "request_schema": null,
+      "response_schema": "ArchiveCollection"
+    },
+    {
+      "implemented": false,
+      "method": "PATCH",
+      "milestone": "DiscArchive",
+      "operation_id": "update_archive_collection",
+      "path": "/api/v1/archives/{collection}",
+      "request_schema": "UpdateArchiveCollectionRequest",
+      "response_schema": "ArchiveCollection"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "archive_usage",
+      "path": "/api/v1/archives/usage",
+      "request_schema": null,
+      "response_schema": "ArchiveUsage"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "DiscArchive",
+      "operation_id": "create_archive_plan",
+      "path": "/api/v1/archives/{collection}/sets",
+      "request_schema": "CreateArchivePlanRequest",
+      "response_schema": "ArchiveSet"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "list_archive_sets",
+      "path": "/api/v1/archives/{collection}/sets",
+      "request_schema": "ListRequest",
+      "response_schema": "ArchiveSetPage"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "inspect_archive_set",
+      "path": "/api/v1/archives/{collection}/sets/{set}",
+      "request_schema": null,
+      "response_schema": "ArchiveSet"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "DiscArchive",
+      "operation_id": "confirm_archive_set",
+      "path": "/api/v1/archives/{collection}/sets/{set}/confirm",
+      "request_schema": "ArchiveSetActionRequest",
+      "response_schema": "ArchiveSet"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "DiscArchive",
+      "operation_id": "cancel_archive_set",
+      "path": "/api/v1/archives/{collection}/sets/{set}/cancel",
+      "request_schema": "ArchiveSetActionRequest",
+      "response_schema": "ArchiveSet"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "list_archive_discs",
+      "path": "/api/v1/archives/{collection}/sets/{set}/discs",
+      "request_schema": "ListRequest",
+      "response_schema": "ArchiveDiscPage"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "download_archive_iso",
+      "path": "/api/v1/archives/{collection}/discs/{disc}/iso",
+      "request_schema": null,
+      "response_schema": null
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "list_archive_copies",
+      "path": "/api/v1/archives/{collection}/discs/{disc}/copies",
+      "request_schema": "ListRequest",
+      "response_schema": "ArchiveCopyPage"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "DiscArchive",
+      "operation_id": "register_archive_copy",
+      "path": "/api/v1/archives/{collection}/discs/{disc}/copies",
+      "request_schema": "RegisterArchiveCopyRequest",
+      "response_schema": "ArchivePhysicalCopy"
+    },
+    {
+      "implemented": false,
+      "method": "PATCH",
+      "milestone": "DiscArchive",
+      "operation_id": "update_archive_copy",
+      "path": "/api/v1/archives/{collection}/copies/{copy}",
+      "request_schema": "UpdateArchiveCopyRequest",
+      "response_schema": "ArchivePhysicalCopy"
+    },
+    {
+      "implemented": false,
+      "method": "POST",
+      "milestone": "DiscArchive",
+      "operation_id": "submit_archive_verification",
+      "path": "/api/v1/archives/{collection}/copies/{copy}/reports",
+      "request_schema": "SubmitArchiveVerificationRequest",
+      "response_schema": "ArchiveVerificationReport"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "list_archive_reports",
+      "path": "/api/v1/archives/{collection}/copies/{copy}/reports",
+      "request_schema": "ListRequest",
+      "response_schema": "ArchiveReportPage"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "list_archive_entries",
+      "path": "/api/v1/archives/{collection}/sets/{set}/entries",
+      "request_schema": "ListRequest",
+      "response_schema": "ArchiveEntryPage"
+    },
+    {
+      "implemented": false,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "list_archive_objects",
+      "path": "/api/v1/archives/{collection}/discs/{disc}/objects",
+      "request_schema": "ListRequest",
+      "response_schema": "ArchiveObjectPage"
+    },
     {
       "implemented": true,
       "method": "GET",
