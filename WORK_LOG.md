@@ -258,3 +258,17 @@ corrected fresh image: `sct-qualification-20260921-093652-714070`. Bootstrap/sou
 fingerprint capture passed separately in `sct-qualification-20260921-092620-646627`.
 M5 stays In Progress: the complete release baseline, broader resource/performance
 matrix and release gate remain outstanding. No push or deployment performed.
+
+# Disc archives — SCT-62
+
+Approved SCT-63–79 and 21 dependency edges; all assigned to Codex. SCT-63
+adds portable format-1 DTOs and bounded validation, canonical historical fixtures
+with SHA-256 inventory, and the approved design/format specifications. Every disc
+contains its set’s complete target index; there is no final-disc bootstrap dependency.
+No optical drive is exposed at /dev/sr* on this host; physical-media qualification
+will be recorded separately from software/ISO tests.
+
+SCT-63 validation: canonical archive tests pass; `./scripts/check` passed with
+12 browser/acceptance cases and the existing pending M5 gate. Initial sandboxed
+transport test could not bind a local socket; the authorized networking/Docker run
+passed. Full log: `/tmp/sct-disc-d01-check-unrestricted.log`.

@@ -1,0 +1,14 @@
+{"collection_id":"collection-a","first_disc":4,"format":1,"kind":"snapshot","last_disc":5,"set_id":"set-2","set_sequence":2,"sources":[{"path":"/","root_id":"root-a","version_id":"version-2"}]}
+{"disc_id":"disc-1","kind":"disc","number":1,"set_sequence":1}
+{"disc_id":"disc-4","kind":"disc","number":4,"set_sequence":2}
+{"disc_id":"disc-5","kind":"disc","number":5,"set_sequence":2}
+{"kind":"directory","path":"/"}
+{"kind":"directory","path":"/empty"}
+{"kind":"file","length":5,"path":"/new","root_id":"root-a","version_id":"version-2"}
+{"kind":"file","length":5,"path":"/renamed","root_id":"root-a","version_id":"version-2"}
+{"kind":"extent","object":{"digest":"79e60ecbcaefbc0a7b439d5703c2886ef9d21218920ebe5bb48ae2400977dec9","length":5,"root_id":"root-a"},"offset":0,"path":"/new"}
+{"kind":"extent","object":{"digest":"559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd","length":1,"root_id":"root-a"},"offset":0,"path":"/renamed"}
+{"kind":"extent","object":{"digest":"3989c4e0b53b03fa44fba6af89eeaa5f4347e8496e934ce81364e132cfca25ed","length":4,"root_id":"root-a"},"offset":1,"path":"/renamed"}
+{"disc_id":"disc-4","kind":"placement","object":{"digest":"3989c4e0b53b03fa44fba6af89eeaa5f4347e8496e934ce81364e132cfca25ed","length":4,"root_id":"root-a"}}
+{"disc_id":"disc-1","kind":"placement","object":{"digest":"559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd","length":1,"root_id":"root-a"}}
+{"disc_id":"disc-5","kind":"placement","object":{"digest":"79e60ecbcaefbc0a7b439d5703c2886ef9d21218920ebe5bb48ae2400977dec9","length":5,"root_id":"root-a"}}
