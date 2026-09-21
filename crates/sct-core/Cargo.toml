@@ -21,7 +21,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 quick-xml = { version = "0.38", features = ["serialize"] }
 rustix = { version = "1.1", features = ["fs"] }
 
-tokio = { workspace = true, features = ["fs", "io-util", "time", "sync"] }
+tokio = { workspace = true, features = ["fs", "io-util", "time", "sync", "process"] }
 
 [dev-dependencies]
 sct-archive = { path = "../sct-archive" }

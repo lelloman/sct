@@ -48,7 +48,7 @@ canonical `ArchiveObject` JSON followed by LF, ordered by root ID and digest.
 
 Confirmation freezes index records and planner state through SQL guards, together
 with the existing source, extent and placement guards. Service checkpoints are
-schema-specific; this release reads schema 22. Optical format 1 remains unchanged.
+schema-specific; this release reads schema 23. Optical format 1 remains unchanged.
 
 Tests include independent recovery-reader acceptance from every planned disc,
 Unicode order, files spanning discs, shared chunks, rename reuse, unrelated-root

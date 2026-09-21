@@ -2,6 +2,8 @@
 mod archive_capture_tests;
 #[path = "support/archive_catalog_tests.rs"]
 mod archive_catalog_tests;
+#[path = "support/archive_export_tests.rs"]
+mod archive_export_tests;
 #[path = "support/archive_management_tests.rs"]
 mod archive_management_tests;
 #[path = "support/archive_planning_tests.rs"]

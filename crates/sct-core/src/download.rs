@@ -304,7 +304,7 @@ impl Download {
         Ok(bytes)
     }
 }
-async fn read_progress(
+pub(crate) async fn read_progress(
     mut reader: Reader,
     length: u64,
     candidate: &ReadCandidate,

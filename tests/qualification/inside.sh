@@ -2,6 +2,7 @@
 set -euo pipefail
 mkdir -p /artifacts
 export CARGO_NET_OFFLINE=true
+export SCT_TEST_RECOVERY_BINARY="$PWD/target/debug/sct-recover"
 # Production accepts plaintext S3 only on loopback. Local tunnels preserve that
 # restriction while the disposable backends live on an isolated Docker network.
 UPSTREAM_HOST=minio LISTEN_HOST=127.0.0.1 LISTEN_PORT=19000 CONTROL_PORT=18474 python3 tests/qualification/proxy.py > /artifacts/direct-tunnel.log 2>&1 &

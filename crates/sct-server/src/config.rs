@@ -11,6 +11,8 @@ pub struct Config {
     pub web_dir: PathBuf,
     #[serde(default = "checkpoint_directory_default")]
     pub checkpoint_dir: PathBuf,
+    #[serde(default)]
+    pub archive: Option<sct_core::archive_export::ArchiveExportConfig>,
     pub database_url_env: String,
     #[serde(default)]
     pub development: bool,

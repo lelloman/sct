@@ -114,6 +114,22 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             config.session_expiry_seconds,
         )?
         .with_checkpoint_directory(config.checkpoint_dir.clone());
+        let transfer = match config.archive.clone() {
+            Some(archive) => transfer.with_archive_exports(archive).await?,
+            None => transfer,
+        };
+        let archive_worker = transfer.clone();
+        let archive_exports = tokio::spawn(async move {
+            loop {
+                if let Err(error) = archive_worker.archive_tick().await {
+                    eprintln!(
+                        "{}",
+                        serde_json::json!({"event":"archive_retry","code":error.0})
+                    );
+                }
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        });
         let worker = transfer.clone();
         let recovery = tokio::spawn(async move {
             loop {
@@ -179,6 +195,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         })?;
         lifecycle
             .run(signals.wait(), async {
+                archive_exports.abort();
+                let _ = archive_exports.await;
                 recovery.abort();
                 let _ = recovery.await;
                 let released = writer.release().await;

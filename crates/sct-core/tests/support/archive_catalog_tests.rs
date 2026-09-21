@@ -316,6 +316,6 @@ async fn archive_catalog_migrates_existing_database_without_rewriting_online_his
             .fetch_one(&pool)
             .await
             .unwrap(),
-        22
+        23
     );
 }

@@ -19,6 +19,7 @@ pub struct TransferEngine {
     pub(crate) ingress: Arc<tokio::sync::Semaphore>,
     pub(crate) slots: Arc<tokio::sync::Semaphore>,
     pub(crate) expiry_seconds: u32,
+    pub(crate) archive: Option<Arc<crate::archive_export::ArchiveRuntime>>,
     pub(crate) checkpoint_directory: Option<std::path::PathBuf>,
     pub(crate) checkpoint_export: Arc<tokio::sync::Mutex<()>>,
 }
@@ -35,6 +36,7 @@ impl TransferEngine {
             ingress: Arc::new(tokio::sync::Semaphore::new(workers as usize)),
             slots: Arc::new(tokio::sync::Semaphore::new(workers as usize)),
             expiry_seconds,
+            archive: None,
             checkpoint_directory: None,
             checkpoint_export: Arc::new(tokio::sync::Mutex::new(())),
         })

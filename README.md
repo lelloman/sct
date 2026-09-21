@@ -21,7 +21,7 @@ and every ten minutes. Maintainers push to Fucina through `origin`.
 ## Development
 
 Prerequisites: Rust 1.96.0 (installed by rustup from `rust-toolchain.toml`), Node.js
-24.13+ (`nvm use` reads `.nvmrc`), npm, Bash, ripgrep, jq, and Docker for disposable PostgreSQL
+24.13+ (`nvm use` reads `.nvmrc`), npm, Bash, ripgrep, jq, xorriso, util-linux (`prlimit`), and Docker for disposable PostgreSQL
 integration tests. Dependency versions are captured in `Cargo.lock` and
 `web/package-lock.json`. The check scripts target Linux development/CI hosts.
 
