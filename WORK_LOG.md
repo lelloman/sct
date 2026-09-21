@@ -272,3 +272,15 @@ SCT-63 validation: canonical archive tests pass; `./scripts/check` passed with
 12 browser/acceptance cases and the existing pending M5 gate. Initial sandboxed
 transport test could not bind a local socket; the authorized networking/Docker run
 passed. Full log: `/tmp/sct-disc-d01-check-unrestricted.log`.
+
+SCT-69 adds the standalone `sct-archive` crate and `sct-recover inspect/verify`.
+A disk-backed, bounded SQLite index validates complete graph relationships before
+commit; media access refuses symlinks/non-regular files and reports missing,
+unreadable/corrupt chunks. Tests bootstrap all six fixture discs, verify earlier
+and duplicate media, reject malformed graphs and bound metadata reads. A clean CLI
+process indexed 50,005 entries in about 3.2 seconds with sampled peak RSS 11,708 KiB.
+
+SCT-69 validation: five adversarial/scale reader tests, Clippy and full
+`./scripts/check` pass (12 browser/acceptance passes; existing M5 gate pending).
+Log: `/tmp/sct-disc-d07-check.log`. Recovery crate has no core/server dependency;
+SQLite is bundled so the reader does not require a database server installation.

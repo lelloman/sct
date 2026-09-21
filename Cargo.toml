@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/sct-protocol", "crates/sct-client", "crates/sct-core", "crates/sct-server"]
+members = ["crates/sct-protocol", "crates/sct-client", "crates/sct-core", "crates/sct-server", "crates/sct-archive"]
 resolver = "3"
 
 [workspace.package]
