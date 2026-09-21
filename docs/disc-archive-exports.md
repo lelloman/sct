@@ -33,8 +33,10 @@ twice the largest disc budget. The latter covers one staged tree and one extract
 verification tree; only one disc uses that workspace at a time. Filesystem free
 space is checked as an additional bound. Reservations remain charged until files
 are removed, including after failure/restart. Published image bytes move from
-reserved to cache usage. The initial account limit is 100 GiB; quota management
-and ordinary cache expiry/download lifetimes are provided by SCT-73.
+reserved to cache usage. The initial account limit is 100 GiB. Administrators can revise account limits
+through `/api/v1/admin/principals/{principal}/archive-limits`; reductions below
+charged cache/reservation/pin usage or the number of active sets are rejected.
+Users can inspect their limits through `/api/v1/archives/limits`.
 
 Each image stages the complete identical index/map, descriptor, verified recovery
 bundle and its assigned payload. Source chunks are read using the root's configured
@@ -76,3 +78,45 @@ The integration bundle contains the real development recovery executable and an
 explicit source placeholder; full vendored source and clean Debian runtime
 qualification use the separate production bundle build/test scripts. These tests
 do not qualify a physical burner or disc.
+
+## Downloads and cache lifetime
+
+`GET /api/v1/archives/status` reports whether export construction is configured and
+which recovery bundle/platform is installed. A configured worker is necessary for
+building or serving images. It does not imply that every historical image is cached.
+
+`GET /api/v1/archives/{collection}/discs/{disc}/iso` serves only images from a Ready
+set, with current authority over every source in that disc's original index.
+The quoted SHA-256 ETag identifies the immutable image. Single byte ranges,
+open-ended ranges and suffix ranges return 206; invalid/unsatisfiable ranges return
+416. `If-Match` protects image identity; a mismatched `If-Range` returns the full
+image. HEAD returns headers without starting/counting a transfer. Responses are
+private and not cacheable. Download counts record attempts, not completed burns.
+
+Each stream holds a durable 30-second read lease, renewed before and after each
+bounded 1 MiB chunk, with an absolute seven-day deadline. Current account,
+credential and complete source authority are rechecked at those boundaries.
+A disconnected or stalled stream can resume using the immutable ETag and range;
+a stream stalled longer than its lease must start a new request. Already delivered
+bytes cannot be revoked. Full streams check the final SHA-256 before returning the
+last chunk. Range clients must validate the assembled image's full hash.
+The Rust SDK's `resume_archive_iso_to` hashes the existing temporary-file prefix,
+checks the response ETag/range/length, and verifies the whole image before success.
+Keep this output temporary until validation succeeds.
+
+Account cache TTL defaults to seven days and can be configured between one and
+30 days for future published sets. The download window starts when the complete
+set becomes Ready. Existing published artifact deadlines remain unchanged.
+Expiry stops new downloads; a live download lease temporarily holds the cached
+file beyond TTL. Cleanup is serialized with builders, records durable deletion
+intent, unlinks and fsyncs the cache directory, then releases the storage charge
+once. Restart repeats incomplete cleanup safely. Stale download leases are reaped
+in bounded batches. Expiry never removes logical discs, snapshot indexes, hashes,
+physical-copy records or verification history. A successfully generated set remains
+Ready even after its cached images expire; inspect each artifact's availability.
+
+There is no promise to regenerate an expired image: source pins have been released,
+source bytes may have been pruned, and the original bundle/build inputs may no
+longer exist. Download and preserve the verified image before its deadline, burn
+and read back physical copies, or create a new capture from available sources.
+Migration 24 records download leases, cleanup intent and account cache TTL.

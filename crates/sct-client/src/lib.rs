@@ -118,9 +118,24 @@ impl Client {
         query: Vec<(&str, String)>,
         body: Option<serde_json::Value>,
     ) -> Result<reqwest::Response, Error> {
+        self.request_response_headers(method, path, query, body, reqwest::header::HeaderMap::new())
+            .await
+    }
+    async fn request_response_headers(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: Vec<(&str, String)>,
+        body: Option<serde_json::Value>,
+        headers: reqwest::header::HeaderMap,
+    ) -> Result<reqwest::Response, Error> {
         let mut url = self.origin.clone();
         url.set_path(path);
-        let mut request = self.http.request(method, url).query(&query);
+        let mut request = self
+            .http
+            .request(method, url)
+            .query(&query)
+            .headers(headers);
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
         }

@@ -9,6 +9,10 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | create_archive_collection | POST | `/api/v1/archives` | CreateArchiveCollectionRequest | ArchiveCollection | DiscArchive | true |
 | inspect_archive_collection | GET | `/api/v1/archives/{collection}` | reserved | ArchiveCollection | DiscArchive | true |
 | update_archive_collection | PATCH | `/api/v1/archives/{collection}` | UpdateArchiveCollectionRequest | ArchiveCollection | DiscArchive | true |
+| archive_service_status | GET | `/api/v1/archives/status` | reserved | ArchiveServiceStatus | DiscArchive | true |
+| archive_limits | GET | `/api/v1/archives/limits` | reserved | ArchiveAccountLimits | DiscArchive | true |
+| archive_account_limits | GET | `/api/v1/admin/principals/{principal}/archive-limits` | reserved | ArchiveAccountLimits | DiscArchive | true |
+| update_archive_account_limits | PATCH | `/api/v1/admin/principals/{principal}/archive-limits` | UpdateArchiveAccountLimitsRequest | ArchiveAccountLimits | DiscArchive | true |
 | archive_usage | GET | `/api/v1/archives/usage` | reserved | ArchiveUsage | DiscArchive | true |
 | create_archive_plan | POST | `/api/v1/archives/{collection}/sets` | CreateArchivePlanRequest | ArchiveSet | DiscArchive | true |
 | list_archive_sets | GET | `/api/v1/archives/{collection}/sets` | ListRequest | ArchiveSetPage | DiscArchive | true |
@@ -16,7 +20,7 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | confirm_archive_set | POST | `/api/v1/archives/{collection}/sets/{set}/confirm` | ArchiveSetActionRequest | ArchiveSet | DiscArchive | true |
 | cancel_archive_set | POST | `/api/v1/archives/{collection}/sets/{set}/cancel` | ArchiveSetActionRequest | ArchiveSet | DiscArchive | true |
 | list_archive_discs | GET | `/api/v1/archives/{collection}/sets/{set}/discs` | ListRequest | ArchiveDiscPage | DiscArchive | true |
-| download_archive_iso | GET | `/api/v1/archives/{collection}/discs/{disc}/iso` | reserved | reserved | DiscArchive | false |
+| download_archive_iso | GET | `/api/v1/archives/{collection}/discs/{disc}/iso` | reserved | reserved | DiscArchive | true |
 | list_archive_copies | GET | `/api/v1/archives/{collection}/discs/{disc}/copies` | ListRequest | ArchiveCopyPage | DiscArchive | false |
 | register_archive_copy | POST | `/api/v1/archives/{collection}/discs/{disc}/copies` | RegisterArchiveCopyRequest | ArchivePhysicalCopy | DiscArchive | false |
 | update_archive_copy | PATCH | `/api/v1/archives/{collection}/copies/{copy}` | UpdateArchiveCopyRequest | ArchivePhysicalCopy | DiscArchive | false |

@@ -197,9 +197,52 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
             .await
             .is_err()
     );
-    w.revoke_grant(&admin, &grants[1].id, &grants[1].revision)
+    // Match revoke_grant's root-lock/delete boundary, and force an archive
+    // authorization query to wait across its commit. It must see the deletion.
+    let mut revoke = db.begin().await.unwrap();
+    sqlx::query("SELECT id FROM roots WHERE id=$1 FOR UPDATE")
+        .bind(b.id.as_str())
+        .fetch_one(&mut *revoke)
         .await
         .unwrap();
+    let blocker: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *revoke)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM grants WHERE id=$1")
+        .bind(grants[1].id.as_str())
+        .execute(&mut *revoke)
+        .await
+        .unwrap();
+    let waiting = tokio::spawn({
+        let w = w.clone();
+        let owner = owner.clone();
+        let collection = col.id.clone();
+        let disc = disc.clone();
+        async move { w.authorize_archive_disc(&owner, &collection, &disc).await }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let blocked: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))",
+            )
+            .bind(blocker)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+            if blocked {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    revoke.commit().await.unwrap();
+    assert!(
+        waiting.await.unwrap().is_err(),
+        "waiting stream cannot retain pre-revocation grants"
+    );
     assert!(
         w.inspect_archive_set(&owner, &col.id, &set.id)
             .await

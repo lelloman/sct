@@ -167,6 +167,30 @@ dto! {
     pub struct ArchiveEntryPage { pub entries: Vec<ArchiveEntry>, pub next_cursor: Option<CursorToken> }
     pub struct ArchiveDiscObject { pub root_id: RootId, pub digest: ChunkDigest, pub length: ByteCount }
     pub struct ArchiveObjectPage { pub objects: Vec<ArchiveDiscObject>, pub next_cursor: Option<CursorToken> }
+    pub struct ArchiveServiceStatus {
+        pub configured: bool,
+        pub bundle_version: Option<String>,
+        pub platform: Option<String>,
+    }
+    pub struct ArchiveAccountLimits {
+        pub principal_id: PrincipalId,
+        pub revision: Revision,
+        pub quota_bytes: ByteCount,
+        pub pin_quota_bytes: ByteCount,
+        pub max_active: u32,
+        pub max_capture_records: ByteCount,
+        pub pin_deadline_seconds: u32,
+        pub cache_ttl_seconds: u32,
+    }
+    pub struct UpdateArchiveAccountLimitsRequest {
+        pub expected_revision: Revision,
+        pub quota_bytes: ByteCount,
+        pub pin_quota_bytes: ByteCount,
+        pub max_active: u32,
+        pub max_capture_records: ByteCount,
+        pub pin_deadline_seconds: u32,
+        pub cache_ttl_seconds: u32,
+    }
     pub struct ArchiveUsage {
         pub cache_bytes: ByteCount,
         pub reserved_bytes: ByteCount,

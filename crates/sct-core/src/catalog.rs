@@ -183,6 +183,13 @@ impl Catalog {
                 include_str!("../migrations/0023_archive_exports.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                24,
+                "archive_downloads".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0024_archive_downloads.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

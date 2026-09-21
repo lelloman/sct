@@ -47,6 +47,9 @@ fn register_types(
         ArchiveVerificationReport,
         ArchiveReportPage,
         ArchiveUsage,
+        ArchiveServiceStatus,
+        ArchiveAccountLimits,
+        UpdateArchiveAccountLimitsRequest,
         ArchiveEntry,
         ArchiveEntryPage,
         ArchiveDiscObject,
@@ -344,6 +347,38 @@ pub fn operations() -> Vec<Value> {
         "/archives/{collection}",
         "UpdateArchiveCollectionRequest",
         "ArchiveCollection",
+        "DiscArchive"
+    );
+    op!(
+        "archive_service_status",
+        "GET",
+        "/archives/status",
+        None::<&str>,
+        "ArchiveServiceStatus",
+        "DiscArchive"
+    );
+    op!(
+        "archive_limits",
+        "GET",
+        "/archives/limits",
+        None::<&str>,
+        "ArchiveAccountLimits",
+        "DiscArchive"
+    );
+    op!(
+        "archive_account_limits",
+        "GET",
+        "/admin/principals/{principal}/archive-limits",
+        None::<&str>,
+        "ArchiveAccountLimits",
+        "DiscArchive"
+    );
+    op!(
+        "update_archive_account_limits",
+        "PATCH",
+        "/admin/principals/{principal}/archive-limits",
+        "UpdateArchiveAccountLimitsRequest",
+        "ArchiveAccountLimits",
         "DiscArchive"
     );
     op!(
@@ -1322,8 +1357,16 @@ fn implemented_paths(operations: &[Value], definitions: &serde_json::Map<String,
         if matches!(id, "list_versions" | "missing_chunks") {
             parameters.push(json!({"name":"cursor","in":"query","required":false,"schema":{"$ref":"#/components/schemas/CursorToken"}}));
         }
-        if matches!(id, "download_content" | "download_snapshot") {
+        if matches!(
+            id,
+            "download_content" | "download_snapshot" | "download_archive_iso"
+        ) {
             parameters.push(json!({"name":"Range","in":"header","required":false,"description":"One bytes range, inclusive/open-ended/suffix","schema":{"type":"string"}}));
+        }
+        if id == "download_archive_iso" {
+            for name in ["If-Match", "If-Range"] {
+                parameters.push(json!({"name":name,"in":"header","required":false,"description":"Quoted immutable image SHA-256 ETag","schema":{"type":"string"}}));
+            }
         }
         if id == "upload_chunk" {
             entry["requestBody"] = json!({"required":true,"content":{"application/octet-stream":{"schema":{"type":"string","format":"binary","maxLength":CHUNK_MAX}}}});
@@ -1340,12 +1383,28 @@ fn implemented_paths(operations: &[Value], definitions: &serde_json::Map<String,
         if matches!(id, "admit_upload" | "seal_upload") {
             entry["responses"]["202"] = entry["responses"]["200"].clone();
         }
-        if matches!(id, "download_content" | "download_snapshot") {
+        if matches!(
+            id,
+            "download_content" | "download_snapshot" | "download_archive_iso"
+        ) {
             entry["responses"].as_object_mut().unwrap().remove("204");
             for code in ["200", "206"] {
                 entry["responses"][code] = json!({"description":"Verified streaming bytes; a late failure aborts the body. Check Content-Length.","headers":{"Content-Length":{"schema":{"type":"integer"}},"Content-Range":{"schema":{"type":"string"}}},"content":{"application/octet-stream":{"schema":{"type":"string","format":"binary"}}}});
             }
             entry["responses"]["416"] = json!({"description":"Unsatisfiable byte range","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorResponse"}}}});
+        }
+        if id == "download_archive_iso" {
+            for code in ["200", "206"] {
+                let content = entry["responses"][code]["content"].as_object_mut().unwrap();
+                let binary = content.remove("application/octet-stream").unwrap();
+                content.insert("application/x-iso9660-image".into(), binary);
+                entry["responses"][code]["headers"]["ETag"] = json!({"description":"Quoted immutable image SHA-256","schema":{"type":"string"}});
+                entry["responses"][code]["headers"]["Accept-Ranges"] =
+                    json!({"schema":{"type":"string","const":"bytes"}});
+            }
+            for code in ["410", "412"] {
+                entry["responses"][code] = json!({"description":"Image unavailable/expired or If-Match precondition failed","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ErrorResponse"}}}});
+            }
         }
         for status in [
             "400", "401", "403", "404", "409", "429", "500", "503", "507",

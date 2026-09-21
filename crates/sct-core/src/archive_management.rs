@@ -17,16 +17,38 @@ pub(crate) async fn source_access(
 ) -> Result<()> {
     let roots: std::collections::BTreeSet<_> =
         selections.iter().map(|s| s.root_id.as_str()).collect();
-    for root in roots {
-        // Grant mutations lock the root exclusively. Hold a shared lock until
-        // metadata selection finishes so revocation has a defined boundary.
-        let exists: Option<String> =
-            sqlx::query_scalar("SELECT id FROM roots WHERE id=$1 FOR SHARE")
-                .bind(root)
-                .fetch_optional(&mut *db)
-                .await?;
-        require(exists.is_some(), ErrorCode::NotFound)?;
-        auth::authorize(db, actor, root, Capability::ListRead).await?;
+    let admin = auth::administrator(db, actor).await?;
+    let roots: Vec<_> = roots.into_iter().collect();
+    let rows = sqlx::query("SELECT id,owner_id FROM roots WHERE id=ANY($1) ORDER BY id FOR SHARE")
+        .bind(&roots)
+        .fetch_all(&mut *db)
+        .await?;
+    require(rows.len() == roots.len(), ErrorCode::NotFound)?;
+    // Read grants in a fresh statement after root locks. A joined lookup could
+    // retain a pre-revocation MVCC snapshot while waiting for a revoker's lock.
+    let grants = sqlx::query(
+        "SELECT root_id,capabilities FROM grants WHERE root_id=ANY($1) AND principal_id=$2",
+    )
+    .bind(&roots)
+    .bind(actor.principal_id())
+    .fetch_all(db)
+    .await?;
+    let grants: std::collections::BTreeMap<String, serde_json::Value> = grants
+        .into_iter()
+        .map(|r| (r.get("root_id"), r.get("capabilities")))
+        .collect();
+    for row in rows {
+        if admin || row.get::<String, _>("owner_id") == actor.principal_id() {
+            continue;
+        }
+        let value = grants
+            .get(&row.get::<String, _>("id"))
+            .ok_or(Error(ErrorCode::NotFound))?;
+        let capabilities: Vec<Capability> = serde_json::from_value(value.clone())?;
+        require(
+            capabilities.contains(&Capability::ListRead),
+            ErrorCode::Forbidden,
+        )?;
     }
     Ok(())
 }
@@ -392,7 +414,7 @@ impl Writer {
             snapshot.revision.as_str()
         );
         let after = after(&mut tx, actor, &scope, request).await?;
-        let rows=sqlx::query("SELECT d.*,a.id AS artifact_id,a.state AS artifact_state,a.sha256 AS artifact_sha256,a.length AS artifact_length,(extract(epoch FROM a.expires_at)*1000)::bigint AS artifact_expires,a.download_count FROM archive_discs d LEFT JOIN archive_artifacts a ON a.disc_id=d.id WHERE d.collection_id=$1 AND d.id>$3 AND (d.set_id=$2 OR EXISTS(SELECT 1 FROM archive_placements p WHERE p.set_id=$2 AND p.disc_id=d.id)) ORDER BY d.id LIMIT $4")
+        let rows=sqlx::query("SELECT d.*,a.id AS artifact_id,CASE WHEN a.state='available' AND (a.cleanup_pending OR a.expires_at<=clock_timestamp()) THEN 'expired' ELSE a.state END AS artifact_state,a.sha256 AS artifact_sha256,a.length AS artifact_length,(extract(epoch FROM a.expires_at)*1000)::bigint AS artifact_expires,a.download_count FROM archive_discs d LEFT JOIN archive_artifacts a ON a.disc_id=d.id WHERE d.collection_id=$1 AND d.id>$3 AND (d.set_id=$2 OR EXISTS(SELECT 1 FROM archive_placements p WHERE p.set_id=$2 AND p.disc_id=d.id)) ORDER BY d.id LIMIT $4")
             .bind(collection.as_str()).bind(set.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let mut discs = Vec::new();

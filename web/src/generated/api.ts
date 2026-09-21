@@ -23,6 +23,8 @@ export type ApplyChangeRequest = { idempotency_key: IdempotencyKey, preview_id: 
 
 export type ApplyPolicyRequest = { preview_id: PreviewId, expected_revision: Revision, expected_scope_revision: Revision, acknowledge_retention_effect: boolean, };
 
+export type ArchiveAccountLimits = { principal_id: PrincipalId, revision: Revision, quota_bytes: ByteCount, pin_quota_bytes: ByteCount, max_active: number, max_capture_records: ByteCount, pin_deadline_seconds: number, cache_ttl_seconds: number, };
+
 export type ArchiveArtifact = { id: ArchiveArtifactId, state: ArchiveArtifactState, sha256: ChunkDigest | null, length: ByteCount | null, expires_at_ms: TimestampMs, download_count: ByteCount, };
 
 export type ArchiveArtifactId = string & { readonly __brand: "ArchiveArtifactId" };
@@ -72,6 +74,8 @@ export type ArchiveReportId = string & { readonly __brand: "ArchiveReportId" };
 export type ArchiveReportPage = { reports: Array<ArchiveVerificationReport>, next_cursor: CursorToken | null, };
 
 export type ArchiveSelection = { root_id: RootId, version_id: VersionId, path: RootPath, };
+
+export type ArchiveServiceStatus = { configured: boolean, bundle_version: string | null, platform: string | null, };
 
 export type ArchiveSet = { id: ArchiveSetId, collection_id: ArchiveCollectionId, sequence: ByteCount, revision: Revision, state: ArchiveJobState, selections: Array<ArchiveSelection>, media_capacity_bytes: ByteCount, processed_entries: ByteCount, processed_bytes: ByteCount, plan: ArchivePlanSummary | null, failure: ErrorCode | null, created_at_ms: TimestampMs, expires_at_ms: TimestampMs, published_at_ms: TimestampMs | null, verified_complete_at_ms: TimestampMs | null, };
 
@@ -406,6 +410,8 @@ export type TransferStatus = { upload: UploadInspection, admission: AdmissionSta
 export type TreeDraftPhase = "initializing" | "editing" | "building" | "planning" | "staging" | "ready" | "committed" | "cleaning_up" | "terminal";
 
 export type TreeDraftStatus = { id: UploadId, root_id: RootId, directory_id: EntryId, operation_id: OperationId, state: SessionState, phase: TreeDraftPhase, admission: AdmissionState, processed_entries: ByteCount, expires_at_ms: TimestampMs, result: CommitReceipt | null, };
+
+export type UpdateArchiveAccountLimitsRequest = { expected_revision: Revision, quota_bytes: ByteCount, pin_quota_bytes: ByteCount, max_active: number, max_capture_records: ByteCount, pin_deadline_seconds: number, cache_ttl_seconds: number, };
 
 export type UpdateArchiveCollectionRequest = { expected_revision: Revision, label: EntryName, media_capacity_bytes: ByteCount, };
 

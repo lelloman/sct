@@ -206,7 +206,7 @@ async fn archive_catalog_freezes_inventory_and_keeps_copy_observations() {
     .await
     .unwrap();
     sqlx::query("INSERT INTO archive_discs VALUES('disc',$1,$2,1,repeat('a',64),repeat('b',64),repeat('c',64),0,0,100000000)").bind(collection.id.as_str()).bind(set.id.as_str()).execute(&pool).await.unwrap();
-    sqlx::query("INSERT INTO archive_artifacts VALUES('image','disc','building',NULL,NULL,NULL,clock_timestamp()+interval '1 day',0)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,sha256,length,relative_path,expires_at,download_count) VALUES('image','disc','building',NULL,NULL,NULL,clock_timestamp()+interval '1 day',0)").execute(&pool).await.unwrap();
     sqlx::query("UPDATE archive_sets SET state='awaiting_confirmation',plan='{}' WHERE id=$1")
         .bind(set.id.as_str())
         .execute(&pool)
@@ -316,6 +316,6 @@ async fn archive_catalog_migrates_existing_database_without_rewriting_online_his
             .fetch_one(&pool)
             .await
             .unwrap(),
-        23
+        24
     );
 }

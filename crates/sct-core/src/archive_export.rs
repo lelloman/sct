@@ -54,7 +54,7 @@ const WRITER_OPTIONS: &[&str] = &[
     "--modification-date=2026010100000000",
 ];
 impl ArchiveRuntime {
-    fn lock(&self) -> Result<std::fs::File> {
+    pub(crate) fn lock(&self) -> Result<std::fs::File> {
         let f = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -142,6 +142,7 @@ impl TransferEngine {
             return Ok(());
         };
         let disk_lock = runtime.lock()?;
+        self.cleanup_archive_cache_locked().await?;
         let mut iso_writer = runtime.writer.clone();
         iso_writer.inherited_lock = Some(Arc::new(disk_lock.try_clone().map_err(io)?));
         let mut tx = self.writer.transaction().await?;
@@ -350,6 +351,9 @@ impl TransferEngine {
             let mut tx = self.writer.transaction().await?;
             check_fence(&mut tx, &fence, self.writer.epoch).await?;
             sqlx::query("UPDATE archive_sets SET state='ready',published_at=clock_timestamp(),revision=$2 WHERE id=$1").bind(set.as_str()).bind(id()).execute(&mut *tx).await?;
+            // The download window begins when the whole set becomes visible,
+            // not when its first (potentially slow) disc starts building.
+            sqlx::query("UPDATE archive_artifacts a SET expires_at=s.published_at+make_interval(secs=>limits.cache_ttl_seconds) FROM archive_discs d JOIN archive_sets s ON s.id=d.set_id JOIN archive_collections c ON c.id=s.collection_id JOIN archive_accounts limits ON limits.principal_id=c.owner_id WHERE a.disc_id=d.id AND s.id=$1").bind(set.as_str()).execute(&mut *tx).await?;
             sqlx::query("UPDATE archive_exports SET worker_expires_at=NULL WHERE set_id=$1")
                 .bind(set.as_str())
                 .execute(&mut *tx)
@@ -404,7 +408,7 @@ impl TransferEngine {
         let work = work_path(runtime, &relative)?;
         let mut tx = self.writer.transaction().await?;
         check_fence(&mut tx, &fence, self.writer.epoch).await?;
-        sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,expires_at) VALUES($1,$2,'building',clock_timestamp()+interval '7 days') ON CONFLICT(disc_id) DO NOTHING").bind(&artifact).bind(disc.as_str()).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,expires_at) SELECT $1,$2,'building',clock_timestamp()+make_interval(secs=>a.cache_ttl_seconds) FROM archive_discs d JOIN archive_collections c ON c.id=d.collection_id JOIN archive_accounts a ON a.principal_id=c.owner_id WHERE d.id=$2 ON CONFLICT(disc_id) DO NOTHING").bind(&artifact).bind(disc.as_str()).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO archive_builds(disc_id,artifact_id,attempt,stage,relative_path,server_epoch,worker_epoch) VALUES($1,$2,$3,'staging',$4,$5,$6) ON CONFLICT(disc_id) DO UPDATE SET attempt=$3,stage='staging',relative_path=$4,server_epoch=$5,worker_epoch=$6,updated_at=clock_timestamp()").bind(disc.as_str()).bind(&artifact).bind(&attempt).bind(&relative).bind(self.writer.epoch).bind(fence.epoch).execute(&mut *tx).await?;
         tx.commit().await?;
         archive_iso::private_directory(&work).await?;
@@ -762,7 +766,7 @@ async fn remove_work(path: &Path) -> Result<()> {
         Err(e) => Err(io(e)),
     }
 }
-async fn sync_directory(path: &Path) -> Result<()> {
+pub(crate) async fn sync_directory(path: &Path) -> Result<()> {
     tokio::fs::File::open(path)
         .await
         .map_err(io)?

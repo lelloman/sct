@@ -247,6 +247,52 @@
       ],
       "type": "object"
     },
+    "ArchiveAccountLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_ttl_seconds": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_active": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_capture_records": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "pin_deadline_seconds": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pin_quota_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "principal_id": {
+          "$ref": "#/$defs/PrincipalId"
+        },
+        "quota_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        }
+      },
+      "required": [
+        "principal_id",
+        "revision",
+        "quota_bytes",
+        "pin_quota_bytes",
+        "max_active",
+        "max_capture_records",
+        "pin_deadline_seconds",
+        "cache_ttl_seconds"
+      ],
+      "type": "object"
+    },
     "ArchiveArtifact": {
       "additionalProperties": false,
       "properties": {
@@ -865,6 +911,30 @@
         "root_id",
         "version_id",
         "path"
+      ],
+      "type": "object"
+    },
+    "ArchiveServiceStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "platform": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "configured"
       ],
       "type": "object"
     },
@@ -5048,6 +5118,48 @@
         "admission",
         "processed_entries",
         "expires_at_ms"
+      ],
+      "type": "object"
+    },
+    "UpdateArchiveAccountLimitsRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "cache_ttl_seconds": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "max_active": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_capture_records": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "pin_deadline_seconds": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pin_quota_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "quota_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "quota_bytes",
+        "pin_quota_bytes",
+        "max_active",
+        "max_capture_records",
+        "pin_deadline_seconds",
+        "cache_ttl_seconds"
       ],
       "type": "object"
     },

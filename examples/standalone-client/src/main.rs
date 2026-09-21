@@ -8,6 +8,8 @@ async fn inspect_management(client: &Client) -> Result<(), Error> {
         cursor: None,
     };
     let account = client.account().await?;
+    client.archive_service_status().await?;
+    client.archive_limits().await?;
     for collection in client.list_archive_collections(&page).await?.collections {
         let sets = client.list_archive_sets(&collection.id, &page).await?;
         for set in sets.sets {

@@ -380,6 +380,7 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
     e.archive_tick().await.unwrap();
     let again:Vec<String>=sqlx::query_scalar("SELECT a.sha256 FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE d.set_id=$1 ORDER BY d.number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
     assert_eq!(hashes, again);
+    download_and_expiry_checks(&e, &w, &a, &db, &c, &s, &config, &images).await;
 }
 #[tokio::test]
 #[ignore = "requires PostgreSQL, xorriso and recovery binary"]
@@ -550,5 +551,164 @@ async fn archive_iso_cancellation_fences_live_staging_before_releasing_reservati
             .unwrap()
             .count(),
         0
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn download_and_expiry_checks(
+    e: &TransferEngine,
+    w: &Writer,
+    actor: &Actor,
+    db: &PgPool,
+    collection: &ArchiveCollection,
+    set: &ArchiveSet,
+    config: &ArchiveExportConfig,
+    images: &[sqlx::postgres::PgRow],
+) {
+    let disc: ArchiveDiscId = images[0].get::<String, _>("disc_id").parse().unwrap();
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE a.expires_at=s.published_at+interval '7 days'").fetch_one(db).await.unwrap(), 2);
+    let artifact = e
+        .archive_image_info(actor, &collection.id, &disc)
+        .await
+        .unwrap()
+        .artifact;
+    let length = artifact.length.unwrap().get();
+    let mut download = e
+        .download_archive_iso(actor, &collection.id, &disc, None)
+        .await
+        .unwrap();
+    let mut hash = Sha256::new();
+    while let Some(bytes) = download.next().await.unwrap() {
+        hash.update(&bytes);
+    }
+    assert_eq!(
+        format!("{:x}", hash.finalize()),
+        artifact.sha256.unwrap().as_str()
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_downloads")
+            .fetch_one(db)
+            .await
+            .unwrap(),
+        0
+    );
+    let path = config
+        .directory
+        .join(images[0].get::<String, _>("relative_path"));
+    let mut file = tokio::fs::File::open(&path).await.unwrap();
+    use tokio::io::AsyncSeekExt;
+    file.seek(std::io::SeekFrom::Start(length - 128))
+        .await
+        .unwrap();
+    let mut expected = vec![0; 128];
+    file.read_exact(&mut expected).await.unwrap();
+    let mut download = e
+        .download_archive_iso(actor, &collection.id, &disc, Some((length - 128, length)))
+        .await
+        .unwrap();
+    assert_eq!(download.next().await.unwrap().unwrap(), expected);
+    download.release().await.unwrap();
+
+    let credential = w
+        .issue_token(actor, &actor.principal_id().parse().unwrap())
+        .await
+        .unwrap();
+    let second = w
+        .authenticate(&credential.secret, false, None)
+        .await
+        .unwrap();
+    let mut revoked = e
+        .download_archive_iso(&second, &collection.id, &disc, None)
+        .await
+        .unwrap();
+    assert!(revoked.next().await.unwrap().is_some());
+    w.revoke_credential(actor, &credential.id).await.unwrap();
+    assert!(
+        revoked.next().await.is_err(),
+        "revocation stops the next stream chunk"
+    );
+    revoked.release().await.unwrap();
+    let limits = w
+        .archive_account_limits(actor, &actor.principal_id().parse().unwrap())
+        .await
+        .unwrap();
+    let too_low = UpdateArchiveAccountLimitsRequest {
+        expected_revision: limits.revision,
+        quota_bytes: 0.try_into().unwrap(),
+        pin_quota_bytes: limits.pin_quota_bytes,
+        max_active: limits.max_active,
+        max_capture_records: limits.max_capture_records,
+        pin_deadline_seconds: limits.pin_deadline_seconds,
+        cache_ttl_seconds: limits.cache_ttl_seconds,
+    };
+    assert_eq!(
+        w.update_archive_account_limits(actor, &limits.principal_id, &too_low)
+            .await
+            .unwrap_err()
+            .0,
+        ErrorCode::ArchiveResourceLimit
+    );
+    let mut live = e
+        .download_archive_iso(actor, &collection.id, &disc, None)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE archive_artifacts SET expires_at=clock_timestamp()-interval '1 second'")
+        .execute(db)
+        .await
+        .unwrap();
+    e.cleanup_archive_cache().await.unwrap();
+    assert!(path.exists(), "live lease holds the image past cache TTL");
+    assert!(live.next().await.unwrap().is_some());
+    assert!(matches!(
+        e.archive_image_info(actor, &collection.id, &disc).await,
+        Err(sct_core::error::Error(
+            ErrorCode::ArchiveArtifactUnavailable
+        ))
+    ));
+    live.release().await.unwrap();
+    // Simulate crash after durable cleanup intent and unlink, before accounting.
+    sqlx::query("UPDATE archive_artifacts SET cleanup_pending=true WHERE disc_id=$1")
+        .bind(disc.as_str())
+        .execute(db)
+        .await
+        .unwrap();
+    std::fs::remove_file(&path).unwrap();
+    e.cleanup_archive_cache().await.unwrap();
+    e.cleanup_archive_cache().await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT cache_bytes+reserved_bytes FROM archive_accounts")
+            .fetch_one(db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT cache_bytes+reserved_bytes FROM archive_storage")
+            .fetch_one(db)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_discs")
+            .fetch_one(db)
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        w.inspect_archive_set(actor, &collection.id, &set.id)
+            .await
+            .unwrap()
+            .state,
+        ArchiveJobState::Ready
+    );
+    let hashes: Vec<String> = sqlx::query_scalar("SELECT a.sha256 FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id ORDER BY d.number").fetch_all(db).await.unwrap();
+    assert_eq!(
+        hashes,
+        images
+            .iter()
+            .map(|r| r.get::<String, _>("sha256"))
+            .collect::<Vec<_>>()
     );
 }
