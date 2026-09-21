@@ -14,6 +14,22 @@ use std::collections::BTreeMap;
 async fn independent_recovery_restores_files_and_trees_without_production_or_idp() {
     let (w, a, db) = setup().await;
     let root = root(&w, &a, "/recovery", 4000).await;
+    let optical = w
+        .create_archive_collection(
+            &a,
+            &CreateArchiveCollectionRequest {
+                request_id: "optical".parse().unwrap(),
+                label: "Disc archive".parse().unwrap(),
+                media_capacity_bytes: 25_000_000_000.try_into().unwrap(),
+            },
+        )
+        .await
+        .unwrap();
+    sqlx::query("UPDATE archive_collections SET next_disc=7 WHERE id=$1")
+        .bind(optical.id.as_str())
+        .execute(&db)
+        .await
+        .unwrap();
     sqlx::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
@@ -191,6 +207,32 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
         .authenticate(&credential.secret, false, None)
         .await
         .unwrap();
+    let high_water: i64 = sqlx::query_scalar(
+        "SELECT next_disc FROM archive_collections WHERE id=$1 AND reconciliation_required",
+    )
+    .bind(optical.id.as_str())
+    .fetch_one(&target)
+    .await
+    .unwrap();
+    assert_eq!(high_water, 7);
+    let error = writer
+        .create_archive_plan(
+            &actor,
+            &optical.id,
+            &CreateArchivePlanRequest {
+                request_id: "after-restore".parse().unwrap(),
+                expected_revision: optical.revision.clone(),
+                selections: vec![ArchiveSelection {
+                    root_id: root.id.clone(),
+                    version_id: file.version_id.clone(),
+                    path: "/file".parse().unwrap(),
+                }],
+                media_capacity_bytes: optical.media_capacity_bytes,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.0, ErrorCode::ArchiveReconciliationRequired);
     let mut stores = BTreeMap::new();
     for backend in writer.configured_backends().await.unwrap() {
         assert_eq!(backend.inspection.adapter_kind, "local");

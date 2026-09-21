@@ -155,6 +155,13 @@ impl Catalog {
                 include_str!("../migrations/0019_allocation_counter_locking.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                20,
+                "disc_archives".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0020_disc_archives.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

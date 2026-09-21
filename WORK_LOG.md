@@ -326,3 +326,18 @@ workspace Clippy pass. `./scripts/check` passed with 12 browser passes and the
 existing pending M5 gate (`/tmp/sct-disc-d02-check.log`). Final SDK/schema additions
 were checked again with focused Rust, Clippy, contract and extracted-client checks
 (`/tmp/sct-disc-d02-protocol.log`, `/tmp/sct-disc-d02-client.log`).
+
+SCT-65 adds migration 20 and account-owned optical catalog operations. PostgreSQL
+serializes idempotent append creation and permanent number reservations, preserves
+cancelled intervals across writer replacement, freezes index/content assignments,
+and retains immutable ISO identities and copy/report history independently of
+online roots/versions. Service checkpoint schema support advances to 20; importing
+an older catalog cannot silently reuse disc numbers because recovered collections
+require reconciliation. Published sets require all reserved disc artifacts.
+
+SCT-65 validation: three new real-PostgreSQL migration/concurrency/history tests
+pass, and independent service recovery now verifies retained optical high-water
+marks and blocks an unsafe append. Full `./scripts/check` passed (12 browser passes;
+existing pending M5 gate). Logs: `/tmp/sct-disc-d03-integration.log` and
+`/tmp/sct-disc-d03-check.log`. Schema-19 service checkpoints still require their
+matching release for restore before migration; portable optical format stays v1.

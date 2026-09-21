@@ -118,7 +118,7 @@ async fn inspect_package(package: &Path) -> Result<CheckpointDescriptor> {
     )?;
     require(
         header.format == 1
-            && header.schema_version == 19
+            && header.schema_version == 20
             && header.checkpoint_id == descriptor.checkpoint_id
             && header.generation_watermark == descriptor.generation_watermark,
         ErrorCode::IntegrityFailure,
@@ -269,7 +269,7 @@ impl crate::catalog::Catalog {
         let descriptor = verify_checkpoint_package(package, payloads).await?;
         let header = header(package).await?;
         require(
-            header.format == 1 && header.schema_version == 19,
+            header.format == 1 && header.schema_version == 20,
             ErrorCode::UnsupportedOperation,
         )?;
         let payloads = tokio::fs::canonicalize(payloads).await.map_err(io)?;
@@ -386,6 +386,10 @@ impl crate::catalog::Catalog {
             .execute(&mut *tx)
             .await?;
         let dependencies=sqlx::query("SELECT child.relname child,parent.relname parent FROM pg_constraint f JOIN pg_class child ON child.oid=f.conrelid JOIN pg_class parent ON parent.oid=f.confrelid WHERE f.contype='f' AND NOT f.condeferrable AND f.conrelid<>f.confrelid AND child.relnamespace=current_schema()::regnamespace").fetch_all(&mut *tx).await?;
+        // Trusted, verified catalog import inserts immutable archive inventories.
+        sqlx::query("SET LOCAL sct.archive_import = 'on'")
+            .execute(&mut *tx)
+            .await?;
         let mut remaining: BTreeSet<String> = tables.iter().cloned().collect();
         while !remaining.is_empty() {
             let next = remaining
@@ -405,6 +409,13 @@ impl crate::catalog::Catalog {
             sqlx::query(&query).bind(&next).execute(&mut *tx).await?;
             remaining.remove(&next);
         }
+        sqlx::query("SET LOCAL sct.archive_import = 'off'")
+            .execute(&mut *tx)
+            .await?;
+        // A checkpoint may predate already burned discs. Never reuse its high-water mark.
+        sqlx::query("UPDATE archive_collections SET reconciliation_required=true")
+            .execute(&mut *tx)
+            .await?;
         let mut inventory = BufReader::new(
             tokio::fs::File::open(package.join("inventory.jsonl"))
                 .await
