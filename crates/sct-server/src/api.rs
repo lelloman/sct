@@ -271,7 +271,18 @@ async fn response_headers(request: Request, next: Next) -> Response {
     response
 }
 async fn ready(State(s): State<App>) -> StatusCode {
-    if s.writer.ready().await {
+    let writer = s.writer.clone();
+    let ready = simple_server::health::Probe::readiness(simple_server::health::Check::new(
+        "writer",
+        move || {
+            let writer = writer.clone();
+            async move { writer.ready().await.then_some(()).ok_or(()) }
+        },
+    ))
+    .run()
+    .await
+    .is_ok();
+    if ready {
         StatusCode::NO_CONTENT
     } else {
         StatusCode::SERVICE_UNAVAILABLE

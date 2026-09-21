@@ -15,7 +15,18 @@ use tower_http::services::ServeDir;
 
 pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
     Router::new()
-        .route("/health/live", get(|| async { "ok\n" }))
+        .route(
+            "/health/live",
+            simple_server::axum::routing::get_service(
+                simple_server::health::Probe::liveness().endpoint(|result| {
+                    result.expect("infallible liveness");
+                    simple_server::axum::http::Response::builder()
+                        .header("content-type", "text/plain; charset=utf-8")
+                        .body(simple_server::axum::body::Body::from("ok\n"))
+                        .expect("static liveness response")
+                }),
+            ),
+        )
         .route("/health/database", get(database_health))
         // Reserve API paths so missing API operations never return web HTML.
         .route("/api", any(api_not_implemented))
@@ -39,15 +50,28 @@ async fn api_not_implemented() -> impl IntoResponse {
 }
 
 async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {
-    match catalog {
-        Some(catalog)
-            if tokio::time::timeout(std::time::Duration::from_secs(2), catalog.ping())
-                .await
-                .is_ok_and(|result| result.is_ok()) =>
-        {
-            StatusCode::NO_CONTENT
-        }
-        _ => StatusCode::SERVICE_UNAVAILABLE,
+    let ready = match catalog {
+        Some(catalog) => simple_server::health::Probe::readiness(
+            simple_server::health::Check::new("database", move || {
+                let catalog = catalog.clone();
+                async move {
+                    tokio::time::timeout(std::time::Duration::from_secs(2), catalog.ping())
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                        .ok_or(())
+                }
+            }),
+        )
+        .run()
+        .await
+        .is_ok(),
+        None => false,
+    };
+    if ready {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
     }
 }
 
