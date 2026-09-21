@@ -13,6 +13,29 @@ async fn main() {
 }
 async fn run() -> Result<i32> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.len() == 2 && matches!(args[0].to_str(), Some("catalog-inspect" | "catalog-export")) {
+        let database = Path::new(&args[1]);
+        ensure(database.exists(), "catalog does not exist")?;
+        ArchiveCatalog::open(database)
+            .await?
+            .export(&mut std::io::stdout(), args[0] == "catalog-export")
+            .await?;
+        return Ok(0);
+    }
+    if args.len() == 4 && args[0] == "catalog-scan" {
+        let media = Path::new(&args[1]);
+        let work = Path::new(&args[3]);
+        let index = if work.exists() {
+            ArchiveIndex::open(work).await?
+        } else {
+            ArchiveIndex::create(media, work).await?
+        };
+        ArchiveCatalog::open(Path::new(&args[2]))
+            .await?
+            .scan(media, &index)
+            .await?;
+        return Ok(0);
+    }
     if args.first().is_some_and(|v| v == "restore")
         && (args.len() == 4 || (args.len() == 5 && args[4] == "--partial"))
     {
@@ -47,7 +70,7 @@ async fn run() -> Result<i32> {
         )
     {
         eprintln!(
-            "Usage: sct-recover inspect|verify|verify-report DISC_DIRECTORY PRIVATE_WORK.sqlite\n       sct-recover ingest DISC_DIRECTORY PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY\n       sct-recover restore PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY DESTINATION [--partial]\nReads mounted or extracted discs offline. Verification emits JSONL observations and a summary. Exit 2 means some payloads could not be verified."
+            "Usage: sct-recover inspect|verify|verify-report DISC_DIRECTORY PRIVATE_WORK.sqlite\n       sct-recover ingest DISC_DIRECTORY PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY\n       sct-recover restore PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY DESTINATION [--partial]\n       sct-recover catalog-scan DISC_DIRECTORY PRIVATE_CATALOG.sqlite PRIVATE_WORK.sqlite\n       sct-recover catalog-inspect|catalog-export PRIVATE_CATALOG.sqlite\nReads mounted or extracted discs offline. Verification emits JSONL observations and a summary. Exit 2 means some payloads could not be verified."
         );
         return Ok(64);
     }

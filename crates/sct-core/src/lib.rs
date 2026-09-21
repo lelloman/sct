@@ -12,6 +12,7 @@ pub mod archive_export;
 pub mod archive_iso;
 mod archive_management;
 pub mod archive_planning;
+mod archive_recovery;
 pub mod catalog;
 pub mod checkpoint;
 pub mod checkpoint_export;

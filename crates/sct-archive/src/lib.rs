@@ -1,4 +1,6 @@
 //! Offline archive reader. Uses a private, disk-backed SQLite work index only.
+mod catalog;
+pub use catalog::ArchiveCatalog;
 mod index;
 mod restore;
 mod verification;

@@ -542,6 +542,7 @@ async fn validate_catalog(tx: &mut sqlx::PgConnection) -> Result<()> {
     Ok(())
 }
 async fn reset_runtime(tx: &mut sqlx::PgConnection) -> Result<()> {
+    crate::archive_recovery::reset_runtime(tx).await?;
     // Runtime ownership and client pins belong to the failed service instance.
     for table in [
         "server_lease",

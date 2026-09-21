@@ -99,6 +99,44 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
     let pending = ready_bytes(&engine, &w, &a, &root.id, "unfinished", b"uncommitted")
         .await
         .unwrap();
+    // Checkpoint recovery retains permanent disc history but abandons work and
+    // host-local image files. These are logical fixtures, not physical burns.
+    use super::archive_planning_tests::{capture, finish, publish_fixture};
+    let archived = capture(&w, &a, &optical, &root.id, &tree.version_id).await;
+    let archived = finish(&w, &a, &archived).await;
+    publish_fixture(&w, &a, &db, &archived, true).await;
+    let active = capture(&w, &a, &optical, &root.id, &tree.version_id).await;
+    let active = finish(&w, &a, &active).await;
+    w.confirm_archive_set(
+        &a,
+        &optical.id,
+        &active.id,
+        &ArchiveSetActionRequest {
+            request_id: "checkpoint-active".parse().unwrap(),
+            expected_revision: active.revision.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,relative_path,expires_at) SELECT 'active_'||id,id,'building','old-work',clock_timestamp()+interval '1 day' FROM archive_discs WHERE set_id=$1")
+        .bind(active.id.as_str()).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO archive_exports(set_id,reserved_bytes,worker_epoch,server_epoch,worker_expires_at,writer_version,writer_options) VALUES($1,100,4,1,clock_timestamp()+interval '1 hour','fixture','{}')")
+        .bind(active.id.as_str()).execute(&db).await.unwrap();
+    sqlx::query("INSERT INTO archive_builds(disc_id,artifact_id,attempt,stage,relative_path,server_epoch,worker_epoch) SELECT disc_id,id,'old-attempt','staging','old-work',1,4 FROM archive_artifacts WHERE state='building'")
+        .execute(&db).await.unwrap();
+    let old_cache = base.join("old-archive-cache");
+    tokio::fs::create_dir(&old_cache).await.unwrap();
+    tokio::fs::write(old_cache.join("sentinel"), b"keep old host files")
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO archive_storage(directory,quota_bytes,cache_bytes,reserved_bytes) VALUES($1,10000,100,100)")
+        .bind(old_cache.to_str().unwrap()).execute(&db).await.unwrap();
+    sqlx::query("UPDATE archive_accounts SET cache_bytes=100,reserved_bytes=100")
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO archive_downloads(id,artifact_id,principal_id,credential_id,expires_at) SELECT 'download_'||ar.id,ar.id,s.principal_id,s.credential_id,clock_timestamp()+interval '1 hour' FROM archive_artifacts ar JOIN archive_discs d ON d.id=ar.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE s.id=$1")
+        .bind(archived.id.as_str()).execute(&db).await.unwrap();
     let checkpoint = w
         .create_checkpoint(
             &a,
@@ -214,7 +252,41 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
     .fetch_one(&target)
     .await
     .unwrap();
-    assert_eq!(high_water, 7);
+    assert_eq!(high_water, 9);
+    let historical: bool = sqlx::query_scalar(
+        "SELECT state='ready' AND verified_complete_at IS NOT NULL FROM archive_sets WHERE id=$1",
+    )
+    .bind(archived.id.as_str())
+    .fetch_one(&target)
+    .await
+    .unwrap();
+    assert!(historical);
+    let abandoned: bool = sqlx::query_scalar("SELECT state='failed' AND failure='archive_reconciliation_required' AND pinned_bytes=0 FROM archive_sets WHERE id=$1")
+        .bind(active.id.as_str()).fetch_one(&target).await.unwrap();
+    assert!(abandoned);
+    for table in ["archive_downloads", "archive_storage", "graph_pins"] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {table}"))
+            .fetch_one(&target)
+            .await
+            .unwrap();
+        assert_eq!(count, 0, "{table}");
+    }
+    let unsafe_runtime: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_accounts WHERE cache_bytes<>0 OR reserved_bytes<>0 OR pinned_bytes<>0) OR EXISTS(SELECT 1 FROM archive_exports WHERE NOT finished OR reserved_bytes<>0 OR server_epoch<>0 OR worker_expires_at IS NOT NULL) OR EXISTS(SELECT 1 FROM archive_builds WHERE relative_path<>'' OR server_epoch<>0) OR EXISTS(SELECT 1 FROM archive_artifacts WHERE relative_path IS NOT NULL OR state IN ('building','available'))")
+        .fetch_one(&target).await.unwrap();
+    assert!(!unsafe_runtime);
+    let preserved: i64 = sqlx::query_scalar("SELECT count(*) FROM archive_artifacts WHERE state='expired' AND sha256=repeat('a',64) AND length IS NOT NULL")
+        .fetch_one(&target).await.unwrap();
+    assert_eq!(preserved, 1);
+    let copies: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM archive_copies WHERE health='read_back_verified'")
+            .fetch_one(&target)
+            .await
+            .unwrap();
+    assert_eq!(copies, 1);
+    assert_eq!(
+        tokio::fs::read(old_cache.join("sentinel")).await.unwrap(),
+        b"keep old host files"
+    );
     let error = writer
         .create_archive_plan(
             &actor,
