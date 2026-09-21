@@ -12,7 +12,7 @@ fn bundle() -> ArchiveBundle {
     ))
     .unwrap()
 }
-async fn source(w: &Writer, a: &Actor, r: &RootId) -> VersionId {
+pub(super) async fn source(w: &Writer, a: &Actor, r: &RootId) -> VersionId {
     let e = TransferEngine::new(
         w.clone(),
         BTreeMap::from([(
@@ -49,7 +49,7 @@ async fn source(w: &Writer, a: &Actor, r: &RootId) -> VersionId {
     e.tick().await.unwrap();
     version
 }
-async fn collection(w: &Writer, a: &Actor, capacity: u64) -> ArchiveCollection {
+pub(super) async fn collection(w: &Writer, a: &Actor, capacity: u64) -> ArchiveCollection {
     w.create_archive_collection(
         a,
         &CreateArchiveCollectionRequest {
@@ -61,7 +61,7 @@ async fn collection(w: &Writer, a: &Actor, capacity: u64) -> ArchiveCollection {
     .await
     .unwrap()
 }
-async fn capture(
+pub(super) async fn capture(
     w: &Writer,
     a: &Actor,
     c: &ArchiveCollection,
@@ -95,7 +95,7 @@ async fn capture(
 }
 // Planner fixtures directly populate an already captured graph; source capture
 // itself is exercised against real published trees by archive_capture_tests.
-async fn file(
+pub(super) async fn file(
     db: &PgPool,
     s: &ArchiveSet,
     r: &RootId,
@@ -114,7 +114,7 @@ async fn file(
     }
     sqlx::query("UPDATE archive_sets SET processed_entries=processed_entries+1,processed_bytes=processed_bytes+$2 WHERE id=$1").bind(s.id.as_str()).bind(length).execute(db).await.unwrap();
 }
-async fn finish(w: &Writer, a: &Actor, s: &ArchiveSet) -> ArchiveSet {
+pub(super) async fn finish(w: &Writer, a: &Actor, s: &ArchiveSet) -> ArchiveSet {
     for i in 0..1000 {
         if i % 16 == 0 {
             w.renew().await.unwrap();
@@ -145,7 +145,13 @@ async fn lines(w: &Writer, s: &ArchiveSet) -> Vec<u8> {
     }
     all
 }
-async fn publish_fixture(w: &Writer, a: &Actor, db: &PgPool, s: &ArchiveSet, verified: bool) {
+pub(super) async fn publish_fixture(
+    w: &Writer,
+    a: &Actor,
+    db: &PgPool,
+    s: &ArchiveSet,
+    verified: bool,
+) {
     w.confirm_archive_set(
         a,
         &s.collection_id,

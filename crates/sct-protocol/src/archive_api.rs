@@ -20,6 +20,7 @@ macro_rules! enumeration {
 enumeration! {
     pub enum ArchiveJobState { Capturing, Planning, AwaitingConfirmation, Building, Ready, Failed, Cancelled, Expired, Revoked }
     pub enum ArchiveArtifactState { Building, Available, Expired, Failed }
+    pub enum ArchiveCopyEventKind { Registered, Updated, ReadBack }
     pub enum ArchiveCopyHealth { Unknown, ReadBackVerified, Damaged, Missing }
     pub enum ArchiveRecoveryCompleteness { CompleteSnapshot, CompleteFilesOnly, Unavailable }
 }
@@ -119,9 +120,12 @@ dto! {
         pub request_id: RequestId,
         pub label: EntryName,
         pub reported_burned_at_ms: Option<TimestampMs>,
+        #[serde(default)]
+        pub location: String,
     }
     pub struct ArchivePhysicalCopy {
         pub id: ArchiveCopyId,
+        pub location: String,
         pub disc_id: ArchiveDiscId,
         pub label: EntryName,
         pub revision: Revision,
@@ -131,12 +135,18 @@ dto! {
     }
     pub struct UpdateArchiveCopyRequest {
         pub expected_revision: Revision,
+        #[serde(default)]
+        pub location: String,
+        #[serde(default)]
+        pub reported_burned_at_ms: Option<TimestampMs>,
         pub label: EntryName,
-        pub health: ArchiveCopyHealth,
+        #[serde(default)]
+        pub health: Option<ArchiveCopyHealth>,
     }
     pub struct ArchiveCopyPage {pub copies: Vec<ArchivePhysicalCopy>, pub next_cursor: Option<CursorToken>}
     pub struct SubmitArchiveVerificationRequest {
         pub request_id: RequestId,
+        pub collection_id: ArchiveCollectionId,
         pub expected_revision: Revision,
         pub disc_id: ArchiveDiscId,
         pub index_sha256: ChunkDigest,
@@ -150,12 +160,34 @@ dto! {
     }
     pub struct ArchiveVerificationReport {
         pub id: ArchiveReportId,
+        pub principal_id: PrincipalId,
         pub copy_id: ArchiveCopyId,
         pub received_at_ms: TimestampMs,
         pub observation: SubmitArchiveVerificationRequest,
         // An authenticated client observation, not proof that plastic was burned.
         pub complete_read_back: bool,
     }
+    pub struct ArchiveMediaVerification {
+        pub collection_id: ArchiveCollectionId,
+        pub disc_id: ArchiveDiscId,
+        pub index_sha256: ChunkDigest,
+        pub bundle_sha256: ChunkDigest,
+        pub payload_inventory_sha256: ChunkDigest,
+        pub expected_objects: ByteCount,
+        pub verified_objects: ByteCount,
+        pub verified_bytes: ByteCount,
+        pub metadata_verified: bool,
+        pub verifier_version: EntryName,
+    }
+    pub struct ArchiveCopyEvent {
+        pub id: String,
+        pub copy_id: ArchiveCopyId,
+        pub principal_id: PrincipalId,
+        pub received_at_ms: TimestampMs,
+        pub kind: ArchiveCopyEventKind,
+        pub observation: ArchivePhysicalCopy,
+    }
+    pub struct ArchiveCopyEventPage { pub events: Vec<ArchiveCopyEvent>, pub next_cursor: Option<CursorToken> }
     pub struct ArchiveReportPage {pub reports: Vec<ArchiveVerificationReport>, pub next_cursor: Option<CursorToken>}
     pub struct ArchiveEntry {
         pub path: RootPath,
@@ -265,7 +297,7 @@ impl ArchiveJobState {
 }
 impl UpdateArchiveCopyRequest {
     pub fn validate(&self) -> Result<(), ValidationError> {
-        if self.health == ArchiveCopyHealth::ReadBackVerified {
+        if self.health == Some(ArchiveCopyHealth::ReadBackVerified) {
             return Err(ValidationError(
                 "verification requires an immutable read-back report",
             ));

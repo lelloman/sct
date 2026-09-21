@@ -43,6 +43,10 @@ fn register_types(
         ArchivePhysicalCopy,
         UpdateArchiveCopyRequest,
         ArchiveCopyPage,
+        ArchiveCopyEventKind,
+        ArchiveCopyEvent,
+        ArchiveCopyEventPage,
+        ArchiveMediaVerification,
         SubmitArchiveVerificationRequest,
         ArchiveVerificationReport,
         ArchiveReportPage,
@@ -443,6 +447,14 @@ pub fn operations() -> Vec<Value> {
         "/archives/{collection}/discs/{disc}/iso",
         None::<&str>,
         None::<&str>,
+        "DiscArchive"
+    );
+    op!(
+        "list_archive_copy_events",
+        "GET",
+        "/archives/{collection}/copies/{copy}/events",
+        "ListRequest",
+        "ArchiveCopyEventPage",
         "DiscArchive"
     );
     op!(

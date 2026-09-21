@@ -2,8 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 sct_pg=""
+sct_recovery_fixture=""
 cleanup() {
   if [[ -n "$sct_pg" ]]; then docker rm -f "$sct_pg" >/dev/null; fi
+  if [[ -n "$sct_recovery_fixture" ]]; then rm -rf "$sct_recovery_fixture"; fi
 }
 trap cleanup EXIT
 if [[ -z "${SCT_TEST_DATABASE_URL:-}" ]]; then
@@ -17,5 +19,8 @@ if [[ -z "${SCT_TEST_DATABASE_URL:-}" ]]; then
   export SCT_TEST_DATABASE_URL="postgres://postgres:sct-test@${sct_port}/sct_test"
 fi
 cargo build --locked -p sct-archive --bin sct-recover
-export SCT_TEST_RECOVERY_BINARY="$PWD/target/debug/sct-recover"
+# Keep the executable stable if another Cargo invocation replaces build outputs.
+sct_recovery_fixture="$(mktemp -d)"
+cp target/debug/sct-recover "$sct_recovery_fixture/sct-recover"
+export SCT_TEST_RECOVERY_BINARY="$sct_recovery_fixture/sct-recover"
 cargo test --locked -p sct-core -p sct-server --tests -- --ignored --skip real_s3_conformance --skip real_transfer_placements --skip million_entry_preview --skip qualification_

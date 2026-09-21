@@ -309,3 +309,96 @@ fn cli_indexes_large_catalog_with_bounded_resident_memory() {
         start.elapsed().as_millis()
     );
 }
+
+#[tokio::test]
+async fn full_disc_reports_bind_original_inventory_and_reject_subset_certification() {
+    let scratch = Scratch::new();
+    let disc = scratch.0.join("read-back");
+    copy(&fixture(1), &disc);
+    let mut original = ArchiveIndex::create(&disc, &scratch.0.join("original.sqlite"))
+        .await
+        .unwrap();
+    let report = original
+        .verify_disc_report(&disc, &mut std::io::sink())
+        .await
+        .unwrap();
+    assert!(report.metadata_verified);
+    assert_eq!(report.expected_objects, report.verified_objects);
+    let object = ArchiveObject {
+        root_id: "root-a".parse().unwrap(),
+        digest: digest(b"A").parse().unwrap(),
+        length: 1.try_into().unwrap(),
+    };
+    let mut inventory = canonical(&object).unwrap();
+    inventory.push(b'\n');
+    assert_eq!(report.payload_inventory_sha256.as_str(), digest(&inventory));
+    let mut later = ArchiveIndex::create(&fixture(4), &scratch.0.join("later.sqlite"))
+        .await
+        .unwrap();
+    assert!(
+        later
+            .verify_media(&disc, &mut std::io::sink())
+            .await
+            .unwrap()
+            .complete()
+    );
+    assert!(
+        later
+            .verify_disc_report(&disc, &mut std::io::sink())
+            .await
+            .is_err()
+    );
+    fs::write(disc.join(object.relative_path()), b"corrupt").unwrap();
+    let damaged = original
+        .verify_disc_report(&disc, &mut std::io::sink())
+        .await
+        .unwrap();
+    assert!(damaged.metadata_verified);
+    assert_eq!(damaged.verified_objects.get(), 0);
+    assert_eq!(
+        damaged.payload_inventory_sha256,
+        report.payload_inventory_sha256
+    );
+    fs::remove_file(disc.join(object.relative_path())).unwrap();
+    let missing = original
+        .verify_disc_report(&disc, &mut std::io::sink())
+        .await
+        .unwrap();
+    assert_eq!(missing.verified_objects.get(), 0);
+    let partial = std::process::Command::new(env!("CARGO_BIN_EXE_sct-recover"))
+        .arg("verify-report")
+        .arg(&disc)
+        .arg(scratch.0.join("partial.sqlite"))
+        .output()
+        .unwrap();
+    assert_eq!(partial.status.code(), Some(2));
+    assert_eq!(
+        serde_json::from_slice::<ArchiveMediaVerification>(&partial.stdout)
+            .unwrap()
+            .verified_objects
+            .get(),
+        0
+    );
+    fs::write(disc.join("START-HERE.txt"), b"corrupt instructions").unwrap();
+    assert!(
+        !original
+            .verify_disc_report(&disc, &mut std::io::sink())
+            .await
+            .unwrap()
+            .metadata_verified
+    );
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_sct-recover"))
+        .arg("verify-report")
+        .arg(fixture(2))
+        .arg(scratch.0.join("cli.sqlite"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let cli: ArchiveMediaVerification = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(cli.disc_id.as_str(), "disc-2");
+    assert!(cli.metadata_verified);
+}

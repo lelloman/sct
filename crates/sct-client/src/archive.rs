@@ -300,6 +300,24 @@ impl Client {
         )
         .await
     }
+    pub async fn list_archive_copy_events(
+        &self,
+        collection: &ArchiveCollectionId,
+        copy: &ArchiveCopyId,
+        request: &ListRequest,
+    ) -> Result<ArchiveCopyEventPage, Error> {
+        self.request(
+            Method::GET,
+            &format!(
+                "/api/v1/archives/{}/copies/{}/events",
+                collection.as_str(),
+                copy.as_str()
+            ),
+            archive_page_query(request),
+            None,
+        )
+        .await
+    }
     pub async fn list_archive_reports(
         &self,
         collection: &ArchiveCollectionId,

@@ -37,6 +37,12 @@ export type ArchiveCollectionId = string & { readonly __brand: "ArchiveCollectio
 
 export type ArchiveCollectionPage = { collections: Array<ArchiveCollection>, next_cursor: CursorToken | null, };
 
+export type ArchiveCopyEvent = { id: string, copy_id: ArchiveCopyId, principal_id: PrincipalId, received_at_ms: TimestampMs, kind: ArchiveCopyEventKind, observation: ArchivePhysicalCopy, };
+
+export type ArchiveCopyEventKind = "registered" | "updated" | "read_back";
+
+export type ArchiveCopyEventPage = { events: Array<ArchiveCopyEvent>, next_cursor: CursorToken | null, };
+
 export type ArchiveCopyHealth = "unknown" | "read_back_verified" | "damaged" | "missing";
 
 export type ArchiveCopyId = string & { readonly __brand: "ArchiveCopyId" };
@@ -57,11 +63,13 @@ export type ArchiveJobState = "capturing" | "planning" | "awaiting_confirmation"
 
 export type ArchiveLogicalDisc = { id: ArchiveDiscId, collection_id: ArchiveCollectionId, set_id: ArchiveSetId, number: ByteCount, index_sha256: ChunkDigest, bundle_sha256: ChunkDigest, payload_bytes: ByteCount, object_count: ByteCount, payload_inventory_sha256: ChunkDigest, planned_iso_bytes: ByteCount, artifact: ArchiveArtifact | null, };
 
+export type ArchiveMediaVerification = { collection_id: ArchiveCollectionId, disc_id: ArchiveDiscId, index_sha256: ChunkDigest, bundle_sha256: ChunkDigest, payload_inventory_sha256: ChunkDigest, expected_objects: ByteCount, verified_objects: ByteCount, verified_bytes: ByteCount, metadata_verified: boolean, verifier_version: EntryName, };
+
 export type ArchiveMissingObject = { path: RootPath, root_id: RootId, digest: ChunkDigest, length: ByteCount, candidate_discs: Array<ArchiveDiscId>, };
 
 export type ArchiveObjectPage = { objects: Array<ArchiveDiscObject>, next_cursor: CursorToken | null, };
 
-export type ArchivePhysicalCopy = { id: ArchiveCopyId, disc_id: ArchiveDiscId, label: EntryName, revision: Revision, reported_burned_at_ms: TimestampMs | null, health: ArchiveCopyHealth, latest_report_id: ArchiveReportId | null, };
+export type ArchivePhysicalCopy = { id: ArchiveCopyId, location: string, disc_id: ArchiveDiscId, label: EntryName, revision: Revision, reported_burned_at_ms: TimestampMs | null, health: ArchiveCopyHealth, latest_report_id: ArchiveReportId | null, };
 
 export type ArchivePlanSummary = { source_files: ByteCount, source_bytes: ByteCount, new_payload_bytes: ByteCount, reused_payload_bytes: ByteCount, new_disc_count: ByteCount, required_earlier_disc_count: ByteCount, index_bytes_per_disc: ByteCount, bundle_bytes_per_disc: ByteCount, filesystem_reserve_per_disc: ByteCount, total_iso_budget_bytes: ByteCount, bundle_sha256: ChunkDigest, };
 
@@ -87,7 +95,7 @@ export type ArchiveSetPage = { sets: Array<ArchiveSet>, next_cursor: CursorToken
 
 export type ArchiveUsage = { cache_bytes: ByteCount, reserved_bytes: ByteCount, quota_bytes: ByteCount, active_sets: ByteCount, };
 
-export type ArchiveVerificationReport = { id: ArchiveReportId, copy_id: ArchiveCopyId, received_at_ms: TimestampMs, observation: SubmitArchiveVerificationRequest, complete_read_back: boolean, };
+export type ArchiveVerificationReport = { id: ArchiveReportId, principal_id: PrincipalId, copy_id: ArchiveCopyId, received_at_ms: TimestampMs, observation: SubmitArchiveVerificationRequest, complete_read_back: boolean, };
 
 export type AuditEvent = { id: string, root_id: RootId | null, principal_id: PrincipalId | null, event: string, details: unknown, created_at_ms: TimestampMs, };
 
@@ -341,7 +349,7 @@ export type ReadPolicy = { candidates: Array<ReadCandidate>, overall_deadline_ms
 
 export type RecoveryPackageState = "catalog_only" | "payload_verified";
 
-export type RegisterArchiveCopyRequest = { request_id: RequestId, label: EntryName, reported_burned_at_ms: TimestampMs | null, };
+export type RegisterArchiveCopyRequest = { request_id: RequestId, label: EntryName, reported_burned_at_ms: TimestampMs | null, location: string, };
 
 export type ReleaseCheckpointRequest = { expected_revision: Revision, acknowledge_release: boolean, };
 
@@ -397,7 +405,7 @@ export type SnapshotPathQuery = { path: RootPath, };
 
 export type StartMaintenanceRequest = { idempotency_key: IdempotencyKey, kind: MaintenanceKind, root_id: RootId, };
 
-export type SubmitArchiveVerificationRequest = { request_id: RequestId, expected_revision: Revision, disc_id: ArchiveDiscId, index_sha256: ChunkDigest, bundle_sha256: ChunkDigest, payload_inventory_sha256: ChunkDigest, expected_objects: ByteCount, verified_objects: ByteCount, verified_bytes: ByteCount, metadata_verified: boolean, verifier_version: EntryName, };
+export type SubmitArchiveVerificationRequest = { request_id: RequestId, collection_id: ArchiveCollectionId, expected_revision: Revision, disc_id: ArchiveDiscId, index_sha256: ChunkDigest, bundle_sha256: ChunkDigest, payload_inventory_sha256: ChunkDigest, expected_objects: ByteCount, verified_objects: ByteCount, verified_bytes: ByteCount, metadata_verified: boolean, verifier_version: EntryName, };
 
 export type TimestampMs = number;
 
@@ -415,7 +423,7 @@ export type UpdateArchiveAccountLimitsRequest = { expected_revision: Revision, q
 
 export type UpdateArchiveCollectionRequest = { expected_revision: Revision, label: EntryName, media_capacity_bytes: ByteCount, };
 
-export type UpdateArchiveCopyRequest = { expected_revision: Revision, label: EntryName, health: ArchiveCopyHealth, };
+export type UpdateArchiveCopyRequest = { expected_revision: Revision, location: string, reported_burned_at_ms: TimestampMs | null, label: EntryName, health: ArchiveCopyHealth | null, };
 
 export type UpdateGrantRequest = { expected_revision: Revision, capabilities: Array<Capability>, };
 

@@ -32,7 +32,9 @@ fn published_history_and_observations_do_not_collapse_into_one_state() {
     let update = UpdateArchiveCopyRequest {
         expected_revision: "r1".parse().unwrap(),
         label: "disc shelf 1".parse().unwrap(),
-        health: ArchiveCopyHealth::ReadBackVerified,
+        health: Some(ArchiveCopyHealth::ReadBackVerified),
+        location: String::new(),
+        reported_burned_at_ms: None,
     };
     assert!(update.validate().is_err());
     assert_eq!(ErrorCode::ArchiveArtifactUnavailable.http_status(), 410);

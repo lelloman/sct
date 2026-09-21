@@ -1,6 +1,7 @@
 //! Offline archive reader. Uses a private, disk-backed SQLite work index only.
 mod index;
 mod restore;
+mod verification;
 pub use restore::RestoreSummary;
 mod safe_fs;
 pub use index::ArchiveIndex;

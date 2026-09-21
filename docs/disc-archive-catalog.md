@@ -63,7 +63,7 @@ be extended by polling. Completed archive history remains intact after cleanup.
 During service downtime pins remain protective; cleanup resumes with the writer.
 
 Service checkpoint format remains schema-specific, unlike portable optical format
-1. The current service checkpoint reader uses schema 24. Restore a schema-19/20/21/22/23 service
+1. The current service checkpoint reader uses schema 25. Restore a schema-19/20/21/22/23/24 service
 checkpoint with its matching release, then migrate; it is not silently reinterpreted.
 Trusted catalog import temporarily permits inserting already-frozen optical rows,
 then immediately reinstates guards. Imported collections require reconciliation:

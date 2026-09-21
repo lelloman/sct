@@ -393,6 +393,88 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
             .unwrap(),
         1
     );
+    let copy_request = RegisterArchiveCopyRequest {
+        request_id: "copy".parse().unwrap(),
+        label: "Offsite copy".parse().unwrap(),
+        location: "Shelf 4 / top".into(),
+        reported_burned_at_ms: None,
+    };
+    let collection = "collection".parse().unwrap();
+    let disc = "disc".parse().unwrap();
+    let copy = client
+        .register_archive_copy(&collection, &disc, &copy_request)
+        .await
+        .unwrap();
+    assert_eq!(
+        copy,
+        client
+            .register_archive_copy(&collection, &disc, &copy_request)
+            .await
+            .unwrap()
+    );
+    let report = SubmitArchiveVerificationRequest {
+        request_id: "report".parse().unwrap(),
+        expected_revision: copy.revision.clone(),
+        collection_id: collection.clone(),
+        disc_id: disc.clone(),
+        index_sha256: hash.parse().unwrap(),
+        bundle_sha256: hash.parse().unwrap(),
+        payload_inventory_sha256: hash.parse().unwrap(),
+        expected_objects: 0.try_into().unwrap(),
+        verified_objects: 0.try_into().unwrap(),
+        verified_bytes: 0.try_into().unwrap(),
+        metadata_verified: true,
+        verifier_version: "http-fixture".parse().unwrap(),
+    };
+    let report = client
+        .submit_archive_verification(&collection, &copy.id, &report)
+        .await
+        .unwrap();
+    assert!(report.complete_read_back);
+    let page = ListRequest {
+        limit: 10.try_into().unwrap(),
+        cursor: None,
+    };
+    let copy = client
+        .list_archive_copies(&collection, &disc, &page)
+        .await
+        .unwrap()
+        .copies
+        .pop()
+        .unwrap();
+    let updated = client
+        .update_archive_copy(
+            &collection,
+            &copy.id,
+            &UpdateArchiveCopyRequest {
+                expected_revision: copy.revision.clone(),
+                label: copy.label.clone(),
+                location: copy.location.clone(),
+                reported_burned_at_ms: None,
+                health: Some(ArchiveCopyHealth::Damaged),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.health, ArchiveCopyHealth::Damaged);
+    assert_eq!(
+        client
+            .list_archive_reports(&collection, &copy.id, &page)
+            .await
+            .unwrap()
+            .reports
+            .len(),
+        1
+    );
+    assert_eq!(
+        client
+            .list_archive_copy_events(&collection, &copy.id, &page)
+            .await
+            .unwrap()
+            .events
+            .len(),
+        3
+    );
     server.abort();
     let _ = server.await;
     std::fs::remove_dir_all(directory).unwrap();

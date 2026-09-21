@@ -20,6 +20,22 @@ pub fn routes() -> Router<App> {
             get(collection).patch(update_collection),
         )
         .route("/api/v1/archives/usage", get(usage))
+        .route(
+            "/api/v1/archives/{collection}/discs/{disc}/copies",
+            get(copies).post(register_copy),
+        )
+        .route(
+            "/api/v1/archives/{collection}/copies/{copy}",
+            simple_server::axum::routing::patch(update_copy),
+        )
+        .route(
+            "/api/v1/archives/{collection}/copies/{copy}/reports",
+            get(reports).post(submit_report),
+        )
+        .route(
+            "/api/v1/archives/{collection}/copies/{copy}/events",
+            get(copy_events),
+        )
         .route("/api/v1/archives/status", get(service_status))
         .route("/api/v1/archives/limits", get(own_limits))
         .route(
@@ -400,6 +416,109 @@ async fn update_account_limits(
             .update_archive_account_limits(
                 &actor,
                 &id(&principal)?,
+                &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+
+async fn copies(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((collection, disc)): Path<(String, String)>,
+    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+) -> Result<Json<ArchiveCopyPage>> {
+    Ok(Json(
+        app.writer
+            .list_archive_copies(
+                &actor,
+                &id(&collection)?,
+                &id(&disc)?,
+                &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+async fn register_copy(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((collection, disc)): Path<(String, String)>,
+    request: std::result::Result<Json<RegisterArchiveCopyRequest>, JsonRejection>,
+) -> Result<Json<ArchivePhysicalCopy>> {
+    Ok(Json(
+        app.writer
+            .register_archive_copy(
+                &actor,
+                &id(&collection)?,
+                &id(&disc)?,
+                &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+async fn update_copy(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((collection, copy)): Path<(String, String)>,
+    request: std::result::Result<Json<UpdateArchiveCopyRequest>, JsonRejection>,
+) -> Result<Json<ArchivePhysicalCopy>> {
+    Ok(Json(
+        app.writer
+            .update_archive_copy(
+                &actor,
+                &id(&collection)?,
+                &id(&copy)?,
+                &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+async fn reports(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((collection, copy)): Path<(String, String)>,
+    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+) -> Result<Json<ArchiveReportPage>> {
+    Ok(Json(
+        app.writer
+            .list_archive_reports(
+                &actor,
+                &id(&collection)?,
+                &id(&copy)?,
+                &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+async fn submit_report(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((collection, copy)): Path<(String, String)>,
+    request: std::result::Result<Json<SubmitArchiveVerificationRequest>, JsonRejection>,
+) -> Result<Json<ArchiveVerificationReport>> {
+    Ok(Json(
+        app.writer
+            .submit_archive_verification(
+                &actor,
+                &id(&collection)?,
+                &id(&copy)?,
+                &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
+            )
+            .await?,
+    ))
+}
+async fn copy_events(
+    State(app): State<App>,
+    Auth(actor): Auth,
+    Path((collection, copy)): Path<(String, String)>,
+    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+) -> Result<Json<ArchiveCopyEventPage>> {
+    Ok(Json(
+        app.writer
+            .list_archive_copy_events(
+                &actor,
+                &id(&collection)?,
+                &id(&copy)?,
                 &request.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0,
             )
             .await?,

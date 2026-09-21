@@ -21,11 +21,12 @@ Unimplemented routes return a structured 404 and are absent from OpenAPI paths a
 | cancel_archive_set | POST | `/api/v1/archives/{collection}/sets/{set}/cancel` | ArchiveSetActionRequest | ArchiveSet | DiscArchive | true |
 | list_archive_discs | GET | `/api/v1/archives/{collection}/sets/{set}/discs` | ListRequest | ArchiveDiscPage | DiscArchive | true |
 | download_archive_iso | GET | `/api/v1/archives/{collection}/discs/{disc}/iso` | reserved | reserved | DiscArchive | true |
-| list_archive_copies | GET | `/api/v1/archives/{collection}/discs/{disc}/copies` | ListRequest | ArchiveCopyPage | DiscArchive | false |
-| register_archive_copy | POST | `/api/v1/archives/{collection}/discs/{disc}/copies` | RegisterArchiveCopyRequest | ArchivePhysicalCopy | DiscArchive | false |
-| update_archive_copy | PATCH | `/api/v1/archives/{collection}/copies/{copy}` | UpdateArchiveCopyRequest | ArchivePhysicalCopy | DiscArchive | false |
-| submit_archive_verification | POST | `/api/v1/archives/{collection}/copies/{copy}/reports` | SubmitArchiveVerificationRequest | ArchiveVerificationReport | DiscArchive | false |
-| list_archive_reports | GET | `/api/v1/archives/{collection}/copies/{copy}/reports` | ListRequest | ArchiveReportPage | DiscArchive | false |
+| list_archive_copy_events | GET | `/api/v1/archives/{collection}/copies/{copy}/events` | ListRequest | ArchiveCopyEventPage | DiscArchive | true |
+| list_archive_copies | GET | `/api/v1/archives/{collection}/discs/{disc}/copies` | ListRequest | ArchiveCopyPage | DiscArchive | true |
+| register_archive_copy | POST | `/api/v1/archives/{collection}/discs/{disc}/copies` | RegisterArchiveCopyRequest | ArchivePhysicalCopy | DiscArchive | true |
+| update_archive_copy | PATCH | `/api/v1/archives/{collection}/copies/{copy}` | UpdateArchiveCopyRequest | ArchivePhysicalCopy | DiscArchive | true |
+| submit_archive_verification | POST | `/api/v1/archives/{collection}/copies/{copy}/reports` | SubmitArchiveVerificationRequest | ArchiveVerificationReport | DiscArchive | true |
+| list_archive_reports | GET | `/api/v1/archives/{collection}/copies/{copy}/reports` | ListRequest | ArchiveReportPage | DiscArchive | true |
 | list_archive_entries | GET | `/api/v1/archives/{collection}/sets/{set}/entries` | ListRequest | ArchiveEntryPage | DiscArchive | true |
 | list_archive_objects | GET | `/api/v1/archives/{collection}/discs/{disc}/objects` | ListRequest | ArchiveObjectPage | DiscArchive | true |
 | capabilities | GET | `/api/v1/capabilities` | reserved | Capabilities | M1 | true |

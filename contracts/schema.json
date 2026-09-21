@@ -433,6 +433,71 @@
       ],
       "type": "object"
     },
+    "ArchiveCopyEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "copy_id": {
+          "$ref": "#/$defs/ArchiveCopyId"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ArchiveCopyEventKind"
+        },
+        "observation": {
+          "$ref": "#/$defs/ArchivePhysicalCopy"
+        },
+        "principal_id": {
+          "$ref": "#/$defs/PrincipalId"
+        },
+        "received_at_ms": {
+          "$ref": "#/$defs/TimestampMs"
+        }
+      },
+      "required": [
+        "id",
+        "copy_id",
+        "principal_id",
+        "received_at_ms",
+        "kind",
+        "observation"
+      ],
+      "type": "object"
+    },
+    "ArchiveCopyEventKind": {
+      "enum": [
+        "registered",
+        "updated",
+        "read_back"
+      ],
+      "type": "string"
+    },
+    "ArchiveCopyEventPage": {
+      "additionalProperties": false,
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/$defs/ArchiveCopyEvent"
+          },
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CursorToken"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "events"
+      ],
+      "type": "object"
+    },
     "ArchiveCopyHealth": {
       "enum": [
         "unknown",
@@ -661,6 +726,54 @@
       ],
       "type": "object"
     },
+    "ArchiveMediaVerification": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "collection_id": {
+          "$ref": "#/$defs/ArchiveCollectionId"
+        },
+        "disc_id": {
+          "$ref": "#/$defs/ArchiveDiscId"
+        },
+        "expected_objects": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "index_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "metadata_verified": {
+          "type": "boolean"
+        },
+        "payload_inventory_sha256": {
+          "$ref": "#/$defs/ChunkDigest"
+        },
+        "verified_bytes": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "verified_objects": {
+          "$ref": "#/$defs/ByteCount"
+        },
+        "verifier_version": {
+          "$ref": "#/$defs/EntryName"
+        }
+      },
+      "required": [
+        "collection_id",
+        "disc_id",
+        "index_sha256",
+        "bundle_sha256",
+        "payload_inventory_sha256",
+        "expected_objects",
+        "verified_objects",
+        "verified_bytes",
+        "metadata_verified",
+        "verifier_version"
+      ],
+      "type": "object"
+    },
     "ArchiveMissingObject": {
       "additionalProperties": false,
       "properties": {
@@ -742,6 +855,9 @@
             }
           ]
         },
+        "location": {
+          "type": "string"
+        },
         "reported_burned_at_ms": {
           "anyOf": [
             {
@@ -758,6 +874,7 @@
       },
       "required": [
         "id",
+        "location",
         "disc_id",
         "label",
         "revision",
@@ -1119,12 +1236,16 @@
         "observation": {
           "$ref": "#/$defs/SubmitArchiveVerificationRequest"
         },
+        "principal_id": {
+          "$ref": "#/$defs/PrincipalId"
+        },
         "received_at_ms": {
           "$ref": "#/$defs/TimestampMs"
         }
       },
       "required": [
         "id",
+        "principal_id",
         "copy_id",
         "received_at_ms",
         "observation",
@@ -4252,6 +4373,10 @@
         "label": {
           "$ref": "#/$defs/EntryName"
         },
+        "location": {
+          "default": "",
+          "type": "string"
+        },
         "reported_burned_at_ms": {
           "anyOf": [
             {
@@ -4894,6 +5019,9 @@
         "bundle_sha256": {
           "$ref": "#/$defs/ChunkDigest"
         },
+        "collection_id": {
+          "$ref": "#/$defs/ArchiveCollectionId"
+        },
         "disc_id": {
           "$ref": "#/$defs/ArchiveDiscId"
         },
@@ -4927,6 +5055,7 @@
       },
       "required": [
         "request_id",
+        "collection_id",
         "expected_revision",
         "disc_id",
         "index_sha256",
@@ -5190,16 +5319,38 @@
           "$ref": "#/$defs/Revision"
         },
         "health": {
-          "$ref": "#/$defs/ArchiveCopyHealth"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArchiveCopyHealth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "label": {
           "$ref": "#/$defs/EntryName"
+        },
+        "location": {
+          "default": "",
+          "type": "string"
+        },
+        "reported_burned_at_ms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimestampMs"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
         "expected_revision",
-        "label",
-        "health"
+        "label"
       ],
       "type": "object"
     },

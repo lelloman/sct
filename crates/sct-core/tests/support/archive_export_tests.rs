@@ -301,7 +301,7 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
             .count(),
         0
     );
-    let images=sqlx::query("SELECT a.*,d.planned_iso_bytes FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE d.set_id=$1 ORDER BY d.number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
+    let images=sqlx::query("SELECT a.*,d.planned_iso_bytes,d.inventory_sha256,d.object_count,d.payload_bytes FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE d.set_id=$1 ORDER BY d.number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
     assert_eq!(images.len(), 2);
     let cache = scratch.0.join("restore-cache");
     std::fs::create_dir(&cache).unwrap();
@@ -336,6 +336,60 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
                 .unwrap()
                 .complete()
         );
+        let observation = reader
+            .verify_disc_report(&extracted, &mut std::io::sink())
+            .await
+            .unwrap();
+        assert!(observation.metadata_verified);
+        assert_eq!(
+            observation.payload_inventory_sha256.as_str(),
+            row.get::<String, _>("inventory_sha256")
+        );
+        assert_eq!(
+            observation.expected_objects.get(),
+            row.get::<i64, _>("object_count") as u64
+        );
+        assert_eq!(
+            observation.verified_bytes.get(),
+            row.get::<i64, _>("payload_bytes") as u64
+        );
+        let copy = w
+            .register_archive_copy(
+                &a,
+                &c.id,
+                &observation.disc_id,
+                &RegisterArchiveCopyRequest {
+                    request_id: format!("copy-{i}").parse().unwrap(),
+                    label: format!("copy {i}").parse().unwrap(),
+                    location: "Integration fixture".into(),
+                    reported_burned_at_ms: None,
+                },
+            )
+            .await
+            .unwrap();
+        let report = w
+            .submit_archive_verification(
+                &a,
+                &c.id,
+                &copy.id,
+                &SubmitArchiveVerificationRequest {
+                    request_id: format!("report-{i}").parse().unwrap(),
+                    expected_revision: copy.revision,
+                    collection_id: c.id.clone(),
+                    disc_id: observation.disc_id,
+                    index_sha256: observation.index_sha256,
+                    bundle_sha256: observation.bundle_sha256,
+                    payload_inventory_sha256: observation.payload_inventory_sha256,
+                    expected_objects: observation.expected_objects,
+                    verified_objects: observation.verified_objects,
+                    verified_bytes: observation.verified_bytes,
+                    metadata_verified: observation.metadata_verified,
+                    verifier_version: observation.verifier_version,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(report.complete_read_back);
         let output = std::process::Command::new(extracted.join("recovery/sct-recover"))
             .arg("inspect")
             .arg(&extracted)
@@ -380,6 +434,13 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
     e.archive_tick().await.unwrap();
     let again:Vec<String>=sqlx::query_scalar("SELECT a.sha256 FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE d.set_id=$1 ORDER BY d.number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
     assert_eq!(hashes, again);
+    assert!(
+        w.inspect_archive_set(&a, &c.id, &s.id)
+            .await
+            .unwrap()
+            .verified_complete_at_ms
+            .is_some()
+    );
     download_and_expiry_checks(&e, &w, &a, &db, &c, &s, &config, &images).await;
 }
 #[tokio::test]

@@ -434,6 +434,71 @@
         ],
         "type": "object"
       },
+      "ArchiveCopyEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "copy_id": {
+            "$ref": "#/components/schemas/ArchiveCopyId"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArchiveCopyEventKind"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/ArchivePhysicalCopy"
+          },
+          "principal_id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
+          "received_at_ms": {
+            "$ref": "#/components/schemas/TimestampMs"
+          }
+        },
+        "required": [
+          "id",
+          "copy_id",
+          "principal_id",
+          "received_at_ms",
+          "kind",
+          "observation"
+        ],
+        "type": "object"
+      },
+      "ArchiveCopyEventKind": {
+        "enum": [
+          "registered",
+          "updated",
+          "read_back"
+        ],
+        "type": "string"
+      },
+      "ArchiveCopyEventPage": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveCopyEvent"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CursorToken"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "type": "object"
+      },
       "ArchiveCopyHealth": {
         "enum": [
           "unknown",
@@ -662,6 +727,54 @@
         ],
         "type": "object"
       },
+      "ArchiveMediaVerification": {
+        "additionalProperties": false,
+        "properties": {
+          "bundle_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "collection_id": {
+            "$ref": "#/components/schemas/ArchiveCollectionId"
+          },
+          "disc_id": {
+            "$ref": "#/components/schemas/ArchiveDiscId"
+          },
+          "expected_objects": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "index_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "metadata_verified": {
+            "type": "boolean"
+          },
+          "payload_inventory_sha256": {
+            "$ref": "#/components/schemas/ChunkDigest"
+          },
+          "verified_bytes": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "verified_objects": {
+            "$ref": "#/components/schemas/ByteCount"
+          },
+          "verifier_version": {
+            "$ref": "#/components/schemas/EntryName"
+          }
+        },
+        "required": [
+          "collection_id",
+          "disc_id",
+          "index_sha256",
+          "bundle_sha256",
+          "payload_inventory_sha256",
+          "expected_objects",
+          "verified_objects",
+          "verified_bytes",
+          "metadata_verified",
+          "verifier_version"
+        ],
+        "type": "object"
+      },
       "ArchiveMissingObject": {
         "additionalProperties": false,
         "properties": {
@@ -743,6 +856,9 @@
               }
             ]
           },
+          "location": {
+            "type": "string"
+          },
           "reported_burned_at_ms": {
             "anyOf": [
               {
@@ -759,6 +875,7 @@
         },
         "required": [
           "id",
+          "location",
           "disc_id",
           "label",
           "revision",
@@ -1120,12 +1237,16 @@
           "observation": {
             "$ref": "#/components/schemas/SubmitArchiveVerificationRequest"
           },
+          "principal_id": {
+            "$ref": "#/components/schemas/PrincipalId"
+          },
           "received_at_ms": {
             "$ref": "#/components/schemas/TimestampMs"
           }
         },
         "required": [
           "id",
+          "principal_id",
           "copy_id",
           "received_at_ms",
           "observation",
@@ -4253,6 +4374,10 @@
           "label": {
             "$ref": "#/components/schemas/EntryName"
           },
+          "location": {
+            "default": "",
+            "type": "string"
+          },
           "reported_burned_at_ms": {
             "anyOf": [
               {
@@ -4895,6 +5020,9 @@
           "bundle_sha256": {
             "$ref": "#/components/schemas/ChunkDigest"
           },
+          "collection_id": {
+            "$ref": "#/components/schemas/ArchiveCollectionId"
+          },
           "disc_id": {
             "$ref": "#/components/schemas/ArchiveDiscId"
           },
@@ -4928,6 +5056,7 @@
         },
         "required": [
           "request_id",
+          "collection_id",
           "expected_revision",
           "disc_id",
           "index_sha256",
@@ -5191,16 +5320,38 @@
             "$ref": "#/components/schemas/Revision"
           },
           "health": {
-            "$ref": "#/components/schemas/ArchiveCopyHealth"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArchiveCopyHealth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           },
           "label": {
             "$ref": "#/components/schemas/EntryName"
+          },
+          "location": {
+            "default": "",
+            "type": "string"
+          },
+          "reported_burned_at_ms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimestampMs"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "expected_revision",
-          "label",
-          "health"
+          "label"
         ],
         "type": "object"
       },
@@ -10803,6 +10954,902 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ArchiveCollection"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      }
+    },
+    "/api/v1/archives/{collection}/copies/{copy}": {
+      "patch": {
+        "operationId": "update_archive_copy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "copy",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateArchiveCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivePhysicalCopy"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      }
+    },
+    "/api/v1/archives/{collection}/copies/{copy}/events": {
+      "get": {
+        "operationId": "list_archive_copy_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "copy",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CursorToken"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PageSize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveCopyEventPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      }
+    },
+    "/api/v1/archives/{collection}/copies/{copy}/reports": {
+      "get": {
+        "operationId": "list_archive_reports",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "copy",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CursorToken"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PageSize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveReportPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      },
+      "post": {
+        "operationId": "submit_archive_verification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "copy",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitArchiveVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveVerificationReport"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      }
+    },
+    "/api/v1/archives/{collection}/discs/{disc}/copies": {
+      "get": {
+        "operationId": "list_archive_copies",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "disc",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CursorToken"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PageSize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveCopyPage"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured error with X-Request-Id; retryable failures include Retry-After."
+          }
+        }
+      },
+      "post": {
+        "operationId": "register_archive_copy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "disc",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required together with a matching Origin for cookie-authenticated mutations; obtain from the sct_csrf cookie (with __Host- prefix on HTTPS).",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterArchiveCopyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivePhysicalCopy"
                 }
               }
             },
@@ -21688,7 +22735,16 @@
       "response_schema": null
     },
     {
-      "implemented": false,
+      "implemented": true,
+      "method": "GET",
+      "milestone": "DiscArchive",
+      "operation_id": "list_archive_copy_events",
+      "path": "/api/v1/archives/{collection}/copies/{copy}/events",
+      "request_schema": "ListRequest",
+      "response_schema": "ArchiveCopyEventPage"
+    },
+    {
+      "implemented": true,
       "method": "GET",
       "milestone": "DiscArchive",
       "operation_id": "list_archive_copies",
@@ -21697,7 +22753,7 @@
       "response_schema": "ArchiveCopyPage"
     },
     {
-      "implemented": false,
+      "implemented": true,
       "method": "POST",
       "milestone": "DiscArchive",
       "operation_id": "register_archive_copy",
@@ -21706,7 +22762,7 @@
       "response_schema": "ArchivePhysicalCopy"
     },
     {
-      "implemented": false,
+      "implemented": true,
       "method": "PATCH",
       "milestone": "DiscArchive",
       "operation_id": "update_archive_copy",
@@ -21715,7 +22771,7 @@
       "response_schema": "ArchivePhysicalCopy"
     },
     {
-      "implemented": false,
+      "implemented": true,
       "method": "POST",
       "milestone": "DiscArchive",
       "operation_id": "submit_archive_verification",
@@ -21724,7 +22780,7 @@
       "response_schema": "ArchiveVerificationReport"
     },
     {
-      "implemented": false,
+      "implemented": true,
       "method": "GET",
       "milestone": "DiscArchive",
       "operation_id": "list_archive_reports",

@@ -2,7 +2,7 @@
 
 `sct-recover` depends on the public protocol and a bundled SQLite work index, not
 ScT server/core, PostgreSQL or network services. The executable is built with
-`cargo build --locked -p sct-archive --bin sct-recover`. Packaged recovery bundles follow in SCT-71; these commands operate
+`cargo build --locked -p sct-archive --bin sct-recover`. Production bundles are built with `scripts/build-recovery-bundle`; these commands operate
 on mounted or extracted disc directories using archive format 1.
 
 Use a private working directory on writable local storage. The database path must
@@ -78,3 +78,45 @@ restored file or cache object. Resume creates a new temporary file. After ensuri
 no recovery is running, these orphan temporary files can be inspected and removed
 manually to reclaim space. Do not remove unrelated destination files. Only one
 process may hold a work index at a time; its operating-system lock releases on exit.
+
+## Full physical-copy read-back reports
+
+After burning, mount the actual disc read-only and run:
+
+```sh
+sct-recover verify-report /media/disc /private/disc-original.sqlite > disc-report.json
+```
+
+Use a private work index for that disc's **original snapshot**, not a newer
+snapshot that reuses only some of its payload. The command checks the original
+inventory and emits one JSON observation on stdout; per-object details stream to
+stderr. The observation binds collection/disc identities, original index and bundle
+hashes, and SHA-256 of canonical object records with LF separators in root/digest
+order. Exit 0 means metadata and all original payload objects verified, exit 2
+means an incomplete read-back, and exit 1 means identity/metadata could not be
+established or another operational failure. A cached original work index can still
+report a later metadata read failure; unusable metadata on first import fails
+without producing a valid report. None of these failures permits a verified claim.
+
+Register a physical copy with its label, location and optional reported burn time,
+then submit this observation with a new request ID and the copy's current revision
+to `/api/v1/archives/{collection}/copies/{copy}/reports`. The browser provides this
+management surface; the standalone recovery program never needs credentials or a
+network connection. The server rejects a report for a different frozen inventory.
+These are attributed owner-supplied observations, not cryptographic evidence that
+a physical medium was burned: running against an extracted ISO also reads those
+bytes, so operators must select the actual mounted media for physical verification.
+
+ISO creation and download leave physical-copy health Unknown. Only a successful
+bound read-back observation sets ReadBackVerified; an incomplete report sets
+Damaged. A later Missing/Damaged/Unknown observation changes current availability
+without deleting earlier reports. Label/location updates can omit `health` to
+preserve it. Events and reports are immutable and paged separately; retries with
+the same report request ID never duplicate observations or undo newer health.
+
+A recovery point receives a permanent historical completion timestamp only when
+every new disc (including metadata-only discs) and every earlier dependency has at
+least one currently verified healthy copy. Large collections finish this accounting
+in durable batches of 32 pending sets; the normal worker advances the queue.
+Multiple physical copies can satisfy the same logical disc. Later loss or damage
+does not erase the earlier completion event, and no disc is retired automatically.

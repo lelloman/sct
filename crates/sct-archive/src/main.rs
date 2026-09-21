@@ -40,9 +40,14 @@ async fn run() -> Result<i32> {
             .await?;
         return Ok(if result.complete() { 0 } else { 2 });
     }
-    if args.len() != 3 || !matches!(args[0].to_str(), Some("inspect" | "verify")) {
+    if args.len() != 3
+        || !matches!(
+            args[0].to_str(),
+            Some("inspect" | "verify" | "verify-report")
+        )
+    {
         eprintln!(
-            "Usage: sct-recover inspect|verify DISC_DIRECTORY PRIVATE_WORK.sqlite\n       sct-recover ingest DISC_DIRECTORY PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY\n       sct-recover restore PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY DESTINATION [--partial]\nReads mounted or extracted discs offline. Verification emits JSONL observations and a summary. Exit 2 means some payloads could not be verified."
+            "Usage: sct-recover inspect|verify|verify-report DISC_DIRECTORY PRIVATE_WORK.sqlite\n       sct-recover ingest DISC_DIRECTORY PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY\n       sct-recover restore PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY DESTINATION [--partial]\nReads mounted or extracted discs offline. Verification emits JSONL observations and a summary. Exit 2 means some payloads could not be verified."
         );
         return Ok(64);
     }
@@ -64,6 +69,16 @@ async fn run() -> Result<i32> {
     if args[0] == "inspect" {
         index.inspect(&mut out).await?;
         return Ok(0);
+    }
+    if args[0] == "verify-report" {
+        let report = index
+            .verify_disc_report(media, &mut std::io::stderr())
+            .await?;
+        let complete =
+            report.metadata_verified && report.expected_objects == report.verified_objects;
+        serde_json::to_writer(&mut out, &report)?;
+        out.write_all(b"\n")?;
+        return Ok(if complete { 0 } else { 2 });
     }
     let result = index.verify_media(media, &mut out).await?;
     serde_json::to_writer(&mut out, &serde_json::json!({"summary":result}))?;

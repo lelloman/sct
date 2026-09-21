@@ -419,6 +419,7 @@ impl TransferEngine {
         self.cleanup_terminal_tree_work().await?;
         self.writer.run_maintenance(self).await?;
         self.writer.archive_capture_tick().await?;
+        self.writer.archive_verification_tick().await?;
         Ok(())
     }
 }

@@ -6,6 +6,7 @@
 
 pub mod archive_capture;
 pub mod archive_catalog;
+pub mod archive_copies;
 pub mod archive_download;
 pub mod archive_export;
 pub mod archive_iso;
