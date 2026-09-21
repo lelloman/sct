@@ -1897,6 +1897,7 @@ dependencies = [
  "tokio",
  "toml",
  "tower-http",
+ "tracing",
  "uuid",
 ]
 
@@ -2110,9 +2111,11 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "futures-util",
+ "http-body",
  "rand 0.8.8",
  "tokio",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@ sct-core.workspace = true
 sct-protocol.workspace = true
 uuid = { version = "1.26.0", features = ["v4"] }
 simple-server.workspace = true
+tracing = "0.1"
 tokio.workspace = true
 tower-http.workspace = true
 serde.workspace = true

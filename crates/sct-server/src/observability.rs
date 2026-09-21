@@ -14,7 +14,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::Instant,
+    time::Duration,
 };
 
 const BUCKETS: [f64; 6] = [0.005, 0.025, 0.1, 0.5, 2.0, 10.0];
@@ -47,47 +47,73 @@ fn method(value: &str) -> &'static str {
         _ => "OTHER",
     }
 }
+struct HttpObserver {
+    metrics: Arc<HttpMetrics>,
+    route: String,
+    method: &'static str,
+    request_id: String,
+}
+impl HttpObserver {
+    fn response_event(&self, response: &Response, latency: Duration) -> serde_json::Value {
+        serde_json::json!({"event":"http_response","request_id":self.request_id,"method":self.method,"route":self.route,"status":response.status().as_u16(),"duration_ms":latency.as_millis() as u64,"code":response.extensions().get::<sct_protocol::ErrorCode>()})
+    }
+}
+impl simple_server::http_tracing::Observer for HttpObserver {
+    fn on_response(&mut self, _span: &tracing::Span, response: &Response, latency: Duration) {
+        let elapsed = latency.as_secs_f64();
+        if let Ok(mut values) = self.metrics.responses.lock() {
+            let record = values
+                .entry((
+                    self.route.clone(),
+                    self.method,
+                    response.status().as_u16() / 100,
+                ))
+                .or_default();
+            record.count += 1;
+            record.seconds += elapsed;
+            for (i, limit) in BUCKETS.iter().enumerate() {
+                if elapsed <= *limit {
+                    record.buckets[i] += 1;
+                }
+            }
+        }
+        // Preserve ScT's unconditional metadata-only stderr contract. This
+        // observer replaces default events; it requires no global subscriber.
+        eprintln!("{}", self.response_event(response, latency));
+    }
+}
 pub(crate) async fn observe(
     State(metrics): State<Arc<HttpMetrics>>,
     request: Request,
     next: Next,
 ) -> Response {
-    let started = Instant::now();
-    // MatchedPath is a router template, never a supplied URL, query or filename.
     let route = request
         .extensions()
         .get::<MatchedPath>()
         .map_or("unmatched", MatchedPath::as_str)
         .to_owned();
     let method = method(request.method().as_str());
-    metrics.active.fetch_add(1, Ordering::Relaxed);
-    let _active = Active(metrics.clone());
-    let mut response = next.run(request).await;
     let request_id = crate::correlation::request_id();
-    response.headers_mut().insert(
-        "x-request-id",
-        HeaderValue::from_str(&request_id).expect("server correlation ID"),
-    );
-    let elapsed = started.elapsed().as_secs_f64();
-    let status = response.status().as_u16();
-    if let Ok(mut values) = metrics.responses.lock() {
-        let record = values
-            .entry((route.clone(), method, status / 100))
-            .or_default();
-        record.count += 1;
-        record.seconds += elapsed;
-        for (i, limit) in BUCKETS.iter().enumerate() {
-            if elapsed <= *limit {
-                record.buckets[i] += 1;
-            }
-        }
-    }
-    eprintln!(
-        "{}",
-        serde_json::json!({"event":"http_response","request_id":request_id,"method":method,"route":route,"status":status,"duration_ms":(elapsed*1000.0) as u64,"code":response.extensions().get::<sct_protocol::ErrorCode>()})
-    );
-    response
+    metrics.active.fetch_add(1, Ordering::Relaxed);
+    // The existing active metric ends at headers, not after body streaming.
+    let _active = Active(metrics.clone());
+    let observer = HttpObserver {
+        metrics,
+        route,
+        method,
+        request_id: request_id.clone(),
+    };
+    simple_server::http_tracing::trace_with_observer(request, observer, |request| async move {
+        let mut response = next.run(request).await;
+        response.headers_mut().insert(
+            "x-request-id",
+            HeaderValue::from_str(&request_id).expect("server correlation ID"),
+        );
+        response
+    })
+    .await
 }
+
 fn group(out: &mut String, name: &str, labels: &[&str], values: &[(String, i64)]) {
     out.push_str(&format!("# TYPE {name} gauge\n"));
     for label in labels {
@@ -174,5 +200,84 @@ mod tests {
         assert!(rendered.contains("sct_backend_health{state=\"reachable\"} 3"));
         assert!(!rendered.contains("private-root-id"));
         assert_eq!(method("UNTRUSTED"), "OTHER");
+    }
+    #[test]
+    fn legacy_event_preserves_approved_metadata_and_header_latency() {
+        let observer = HttpObserver {
+            metrics: Arc::new(HttpMetrics::default()),
+            route: "/api/v1/roots/{root}".into(),
+            method: "GET",
+            request_id: "0123456789abcdef0123456789abcdef".into(),
+        };
+        let mut response = StatusCode::NOT_FOUND.into_response();
+        response
+            .extensions_mut()
+            .insert(sct_protocol::ErrorCode::UnsupportedOperation);
+        assert_eq!(
+            observer.response_event(&response, Duration::from_micros(12_999)),
+            serde_json::json!({"event":"http_response","request_id":"0123456789abcdef0123456789abcdef","method":"GET","route":"/api/v1/roots/{root}","status":404,"duration_ms":12,"code":sct_protocol::ErrorCode::UnsupportedOperation})
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_observer_records_headers_without_subscriber_or_body_completion() {
+        use simple_server::axum::body::Body;
+        let metrics = Arc::new(HttpMetrics::default());
+        let app = Router::new()
+            .route(
+                "/stream/{id}",
+                get(|| async {
+                    let first = futures_util::stream::once(async {
+                        Ok::<_, std::io::Error>(simple_server::axum::body::Bytes::from_static(
+                            b"first",
+                        ))
+                    });
+                    let pending = futures_util::stream::pending();
+                    use futures_util::StreamExt;
+                    Body::from_stream(first.chain(pending))
+                }),
+            )
+            .layer(middleware::from_fn_with_state(metrics.clone(), observe))
+            .layer(middleware::from_fn(crate::correlation::middleware));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            simple_server::axum::serve(listener, app).await.unwrap();
+        });
+        let http = reqwest::Client::new();
+        let response = http
+            .get(format!(
+                "http://{address}/stream/private-id?secret=private-secret"
+            ))
+            .header("x-request-id", "caller-secret")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let id = response.headers()["x-request-id"].to_str().unwrap();
+        assert_eq!(id.len(), 32);
+        assert_eq!(uuid::Uuid::parse_str(id).unwrap().get_version_num(), 4);
+        assert_eq!(metrics.active.load(Ordering::Relaxed), 0);
+        let rendered = metrics.render();
+        assert!(rendered.contains(
+            "sct_http_responses_total{route=\"/stream/{id}\",method=\"GET\",status_class=\"2xx\"} 1"
+        ));
+        assert!(!rendered.contains("private"));
+        // No EOF has occurred: headers already updated the existing histogram.
+        assert_eq!(metrics.responses.lock().unwrap().len(), 1);
+        drop(response);
+        let response = http
+            .post(format!("http://{address}/stream/private-id"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(metrics.active.load(Ordering::Relaxed), 0);
+        assert!(
+            metrics
+                .render()
+                .contains("method=\"POST\",status_class=\"4xx\"} 1")
+        );
+        server.abort();
     }
 }
