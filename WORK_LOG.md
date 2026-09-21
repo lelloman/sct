@@ -296,3 +296,18 @@ an existing path. Crash-orphan temporary files are documented for manual cleanup
 SCT-70 validation: eight reader/recovery tests, focused Clippy and full
 `./scripts/check` pass (12 browser/acceptance passes; existing M5 gate pending).
 Full log: `/tmp/sct-disc-d08-check.log`.
+
+SCT-71 packages the Linux x86_64/glibc 2.36 recovery executable, format and recovery
+instructions, normalized vendored source archive, dependency license metadata and
+build provenance. The independent source is compiled in the resolved Rust Docker
+image with networking disabled. Existing bundle output is never replaced; the
+manifest is published last and provides fixed hashes/byte counts for planning.
+
+SCT-71 validation: the exact 41,719,669-byte bundle passed inspect, verify, partial,
+resumed complete and later-set recovery in a stock Debian 12 container with no
+network, read-only root, non-root user and dropped capabilities. No development
+compiler or service was available in that runtime. Final bundle manifest SHA-256:
+`39820936b48637b428db0986975989c215eb3e7560f736398078190439b951ba`.
+Build/runtime logs: `/tmp/sct-disc-d09-final-build.log`,
+`/tmp/sct-disc-d09-final-runtime.log`. Full `./scripts/check` passed (12 browser
+passes, existing M5 gate pending): `/tmp/sct-disc-d09-check.log`.

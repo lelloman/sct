@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Build an immutable, self-contained Linux recovery bundle from local sources."""
+import gzip
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILD_IMAGE = "rust:1.96-bookworm"
+
+
+def run(args, **kwargs):
+    return subprocess.run(args, check=True, **kwargs)
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def sha(path):
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def main():
+    if len(sys.argv) != 3 or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", sys.argv[2]):
+        raise SystemExit("Usage: scripts/build-recovery-bundle NEW_DIRECTORY BUNDLE_VERSION")
+    destination = Path(sys.argv[1]).resolve()
+    if destination.exists():
+        raise SystemExit("Refusing to replace an existing bundle")
+    version = sys.argv[2]
+    # Resolve tags once. Provenance records the immutable local image identity.
+    build_id = run(["docker", "image", "inspect", "--format", "{{.Id}}", BUILD_IMAGE], capture_output=True, text=True).stdout.strip()
+    with tempfile.TemporaryDirectory(prefix="sct-recovery-build-") as temporary:
+        work = Path(temporary)
+        source = work / "source"
+        source.mkdir()
+        manifest = (ROOT / "Cargo.toml").read_text()
+        manifest = re.sub(r'^members = .*$', 'members = ["crates/sct-protocol", "crates/sct-archive"]', manifest, flags=re.M)
+        manifest = re.sub(r'^(simple-server|sct-client|sct-core) = .*\n', '', manifest, flags=re.M)
+        (source / "Cargo.toml").write_text(manifest)
+        shutil.copy(ROOT / "Cargo.lock", source / "Cargo.lock")
+        for crate in ("sct-protocol", "sct-archive"):
+            shutil.copytree(ROOT / "crates" / crate, source / "crates" / crate)
+        # Tests/fixtures and the format specification remain readable in the source.
+        shutil.copytree(ROOT / "contracts/fixtures/disc-archive", source / "contracts/fixtures/disc-archive")
+        (source / "docs").mkdir()
+        for name in ("disc-archive-format.md", "disc-recovery.md"):
+            shutil.copy(ROOT / "docs" / name, source / "docs" / name)
+        metadata = json.loads(run(["cargo", "metadata", "--offline", "--format-version", "1", "--manifest-path", str(source / "Cargo.toml")], capture_output=True).stdout)
+        configuration = run(["cargo", "vendor", "--offline", "--locked", "--manifest-path", str(source / "Cargo.toml"), str(source / "vendor")], capture_output=True, text=True).stdout
+        (source / ".cargo").mkdir()
+        (source / ".cargo/config.toml").write_text(configuration.replace(str(source / "vendor"), "vendor"))
+        (source / "BUILD.txt").write_text("Source for the included executable. Requires Rust 1.96 and a C toolchain.\nBuild without network: cargo build --release --locked --offline -p sct-archive --bin sct-recover\nThe prebuilt executable does NOT require a compiler.\n")
+        notices = [{"name": p["name"], "version": p["version"], "license": p["license"], "license_file": p["license_file"]} for p in metadata["packages"]]
+        recovery = work / "bundle/recovery"
+        recovery.mkdir(parents=True)
+        (recovery / "DEPENDENCIES.json").write_bytes(canonical(notices))
+        (recovery / "LICENSING.txt").write_text("Third-party packages retain their own licenses; see DEPENDENCIES.json and the vendored source license files.\nThe ScT repository does not currently declare a source license. Inclusion here supplies recovery source, not a new license grant.\n")
+        source_archive = recovery / "source.tar.gz"
+        # Stable source archive metadata; digest is the precise build input identity.
+        with source_archive.open("wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", mtime=0, filename="") as compressed, tarfile.open(fileobj=compressed, mode="w") as tar:
+            for path in sorted(source.rglob("*")):
+                info = tar.gettarinfo(str(path), arcname="source/" + str(path.relative_to(source)))
+                info.uid = info.gid = info.mtime = 0
+                info.uname = info.gname = ""
+                if path.is_file():
+                    with path.open("rb") as contents:
+                        tar.addfile(info, contents)
+                else:
+                    tar.addfile(info)
+        # Read-only build input; writable output belongs to the calling user.
+        build_output = work / "build"
+        build_output.mkdir()
+        run(["docker", "run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
+             "--mount", f"type=bind,src={source},dst=/source,readonly", "--mount", f"type=bind,src={build_output},dst=/build",
+             "--workdir", "/source", "--env", "CARGO_TARGET_DIR=/build", "--env", "CARGO_NET_OFFLINE=true", build_id,
+             "cargo", "build", "--release", "--locked", "--offline", "-p", "sct-archive", "--bin", "sct-recover"])
+        shutil.copy(build_output / "release/sct-recover", recovery / "sct-recover")
+        for name in ("disc-archive-format.md", "disc-recovery.md"):
+            shutil.copy(ROOT / "docs" / name, recovery / name)
+        (recovery / "provenance.json").write_bytes(canonical({"build_image": build_id, "source_sha256": sha(source_archive), "bundle_version": version, "platform": "linux-x86_64-glibc236", "source_base_revision": run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()}))
+        (work / "bundle/START-HERE.txt").write_text("ScT OFFLINE RECOVERY\n\nEvery disc has the complete index for its snapshot. Start with ANY surviving disc in the desired set.\nSupported executable: Linux x86_64 with glibc 2.36 or newer (qualified on Debian 12). No network, ScT, PostgreSQL, compiler or installation is required. Other platforms are not qualified.\n\nCopy recovery/sct-recover to writable local storage and chmod +x that copy if the disc is mounted noexec. Read recovery/disc-recovery.md for inspect, ingest and restore commands. Create private work/cache and destination directories outside the media. Keep all discs, including earlier sets.\n\nMissing disc? Use restore --partial to recover only complete files. Exit 2 and the JSONL report identify incomplete recovery. Never treat a partial snapshot as application-consistent.\n\nSource, dependency licenses, format documentation and exact build provenance are in recovery/.\n")
+        files = []
+        for path in sorted((work / "bundle").rglob("*")):
+            if path.is_file():
+                files.append({"path": str(path.relative_to(work / "bundle")), "length": path.stat().st_size, "sha256": sha(path)})
+        bundle = {"format": 1, "version": version, "platform": "linux-x86_64-glibc236", "files": files}
+        (recovery / "bundle.json").write_bytes(canonical(bundle))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        # Never expose a successful bundle before all artifacts exist.
+        shutil.copytree(work / "bundle", destination, ignore=lambda directory, names: ["bundle.json"] if Path(directory).name == "recovery" else [])
+        manifest_bytes = (recovery / "bundle.json").read_bytes()
+        if len(manifest_bytes) > 65536 or len(files) > 64 or any(f["length"] > 512 * 1024 * 1024 for f in files):
+            raise SystemExit("Bundle exceeds archive format limits")
+        staged_manifest = destination / "recovery/.bundle.json.pending"
+        staged_manifest.write_bytes(manifest_bytes)
+        staged_manifest.rename(destination / "recovery/bundle.json")
+        print(json.dumps({"bundle_sha256": sha(destination / "recovery/bundle.json"), "bundle_bytes": sum(p.stat().st_size for p in destination.rglob("*") if p.is_file()), "directory": str(destination)}))
+
+
+if __name__ == "__main__":
+    main()
