@@ -38,9 +38,11 @@ impl IntoResponse for ApiError {
         response
             .headers_mut()
             .insert("x-request-id", request_id.parse().unwrap());
-        response
-            .headers_mut()
-            .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+        simple_server::response_headers::replace(
+            response.headers_mut(),
+            header::CACHE_CONTROL,
+            "no-store".parse().unwrap(),
+        );
         response.extensions_mut().insert(self.0);
         if retry {
             response
@@ -229,15 +231,21 @@ async fn response_headers(request: Request, next: Next) -> Response {
             crate::correlation::request_id().parse().unwrap(),
         );
     }
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
-    response
-        .headers_mut()
-        .insert("x-content-type-options", "nosniff".parse().unwrap());
-    response
-        .headers_mut()
-        .insert("referrer-policy", "no-referrer".parse().unwrap());
+    simple_server::response_headers::replace(
+        response.headers_mut(),
+        header::CACHE_CONTROL,
+        "no-store".parse().unwrap(),
+    );
+    simple_server::response_headers::replace(
+        response.headers_mut(),
+        simple_server::response_headers::HeaderName::from_static("x-content-type-options"),
+        "nosniff".parse().unwrap(),
+    );
+    simple_server::response_headers::replace(
+        response.headers_mut(),
+        simple_server::response_headers::HeaderName::from_static("referrer-policy"),
+        "no-referrer".parse().unwrap(),
+    );
     response
 }
 async fn ready(State(s): State<App>) -> StatusCode {
@@ -657,4 +665,70 @@ async fn policy_constraints(
         )
         .await?;
     Ok(Json(s.writer.inspect_root(&a, &root).await?))
+}
+
+#[cfg(test)]
+mod response_header_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn response_policy_preserves_success_and_normalizes_early_errors_without_storage() {
+        let router = Router::new()
+            .route(
+                "/ok",
+                get(|| async {
+                    (
+                        [
+                            ("cache-control", "public, max-age=60"),
+                            ("referrer-policy", "unsafe-url"),
+                            ("set-cookie", "a=1"),
+                        ],
+                        "payload",
+                    )
+                }),
+            )
+            .route("/error", get(|| async { StatusCode::BAD_REQUEST }))
+            .layer(middleware::from_fn(response_headers));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            simple_server::axum::serve(listener, router)
+                .with_graceful_shutdown(async {
+                    let _ = stopped.await;
+                })
+                .await
+                .unwrap();
+        });
+        let client = reqwest::Client::new();
+        for (method, path, status) in [
+            (reqwest::Method::GET, "/ok", 200),
+            (reqwest::Method::HEAD, "/ok", 200),
+            (reqwest::Method::GET, "/error", 400),
+        ] {
+            let response = client
+                .request(method.clone(), format!("{base}{path}"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status().as_u16(), status);
+            assert_eq!(response.headers()["cache-control"], "no-store");
+            assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+            assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+            assert!(response.headers().contains_key("x-request-id"));
+            if path == "/ok" {
+                assert_eq!(response.headers()["set-cookie"], "a=1");
+            }
+            let body = response.text().await.unwrap();
+            if method == reqwest::Method::HEAD {
+                assert!(body.is_empty());
+            } else if path == "/ok" {
+                assert_eq!(body, "payload");
+            } else {
+                assert!(serde_json::from_str::<serde_json::Value>(&body).is_ok());
+            }
+        }
+        stop.send(()).unwrap();
+        server.await.unwrap();
+    }
 }
