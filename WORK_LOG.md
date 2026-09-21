@@ -284,3 +284,15 @@ SCT-69 validation: five adversarial/scale reader tests, Clippy and full
 `./scripts/check` pass (12 browser/acceptance passes; existing M5 gate pending).
 Log: `/tmp/sct-disc-d07-check.log`. Recovery crate has no core/server dependency;
 SQLite is bundled so the reader does not require a database server installation.
+
+SCT-70 adds verified chunk ingestion and complete/partial offline restoration.
+Ten-disc tests bootstrap from disc 9 with disc 10 missing, identify shared and
+spanning-file losses, resume across CLI processes, reject destination conflicts
+and symlinks, and detect corrupt cache bytes. A killed 256 MiB restore leaves no
+partial final file; a fresh process completes it and independent chunk hashes match.
+Private SQLite work files have process locks; destination publication never replaces
+an existing path. Crash-orphan temporary files are documented for manual cleanup.
+
+SCT-70 validation: eight reader/recovery tests, focused Clippy and full
+`./scripts/check` pass (12 browser/acceptance passes; existing M5 gate pending).
+Full log: `/tmp/sct-disc-d08-check.log`.

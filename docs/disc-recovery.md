@@ -1,9 +1,8 @@
-# Offline archive inspection and verification
+# Offline archive inspection and recovery
 
 `sct-recover` depends on the public protocol and a bundled SQLite work index, not
 ScT server/core, PostgreSQL or network services. The executable is built with
-`cargo build --locked -p sct-archive --bin sct-recover`. Packaged recovery bundles
-and complete-file restoration follow in SCT-70/71; these commands already operate
+`cargo build --locked -p sct-archive --bin sct-recover`. Packaged recovery bundles follow in SCT-71; these commands operate
 on mounted or extracted disc directories using archive format 1.
 
 Use a private working directory on writable local storage. The database path must
@@ -41,3 +40,41 @@ the target snapshot's map. No old disc needs to be rewritten.
 The six canonical fixture discs are format-only fixtures, explicitly lacking an
 executable recovery bundle. They test the reader, not software packaging or actual
 optical hardware. Hardware burn/read-back qualification is a separate task.
+
+## Restoring files across discs
+
+Create a private cache directory and a destination directory on writable storage.
+The cache holds one verified copy of each required chunk; allow space for those
+chunks, the work index, and restored files. Keep the cache dedicated to this work
+index and out of the restore destination. Begin from any surviving disc in the
+chosen set, then insert required earlier discs in any order:
+
+```sh
+mkdir -m 700 /private/cache /private/restored
+sct-recover ingest /media/disc /private/recovery.sqlite /private/cache
+# Repeat ingest after each disc swap. Restarting the process is safe.
+sct-recover restore /private/recovery.sqlite /private/cache /private/restored
+# If some discs cannot be obtained:
+sct-recover restore /private/recovery.sqlite /private/cache /private/restored --partial
+```
+
+The default restore checks every required chunk before writing anything. Partial
+mode restores only complete files, emits an observation for each missing file
+extent (path, offset, root, digest, length), and exits 2. An object shared by several
+files makes every affected file unavailable. No previous version is substituted.
+This reports file recovery, not application-level consistency of a partial snapshot.
+
+Resume by ingesting additional discs and repeating restore. Cache bytes and existing
+files are rehashed every time. A corrupt regular cache file can be repaired by
+ingesting a good copy; a destination conflict is reported and never overwritten.
+Symlinks and non-regular files are refused. Empty files/directories are restored.
+Directory permissions are 0700 and new file permissions 0600; the archive does not
+claim to preserve POSIX ownership, executable bits or timestamps.
+
+Files are staged under a random `.sct-recovery-` name in the destination parent,
+flushed, and published atomically without replacing any existing path. A killed
+process may leave such an incomplete temporary file; it is never considered a
+restored file or cache object. Resume creates a new temporary file. After ensuring
+no recovery is running, these orphan temporary files can be inspected and removed
+manually to reclaim space. Do not remove unrelated destination files. Only one
+process may hold a work index at a time; its operating-system lock releases on exit.

@@ -10,6 +10,7 @@ use std::{
 };
 
 pub struct ArchiveIndex {
+    _lock: std::fs::File,
     pub connection: SqliteConnection,
     pub descriptor: ArchiveDiscDescriptor,
 }
@@ -34,11 +35,12 @@ impl ArchiveIndex {
         let dir = SafeDir::open(media)?;
         let desc = descriptor(&dir)?;
         verify_bundle(&dir, &desc)?;
-        OpenOptions::new()
+        let lock = OpenOptions::new()
             .write(true)
             .create_new(true)
             .mode(0o600)
             .open(database)?;
+        rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)?;
         let mut connection = connect(database).await?;
         let mut tx = connection.begin().await?;
         sqlx::raw_sql("CREATE TABLE meta(descriptor TEXT NOT NULL,snapshot TEXT NOT NULL);
@@ -281,11 +283,18 @@ impl ArchiveIndex {
             .await?;
         tx.commit().await?;
         Ok(Self {
+            _lock: lock,
             connection,
             descriptor: desc,
         })
     }
     pub async fn open(database: &Path) -> Result<Self> {
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
+            .open(database)?;
+        rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)?;
         let mut connection = connect(database).await?;
         let value: String = sqlx::query_scalar("SELECT descriptor FROM meta")
             .fetch_one(&mut connection)
@@ -293,6 +302,7 @@ impl ArchiveIndex {
         let descriptor: ArchiveDiscDescriptor = serde_json::from_str(&value)?;
         descriptor.validate()?;
         Ok(Self {
+            _lock: lock,
             connection,
             descriptor,
         })

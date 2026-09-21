@@ -13,9 +13,36 @@ async fn main() {
 }
 async fn run() -> Result<i32> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.first().is_some_and(|v| v == "restore")
+        && (args.len() == 4 || (args.len() == 5 && args[4] == "--partial"))
+    {
+        let mut index = ArchiveIndex::open(Path::new(&args[1])).await?;
+        let result = index
+            .restore_to(
+                Path::new(&args[2]),
+                Path::new(&args[3]),
+                args.len() == 5,
+                &mut std::io::stdout(),
+            )
+            .await?;
+        return Ok(if result.complete { 0 } else { 2 });
+    }
+    if args.first().is_some_and(|v| v == "ingest") && args.len() == 4 {
+        let media = Path::new(&args[1]);
+        let database = Path::new(&args[2]);
+        let mut index = if database.exists() {
+            ArchiveIndex::open(database).await?
+        } else {
+            ArchiveIndex::create(media, database).await?
+        };
+        let result = index
+            .ingest(media, Path::new(&args[3]), &mut std::io::stdout())
+            .await?;
+        return Ok(if result.complete() { 0 } else { 2 });
+    }
     if args.len() != 3 || !matches!(args[0].to_str(), Some("inspect" | "verify")) {
         eprintln!(
-            "Usage: sct-recover inspect|verify DISC_DIRECTORY PRIVATE_WORK.sqlite\nReads mounted or extracted discs offline. Verification emits JSONL observations and a summary. Exit 2 means some payloads could not be verified."
+            "Usage: sct-recover inspect|verify DISC_DIRECTORY PRIVATE_WORK.sqlite\n       sct-recover ingest DISC_DIRECTORY PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY\n       sct-recover restore PRIVATE_WORK.sqlite PRIVATE_CACHE_DIRECTORY DESTINATION [--partial]\nReads mounted or extracted discs offline. Verification emits JSONL observations and a summary. Exit 2 means some payloads could not be verified."
         );
         return Ok(64);
     }
