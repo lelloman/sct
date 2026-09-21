@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Destructive tests run only against resources created by this invocation.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+sct_repo="$PWD"
+sct_run="sct-qualification-$(date +%Y%m%d-%H%M%S)-$$"
+sct_artifacts="${SCT_QUALIFICATION_ARTIFACTS:-$sct_repo/target/qualification/$sct_run}"
+mkdir -p "$sct_artifacts"
+sct_artifacts="$(realpath "$sct_artifacts")"
+sct_context="$(mktemp -d)"
+sct_containers=()
+sct_network=""
+cleanup() {
+  sct_exit=$?
+  trap - EXIT
+  for ((sct_i=${#sct_containers[@]}-1;sct_i>=0;sct_i--)); do
+    c="${sct_containers[$sct_i]}"
+    if [[ "$c" == "${sct_test:-}" ]]; then
+      docker cp "$c:/work/sct/web/test-results" "$sct_artifacts/browser-results" 2>/dev/null || true
+    fi
+    docker logs "$c" > "$sct_artifacts/$c.log" 2>&1 || true
+    docker inspect "$c" --format '{{json .State}}' > "$sct_artifacts/$c-state.json" 2>/dev/null || true
+    docker rm -f "$c" >/dev/null 2>&1 || true
+  done
+  if [[ -n "$sct_network" ]]; then docker network rm "$sct_network" >/dev/null 2>&1 || true; fi
+  rm -rf "$sct_context"
+  echo "Qualification exit=$sct_exit; artifacts: $sct_artifacts"
+  exit "$sct_exit"
+}
+trap cleanup EXIT
+# Include only source snapshots, never developer credentials or unrelated projects.
+sct_expected="$(tr -d '\n' < simple-server.rev)"
+git -C ../simple-server cat-file -e "$sct_expected^{commit}"
+mkdir -p "$sct_context/sct" "$sct_context/simple-server"
+git -C ../simple-server archive "$sct_expected" | tar -x -C "$sct_context/simple-server"
+tar --exclude='web/node_modules' --exclude='web/dist' --exclude='web/test-results' --exclude='web/playwright-report' --exclude='__pycache__' -cf - Cargo.toml Cargo.lock rust-toolchain.toml simple-server.rev README.md .gitignore config.example.toml config.local.example.toml crates web scripts tests examples contracts docs | tar -xf - -C "$sct_context/sct"
+{ git rev-parse HEAD; git diff --stat; } > "$sct_artifacts/source.txt"
+(cd "$sct_context" && find . -type f -print0 | sort -z | xargs -0 sha256sum) > "$sct_artifacts/source.sha256"
+sct_overlay=()
+sct_image=sct-qualification:local
+if [[ "${SCT_QUALIFY_DEV:-0}" == 1 ]]; then
+  echo 'DEVELOPMENT OVERLAY: reuse existing image, rebuild current Rust source inside runner' | tee "$sct_artifacts/build.log"
+  sct_overlay=(-v "$sct_repo/crates:/work/sct/crates:ro" -v "$sct_repo/scripts:/work/sct/scripts:ro" -v "$sct_repo/tests:/work/sct/tests:ro" -v "$sct_repo/Cargo.toml:/work/sct/Cargo.toml:ro" -v "$sct_repo/Cargo.lock:/work/sct/Cargo.lock:ro" -v "$sct_context/simple-server:/work/simple-server:ro")
+else
+  sct_image="sct-qualification:$sct_run"
+  docker build -t "$sct_image" -t sct-qualification:local -f tests/qualification/Dockerfile "$sct_context" 2>&1 | tee "$sct_artifacts/build.log"
+fi
+sct_network="$sct_run"
+docker network create --internal "$sct_network" >/dev/null
+start() { local name="$1"; shift; docker run -d --name "$name" --network "$sct_network" "$@" >/dev/null; sct_containers+=("$name"); }
+for sct_backend_image in postgres:17-alpine quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z; do
+  if ! docker image inspect "$sct_backend_image" >/dev/null 2>&1; then
+    docker pull "$sct_backend_image"
+  fi
+done
+docker image inspect "$sct_image" postgres:17-alpine quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z --format '{{.Id}} {{json .RepoDigests}}' > "$sct_artifacts/images.txt"
+start "$sct_run-pg" --network-alias postgres --memory 2g --shm-size 256m -e POSTGRES_PASSWORD=sct-test -e POSTGRES_DB=sct_test postgres:17-alpine
+start "$sct_run-s3" --network-alias minio --memory 1g -e MINIO_ROOT_USER=sct-test-access -e MINIO_ROOT_PASSWORD=sct-test-secret quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+start "$sct_run-proxy" --network-alias proxy --memory 256m -e UPSTREAM_HOST=minio "$sct_image" python3 tests/qualification/proxy.py
+for attempt in {1..60}; do
+  if docker exec "$sct_run-pg" pg_isready -h 127.0.0.1 -U postgres -d sct_test >/dev/null 2>&1 && docker exec "$sct_run-proxy" curl -fsS http://minio:9000/minio/health/ready >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+docker exec "$sct_run-pg" pg_isready -h 127.0.0.1 -U postgres -d sct_test
+for bucket in sct-s3one sct-s3two; do
+  docker exec "$sct_run-proxy" curl --silent --show-error --fail --aws-sigv4 'aws:amz:us-east-1:s3' --user sct-test-access:sct-test-secret -X PUT "http://minio:9000/$bucket"
+done
+sct_test="$sct_run-runner"
+sct_containers+=("$sct_test")
+timeout --signal=TERM 45m docker run --name "$sct_test" --network "$sct_network" --memory 6g --cpus 4 --tmpfs /fault-disk:rw,size=64m,mode=1777 \
+  "${sct_overlay[@]}" -v "$sct_artifacts:/artifacts" \
+  -e SCT_TEST_DATABASE_URL=postgres://postgres:sct-test@postgres:5432/sct_test \
+  -e SCT_TEST_S3_ENDPOINT=http://127.0.0.1:19000 -e SCT_TEST_PROXY_ENDPOINT=http://127.0.0.1:19001 -e SCT_TEST_PROXY_CONTROL=http://proxy:8474 \
+  -e SCT_TEST_S3_ACCESS=sct-test-access -e SCT_TEST_S3_SECRET=sct-test-secret \
+  -e SCT_QUALIFY_STAGE="${SCT_QUALIFY_STAGE:-all}" -e SCT_TEST_SMALL_DISK=/fault-disk -e SCT_QUALIFY_MIB="${SCT_QUALIFY_MIB:-128}" \
+  "$sct_image"

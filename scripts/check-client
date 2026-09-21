@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+command -v rg >/dev/null
 sct_repo="$PWD"
 sct_fixture="$(mktemp -d)"
 trap 'rm -rf "$sct_fixture"' EXIT

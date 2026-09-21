@@ -6,3 +6,5 @@
 /web/playwright-report/
 .env
 *.log
+
+__pycache__/

@@ -148,6 +148,13 @@ impl Catalog {
                 include_str!("../migrations/0018_commit_freshness.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                19,
+                "allocation_counter_locking".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0019_allocation_counter_locking.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),

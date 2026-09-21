@@ -324,3 +324,39 @@ async fn runtime_local_destination_accepts_bytes_and_populated_root_keeps_refere
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL"]
+async fn ledger_counters_do_not_invert_pool_capacity_lock_order() {
+    let (_w, _a, db) = setup().await;
+    let mut capacity = db.begin().await.unwrap();
+    sqlx::query("SELECT id FROM pools WHERE id='pool' FOR UPDATE")
+        .fetch_one(&mut *capacity)
+        .await
+        .unwrap();
+    let mut ledger = db.begin().await.unwrap();
+    // A different root's publication can hold the pool while waiting for the
+    // shared staging row. Charging bytes must not acquire the pool in reverse.
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        sqlx::query(
+            "UPDATE allocations SET reserved=reserved+1 WHERE pool_id='pool' AND root_id IS NULL",
+        )
+        .execute(&mut *ledger),
+    )
+    .await
+    .expect("counter update waited for unrelated pool lock")
+    .unwrap();
+    assert_eq!(result.rows_affected(), 1);
+    ledger.rollback().await.unwrap();
+    capacity.rollback().await.unwrap();
+    // Budget edits must still invoke the guard; counters bypass only that guard.
+    assert!(
+        sqlx::query(
+            "UPDATE allocations SET capacity=20000 WHERE pool_id='pool' AND root_id IS NULL"
+        )
+        .execute(&db)
+        .await
+        .is_err()
+    );
+}

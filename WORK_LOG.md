@@ -207,3 +207,54 @@ checks, PostgreSQL integrations (including 47 core foundation cases and isolated
 recovery), real MinIO conformance and Chromium all passed. Browser/acceptance:
 12 passed, exactly 1 pending (M5). `git diff --check` is clean. Local full-suite log:
 `/tmp/sct-m4-final-check.log`. No push or deployment was requested.
+
+# M5 extensive qualification campaign
+
+User authorized extensive testing after M4. Added `scripts/qualify`, a
+self-contained Docker test image, an internal PostgreSQL/MinIO/proxy network,
+retained failure artifacts, actual server process crashes, eight-root concurrent
+mirrored workloads, verified network fallback, streamed 128 MiB backups, SQLite
+capture/recovery and real ENOSPC on a dedicated tmpfs. `scripts/qualify-references`
+adds the ten-million-reference metadata/GC fixture. Normal integration explicitly
+excludes these destructive/resource-intensive qualification cases.
+
+Found and fixed a real pool/allocation deadlock: byte-counter updates acquired a
+pool lock through the capacity trigger after holding an allocation lock, reversing
+publication's order. Migration 19 applies the pool-capacity guard only to
+allocation creation/identity/capacity changes; row constraints still enforce ledger
+bounds. The deterministic lock-order regression and 64 concurrent mirrored commits
+then passed. Current checkpoint schema/checksum expectations advance to 19.
+
+The reference workload exposed per-edge SQL round trips in garbage collection.
+Each bounded adjacency is now marked in one deduplicated INSERT. The 10,000-edge
+preflight improved from 1,726 to 215 ms. Ten million canonical references passed
+in 306 GC batches, including a writer restart, at 74,505 ms traversal and sampled
+worker RSS 19,972–20,072 KiB. Its edge table/indexes occupied 4,676,501,504 bytes.
+Loading took 637,810 ms; this was metadata-only and did not manufacture a claim
+of ten million real payload objects.
+
+The fault campaign also exposed and corrected the test proxy's TCP half-close
+handling: an ordinary repeated S3 write failed conformance through the old tunnel.
+No S3 adapter change was needed. Disk-full behavior passed both before and after
+admission; the latter resumed the same saved SDK job after freeing space.
+
+`./scripts/check` passed after the product fixes, including 48 core foundation
+integration cases, independent recovery and 12 browser/acceptance passes. Only M5
+remains pending. See `docs/extensive-qualification.md` for detailed scope, measured
+results and limitations. The final container-campaign outcome is recorded below.
+
+Final validation on top of the independently committed telemetry integration
+`3343fbe`: `./scripts/check` passed again (12 browser/acceptance passes, one pending
+M5 gate). The Docker campaign exited 0; all destructive, integration, five-placement,
+million-entry, browser and ten-million-reference stages passed. Final reference
+measurement: 663,192 ms load, 76,654 ms GC, 306 batches, sampled worker RSS
+19,468–19,604 KiB, pinned copy preserved and orphan reclaimed. Full artifacts:
+`target/qualification/sct-qualification-20260921-092210-610157/`.
+
+The container SDK check exposed a missing ripgrep dependency that an `if` could
+silently skip. Added it to the image and made `scripts/check-client` fail early
+without it. Packaging plus dependency isolation passed again, offline, in the
+corrected fresh image: `sct-qualification-20260921-093652-714070`. Bootstrap/source
+fingerprint capture passed separately in `sct-qualification-20260921-092620-646627`.
+M5 stays In Progress: the complete release baseline, broader resource/performance
+matrix and release gate remain outstanding. No push or deployment performed.

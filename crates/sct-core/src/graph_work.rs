@@ -78,11 +78,12 @@ pub(crate) async fn advance(db: &mut PgConnection, fence: &OperationFence) -> Re
                 .await?;
             return Ok(true);
         };
-        let children:Vec<String>=sqlx::query_scalar("SELECT child FROM content_edges WHERE root_id=$1 AND parent=$2 ORDER BY ordinal LIMIT 1024")
-            .bind(&fence.root).bind(&next).fetch_all(&mut *db).await?;
-        for child in children {
-            mark(db, &fence.root, &scan, &child).await?;
-        }
+        // One bounded database operation per adjacency. Repeated references are
+        // common in backups; deduplicate before UPSERT (Postgres rejects updating
+        // the same target twice in a single INSERT). Keep the existing 1024-edge
+        // bound before DISTINCT so the amount of work never expands.
+        sqlx::query("INSERT INTO graph_marks(root_id,digest,scan_id) SELECT $1,child,$3 FROM (SELECT DISTINCT child FROM (SELECT child FROM content_edges WHERE root_id=$1 AND parent=$2 ORDER BY ordinal LIMIT 1024) bounded) children ON CONFLICT(root_id,digest) DO UPDATE SET scan_id=EXCLUDED.scan_id,expanded=false WHERE graph_marks.scan_id<>EXCLUDED.scan_id")
+            .bind(&fence.root).bind(&next).bind(&scan).execute(&mut *db).await?;
         sqlx::query(
             "UPDATE graph_marks SET expanded=true WHERE root_id=$1 AND digest=$2 AND scan_id=$3",
         )

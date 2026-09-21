@@ -95,6 +95,13 @@ npm --prefix web run test:e2e   # disposable PostgreSQL + real server/Chromium; 
 
 For formatting, run `cargo fmt --all` and `npm --prefix web run format`.
 
+## Extensive qualification
+
+Run `./scripts/qualify` for the isolated Docker crash, network-fault, ENOSPC,
+concurrency, large-payload, SQLite and catalog-scale campaign. It retains failure
+artifacts and uses only disposable storage. See [the qualification guide](docs/extensive-qualification.md)
+for prerequisites, resource limits and the exact scope.
+
 ## Component boundaries
 
 | Component | Responsibility |
@@ -118,7 +125,8 @@ repository is needed.
 - [Approved icon and shared palette](docs/branding.md)
 - [Protocol contracts, generation and wire conventions](contracts/README.md)
 
-Next: refine M5 scale and release qualification. M1–M4 tasks are implemented;
+Next: complete M5 release qualification. The [extensive test campaign](docs/extensive-qualification.md)
+covers crashes, faults and scale; M1–M4 tasks are implemented;
 see [M4 qualification](docs/m4-qualification.md) for current coverage and limits.
 
 Technical references: [Axum serving](https://docs.rs/axum/0.8.9/axum/fn.serve.html),

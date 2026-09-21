@@ -186,3 +186,230 @@ async fn million_entry_preview_is_bounded_and_resumable() {
         previous = count;
     }
 }
+
+// Canonical metadata fixture: repeated chunk references, not fabricated payload I/O.
+// All graph edges and bytes agree. GC must visit every edge, preserve pinned copies,
+// survive writer replacement, and reclaim only the unreferenced generation.
+#[tokio::test]
+#[ignore = "ten-million-reference qualification; scripts/qualify"]
+async fn qualification_ten_million_references_are_reclaimed_with_bounded_work() {
+    use sct_core::payload::{MemoryStore, ObjectStore};
+    use sct_core::transfer_io::TransferEngine;
+    use std::collections::BTreeMap;
+    let count: u64 = std::env::var("SCT_QUALIFY_REFERENCES")
+        .unwrap_or_else(|_| "10000000".into())
+        .parse()
+        .unwrap();
+    assert!((10_000..=10_000_000).contains(&count));
+    let (mut w, a, db) = setup().await;
+    let root = root(&w, &a, "/references", 4000).await;
+    let seed = Instant::now();
+    // Bulk metadata loading publishes one generation change. FK checks remain on.
+    let mut tx = db.begin().await.unwrap();
+    sqlx::query("ALTER TABLE content_edges DISABLE TRIGGER USER")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let mut leaves = Vec::new();
+    let mut left = count;
+    let mut first_chunk = None;
+    let mut index = 0u64;
+    while left > 0 {
+        let n = left.min(MANIFEST_FANOUT as u64);
+        let payload = index.to_le_bytes();
+        let chunk = digest(&payload);
+        first_chunk.get_or_insert((chunk.clone(), payload.to_vec()));
+        sqlx::query(
+            "INSERT INTO content_objects(root_id,digest,kind,length) VALUES($1,$2,'chunk',8)",
+        )
+        .bind(root.id.as_str())
+        .bind(&chunk)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+        let page = ManifestPage::Chunks {
+            format: 1,
+            chunks: (0..n)
+                .map(|_| ChunkReference {
+                    digest: chunk.parse().unwrap(),
+                    length: 8.try_into().unwrap(),
+                })
+                .collect(),
+        };
+        let body = canonical(&page).unwrap();
+        let parent = digest(&body);
+        sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,'page',$3,0,$4)")
+            .bind(root.id.as_str()).bind(&parent).bind(body.len() as i64).bind(body).execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) SELECT $1,$2,n,$3,8,1 FROM generate_series(0,$4::integer-1) n")
+            .bind(root.id.as_str()).bind(&parent).bind(&chunk).bind(n as i32).execute(&mut *tx).await.unwrap();
+        leaves.push(PageReference {
+            digest: parent.parse().unwrap(),
+            length: (n * 8).try_into().unwrap(),
+            chunks: n.try_into().unwrap(),
+        });
+        left -= n;
+        index += 1;
+        if index.is_multiple_of(1000) {
+            println!("QUALIFY references_seeded={}", count - left);
+        }
+    }
+    let mut height = 0;
+    while leaves.len() > 1 {
+        height += 1;
+        let mut next = Vec::new();
+        for children in leaves.chunks(MANIFEST_FANOUT) {
+            let page = ManifestPage::Branch {
+                format: 1,
+                height,
+                pages: children.to_vec(),
+            };
+            let body = canonical(&page).unwrap();
+            let parent = digest(&body);
+            sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,'page',$3,$4,$5)")
+                .bind(root.id.as_str()).bind(&parent).bind(body.len() as i64).bind(height as i32).bind(body).execute(&mut *tx).await.unwrap();
+            for (ordinal, child) in children.iter().enumerate() {
+                sqlx::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES($1,$2,$3,$4,$5,$6)")
+                    .bind(root.id.as_str()).bind(&parent).bind(ordinal as i32).bind(child.digest.as_str()).bind(child.length.get() as i64).bind(child.chunks.get() as i64).execute(&mut *tx).await.unwrap();
+            }
+            next.push(PageReference {
+                digest: parent.parse().unwrap(),
+                length: children
+                    .iter()
+                    .map(|c| c.length.get())
+                    .sum::<u64>()
+                    .try_into()
+                    .unwrap(),
+                chunks: children
+                    .iter()
+                    .map(|c| c.chunks.get())
+                    .sum::<u64>()
+                    .try_into()
+                    .unwrap(),
+            });
+        }
+        leaves = next;
+    }
+    let file = FileManifest {
+        format: 1,
+        profile: CHUNK_PROFILE.into(),
+        length: (count * 8).try_into().unwrap(),
+        chunks: count.try_into().unwrap(),
+        height,
+        tree: Some(leaves[0].digest.clone()),
+    };
+    file.validate().unwrap();
+    let body = canonical(&file).unwrap();
+    let manifest = digest(&body);
+    sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,'file',$3,$4,$5)")
+        .bind(root.id.as_str()).bind(&manifest).bind(body.len() as i64).bind(height as i32).bind(body).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES($1,$2,0,$3,$4,$5)")
+        .bind(root.id.as_str()).bind(&manifest).bind(leaves[0].digest.as_str()).bind((count*8) as i64).bind(count as i64).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO graph_pins(root_id,id,kind,manifest) VALUES($1,'qualification-pin','checkpoint',$2)")
+        .bind(root.id.as_str()).bind(&manifest).execute(&mut *tx).await.unwrap();
+    let references:i64=sqlx::query_scalar("SELECT count(*) FROM content_edges e JOIN content_objects c ON c.root_id=e.root_id AND c.digest=e.child WHERE e.root_id=$1 AND c.kind='chunk'")
+        .bind(root.id.as_str()).fetch_one(&mut *tx).await.unwrap();
+    assert_eq!(references, count as i64);
+    sqlx::query("ALTER TABLE content_edges ENABLE TRIGGER USER")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE roots SET graph_serial=graph_serial+1 WHERE id=$1")
+        .bind(root.id.as_str())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let _ = w.release().await;
+    w = w.catalog().acquire_writer().await.unwrap();
+    let fence = w
+        .begin_operation(&a, &root.id, OperationKind::Upload)
+        .await
+        .unwrap();
+    let store = Arc::new(MemoryStore::default());
+    let stores = BTreeMap::from([("one".into(), store as Arc<dyn ObjectStore>)]);
+    let mut engine = TransferEngine::new(w.clone(), stores.clone(), 1, 60).unwrap();
+    let (chunk, payload) = first_chunk.unwrap();
+    let orphan = digest(b"orphan");
+    sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length) VALUES($1,$2,'chunk',6)")
+        .bind(root.id.as_str())
+        .bind(&orphan)
+        .execute(&db)
+        .await
+        .unwrap();
+    w.reserve_transfer(
+        &fence,
+        &BTreeMap::from([("pool".parse().unwrap(), 14.try_into().unwrap())]),
+    )
+    .await
+    .unwrap();
+    for (digest, bytes) in [(&chunk, payload), (&orphan, b"orphan".to_vec())] {
+        engine
+            .write_copy(
+                &fence,
+                &digest.parse().unwrap(),
+                &"one".parse().unwrap(),
+                bytes,
+            )
+            .await
+            .unwrap();
+    }
+    sqlx::query("INSERT INTO transfer_sessions(id,root_id,operation_id,principal_id,key,request,manifest,state) VALUES('qualification-gc',$1,$2,$3,'gc','{}',$4,'aborted')")
+        .bind(root.id.as_str()).bind(fence.id().as_str()).bind(a.principal_id()).bind(&manifest).execute(&db).await.unwrap();
+    let seed_ms = seed.elapsed().as_millis();
+    let start = Instant::now();
+    let baseline = rss();
+    let mut peak = baseline;
+    let mut passes = 0;
+    loop {
+        w.renew().await.unwrap();
+        engine.heartbeat().await.unwrap();
+        let batch = Instant::now();
+        engine.tick().await.unwrap();
+        passes += 1;
+        peak = peak.max(rss());
+        assert!(
+            batch.elapsed().as_secs() < 25,
+            "bounded GC batch exceeded writer lease budget"
+        );
+        if passes == 5 {
+            w.release().await.unwrap();
+            w = w.catalog().acquire_writer().await.unwrap();
+            engine = TransferEngine::new(w.clone(), stores.clone(), 1, 60).unwrap();
+        }
+        let state: String = sqlx::query_scalar("SELECT state FROM object_copies WHERE digest=$1")
+            .bind(&orphan)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        if state == "deleted" {
+            break;
+        }
+        assert!(passes < 10000, "graph scan failed to converge");
+        if passes % 25 == 0 {
+            println!(
+                "QUALIFY reference_gc passes={passes} elapsed_ms={}",
+                start.elapsed().as_millis()
+            );
+        }
+    }
+    let state: String = sqlx::query_scalar("SELECT state FROM object_copies WHERE digest=$1")
+        .bind(&chunk)
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(state, "available");
+    let marks: i64 = sqlx::query_scalar("SELECT count(*) FROM graph_marks WHERE root_id=$1")
+        .bind(root.id.as_str())
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert!(marks <= (count.div_ceil(MANIFEST_FANOUT as u64) * 3 + 20) as i64);
+    let bytes: i64 = sqlx::query_scalar("SELECT pg_total_relation_size('content_edges')")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    println!(
+        "QUALIFY reference_scale references={count} seed_ms={seed_ms} gc_ms={} passes={passes} baseline_rss_kib={baseline} peak_rss_kib={peak} edge_relation_bytes={bytes} marks={marks} pinned_copy_preserved=true orphan_reclaimed=true",
+        start.elapsed().as_millis()
+    );
+}
