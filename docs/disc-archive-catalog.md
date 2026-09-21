@@ -28,8 +28,42 @@ old dependencies or grants permission to retire a disc. The initial account cach
 ceiling is 100 GiB; worker reservation/physical-capacity enforcement and management
 of these limits are implemented by the artifact-lifecycle task.
 
+Migration 21 adds stable capture pins and persistent graph-enumeration queues.
+Append creation accepts explicit committed version IDs, locks their roots against
+retirement, and pins their manifests in the same transaction as the source list.
+An atomic directory preserves its original tree snapshot. A selection spanning
+files or roots records those individual versions; it does not promise an
+application-wide atomic instant. Later uploads, renames and retention cannot alter
+the selected graph. The browser must resolve a current view to explicit versions
+before submitting it; unavailable versions fail instead of silently advancing.
+
+Capture processes one native metadata node per transaction, at most 256 KiB and
+1,024 children. Persistent frontier/page rows and the server writer fence allow
+restart without a long-lived database snapshot. Directory structure, empty files,
+empty directories, root-scoped shared chunks and exact extent offsets survive.
+Hashes, heights and parent totals are checked during enumeration. The transfer
+worker advances at most four sets and 32 nodes per set per tick, rotating their
+next-attempt times so large captures do not monopolize work.
+
+Initial per-account limits are four active sets, 1 TiB of pinned logical source
+bytes, 100 million capture records per set and a 24-hour deadline. Logical bytes
+are charged conservatively per selected version, without a deduplication discount;
+record limits also account for enumeration queues. Administrator core methods
+`archive_capture_limits` and `configure_archive_capture_limits` provide revision-
+checked configuration (maximum 64 active sets and seven-day deadline). HTTP/UI
+configuration belongs to the artifact quota task. Limit failures return
+`archive_resource_limit`; the active-set ceiling returns `archive_busy`.
+
+Owned graph pins deliberately have no independent GC expiry. The worker first
+fences cancellation, expiry, failure or revoked source authority, then releases
+at most 64 owned pins per cleanup transaction. Account charges are released once
+the last pin is gone, including for zero-byte selections. This avoids GC racing
+an active batch. The fixed deadline spans capture, planning and export; it cannot
+be extended by polling. Completed archive history remains intact after cleanup.
+During service downtime pins remain protective; cleanup resumes with the writer.
+
 Service checkpoint format remains schema-specific, unlike portable optical format
-1. The current service checkpoint reader uses schema 20. Restore a schema-19 service
+1. The current service checkpoint reader uses schema 21. Restore a schema-19/20 service
 checkpoint with its matching release, then migrate; it is not silently reinterpreted.
 Trusted catalog import temporarily permits inserting already-frozen optical rows,
 then immediately reinstates guards. Imported collections require reconciliation:

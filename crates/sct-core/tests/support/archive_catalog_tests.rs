@@ -7,14 +7,42 @@ fn collection_request() -> CreateArchiveCollectionRequest {
         media_capacity_bytes: 25_000_000_000.try_into().unwrap(),
     }
 }
-fn plan_request(collection: &ArchiveCollection, root: &RootInspection) -> CreateArchivePlanRequest {
+async fn plan_request(
+    writer: &Writer,
+    actor: &Actor,
+    collection: &ArchiveCollection,
+    root: &RootInspection,
+) -> CreateArchivePlanRequest {
+    use sct_core::{
+        payload::{MemoryStore, ObjectStore},
+        transfer_io::TransferEngine,
+    };
+    let engine = TransferEngine::new(
+        writer.clone(),
+        std::collections::BTreeMap::from([(
+            "one".into(),
+            Arc::new(MemoryStore::default()) as Arc<dyn ObjectStore>,
+        )]),
+        2,
+        3600,
+    )
+    .unwrap();
+    let upload = ready_bytes(&engine, writer, actor, &root.id, "capture-source", b"")
+        .await
+        .unwrap();
+    let version = engine
+        .commit_upload(actor, &root.id, &upload)
+        .await
+        .unwrap()
+        .version_id;
+    engine.tick().await.unwrap();
     CreateArchivePlanRequest {
         request_id: uuid::Uuid::new_v4().simple().to_string().parse().unwrap(),
         expected_revision: collection.revision.clone(),
         selections: vec![ArchiveSelection {
             root_id: root.id.clone(),
-            version_id: "committed-version".parse().unwrap(),
-            path: "/".parse().unwrap(),
+            version_id: version,
+            path: "/capture-source".parse().unwrap(),
         }],
         media_capacity_bytes: collection.media_capacity_bytes,
     }
@@ -46,7 +74,7 @@ async fn archive_catalog_serializes_append_replays_and_preserves_numbers_on_rest
             .0,
         ErrorCode::IdempotencyConflict
     ));
-    let request = plan_request(&collection, &root);
+    let request = plan_request(&writer, &actor, &collection, &root).await;
     let (one, two) = tokio::join!(
         writer.create_archive_plan(&actor, &collection.id, &request),
         writer.create_archive_plan(&actor, &collection.id, &request)
@@ -153,7 +181,11 @@ async fn archive_catalog_freezes_inventory_and_keeps_copy_observations() {
         .await
         .unwrap();
     let set = writer
-        .create_archive_plan(&actor, &collection.id, &plan_request(&collection, &root))
+        .create_archive_plan(
+            &actor,
+            &collection.id,
+            &plan_request(&writer, &actor, &collection, &root).await,
+        )
         .await
         .unwrap();
     sqlx::query("UPDATE archive_sets SET state='planning' WHERE id=$1")
@@ -166,11 +198,13 @@ async fn archive_catalog_freezes_inventory_and_keeps_copy_observations() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    sqlx::query("INSERT INTO archive_entries VALUES($1,'/','directory',NULL,NULL,0)")
-        .bind(set.id.as_str())
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO archive_entries VALUES($1,'/','directory',NULL,NULL,0) ON CONFLICT DO NOTHING",
+    )
+    .bind(set.id.as_str())
+    .execute(&pool)
+    .await
+    .unwrap();
     sqlx::query("INSERT INTO archive_discs VALUES('disc',$1,$2,1,repeat('a',64),repeat('b',64),repeat('c',64),0,0,100000000)").bind(collection.id.as_str()).bind(set.id.as_str()).execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO archive_artifacts VALUES('image','disc','building',NULL,NULL,NULL,clock_timestamp()+interval '1 day',0)").execute(&pool).await.unwrap();
     sqlx::query("UPDATE archive_sets SET state='awaiting_confirmation',plan='{}' WHERE id=$1")
@@ -282,6 +316,6 @@ async fn archive_catalog_migrates_existing_database_without_rewriting_online_his
             .fetch_one(&pool)
             .await
             .unwrap(),
-        20
+        21
     );
 }

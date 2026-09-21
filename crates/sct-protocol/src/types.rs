@@ -36,6 +36,7 @@ pub enum ErrorCode {
     DestinationUnavailable,
     UploadExpired,
     ArchiveBusy,
+    ArchiveResourceLimit,
     ArchiveExpired,
     ArchiveMetadataTooLarge,
     ArchiveArtifactUnavailable,
@@ -672,6 +673,7 @@ impl ErrorCode {
     pub fn http_status(&self) -> u16 {
         match self {
             Self::ArchiveBusy | Self::ArchiveReconciliationRequired => 409,
+            Self::ArchiveResourceLimit => 507,
             Self::ArchiveExpired | Self::ArchiveArtifactUnavailable => 410,
             Self::ArchiveMetadataTooLarge => 422,
             Self::Unauthorized => 401,
@@ -693,7 +695,10 @@ impl ErrorCode {
     }
     pub fn safe_message(&self) -> &'static str {
         match self {
-            Self::ArchiveBusy => "Another append owns this archive collection.",
+            Self::ArchiveBusy => {
+                "An archive append is active or the account concurrency limit is reached."
+            }
+            Self::ArchiveResourceLimit => "An archive account resource limit has been reached.",
             Self::ArchiveExpired => "The archive plan or source capture has expired.",
             Self::ArchiveMetadataTooLarge => {
                 "The complete index and recovery software cannot fit on each disc."

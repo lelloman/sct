@@ -147,7 +147,8 @@ impl Writer {
         request.validate()?;
         let mut tx = self.transaction().await?;
         let current = collection_access(&mut tx, actor, collection, true).await?;
-        crate::archive_management::source_access(&mut tx, actor, &request.selections).await?;
+        crate::archive_capture::lock_capture(&mut tx, actor, &current.owner, &request.selections)
+            .await?;
         let scope = format!("archive-set:{}", collection.as_str());
         let key = request.request_id.as_str().parse()?;
         if let Some(result) = replay(&mut tx, actor, &scope, &key, &json(request)?).await? {
@@ -171,6 +172,13 @@ impl Writer {
             .bind(identity.as_str()).bind(collection.as_str()).bind(sequence).bind(id()).bind(actor.principal_id()).bind(&actor.credential).bind(json(&request.selections)?).bind(request.media_capacity_bytes.get() as i64).execute(&mut *tx).await?;
         sqlx::query("INSERT INTO archive_sources(set_id,ordinal,root_id,version_id,path) SELECT $1,(ordinality-1)::integer,value->>'root_id',value->>'version_id',value->>'path' FROM jsonb_array_elements($2) WITH ORDINALITY")
             .bind(identity.as_str()).bind(json(&request.selections)?).execute(&mut *tx).await?;
+        crate::archive_capture::pin_capture(
+            &mut tx,
+            &current.owner,
+            &identity,
+            &request.selections,
+        )
+        .await?;
         sqlx::query("INSERT INTO archive_jobs(set_id) VALUES($1)")
             .bind(identity.as_str())
             .execute(&mut *tx)

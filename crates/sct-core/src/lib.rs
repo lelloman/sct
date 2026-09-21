@@ -4,6 +4,7 @@
 //! operations; a separate placement coordinator composes destinations. Provider
 //! settings and registration must not leak into namespace or retention rules.
 
+pub mod archive_capture;
 pub mod archive_catalog;
 mod archive_management;
 pub mod catalog;

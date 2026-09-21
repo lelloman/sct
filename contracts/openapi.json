@@ -2562,6 +2562,7 @@
           "destination_unavailable",
           "upload_expired",
           "archive_busy",
+          "archive_resource_limit",
           "archive_expired",
           "archive_metadata_too_large",
           "archive_artifact_unavailable",

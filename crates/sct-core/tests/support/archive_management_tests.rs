@@ -217,6 +217,8 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
             .is_err()
     );
     assert!(!w.authorize_archive_work(&set.id).await.unwrap());
+    assert!(w.cleanup_archive_capture(&set.id).await.unwrap());
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_sources s JOIN graph_pins p ON p.root_id=s.root_id AND p.id=s.pin_id WHERE s.set_id=$1").bind(set.id.as_str()).fetch_one(&db).await.unwrap(), 0);
     assert_eq!(
         w.inspect_archive_set(&admin, &col.id, &set.id)
             .await
@@ -245,6 +247,25 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
 async fn archive_management_revisions_cancel_replay_and_credential_revocation() {
     let (w, admin, db) = setup().await;
     let r = root(&w, &admin, "/archive", 500).await;
+    let engine = TransferEngine::new(
+        w.clone(),
+        BTreeMap::from([(
+            "one".into(),
+            Arc::new(MemoryStore::default()) as Arc<dyn ObjectStore>,
+        )]),
+        2,
+        3600,
+    )
+    .unwrap();
+    let upload = ready_bytes(&engine, &w, &admin, &r.id, "source", b"")
+        .await
+        .unwrap();
+    let version = engine
+        .commit_upload(&admin, &r.id, &upload)
+        .await
+        .unwrap()
+        .version_id;
+    engine.tick().await.unwrap();
     let (owner, credential) = user(&w, &admin, "owner").await;
     w.create_grant(
         &admin,
@@ -276,8 +297,8 @@ async fn archive_management_revisions_cancel_replay_and_credential_revocation() 
         expected_revision: col.revision,
         selections: vec![ArchiveSelection {
             root_id: r.id,
-            version_id: "version".parse().unwrap(),
-            path: "/".parse().unwrap(),
+            version_id: version,
+            path: "/source".parse().unwrap(),
         }],
         media_capacity_bytes: col.media_capacity_bytes,
     };
@@ -311,6 +332,15 @@ async fn archive_management_revisions_cancel_replay_and_credential_revocation() 
     w.revoke_credential(&admin, &credential.id).await.unwrap();
     assert!(!w.authorize_archive_work(&set.id).await.unwrap());
     assert!(w.list_archive_collections(&owner, &page()).await.is_err());
+    assert!(w.cleanup_archive_capture(&set.id).await.unwrap());
+    assert!(w.cleanup_archive_capture(&cancelled.id).await.unwrap());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
+            .fetch_one(&db)
+            .await
+            .unwrap(),
+        0
+    );
     assert_eq!(
         sqlx::query_scalar::<_, String>("SELECT state FROM archive_sets WHERE id=$1")
             .bind(set.id.as_str())

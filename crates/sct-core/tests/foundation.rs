@@ -1,3 +1,5 @@
+#[path = "support/archive_capture_tests.rs"]
+mod archive_capture_tests;
 #[path = "support/archive_catalog_tests.rs"]
 mod archive_catalog_tests;
 #[path = "support/archive_management_tests.rs"]

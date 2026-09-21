@@ -162,6 +162,13 @@ impl Catalog {
                 include_str!("../migrations/0020_disc_archives.sql").into(),
                 false,
             ),
+            sqlx::migrate::Migration::new(
+                21,
+                "archive_capture".into(),
+                sqlx::migrate::MigrationType::Simple,
+                include_str!("../migrations/0021_archive_capture.sql").into(),
+                false,
+            ),
         ];
         sqlx::migrate::Migrator {
             migrations: migrations.into(),
