@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""Locally write one immutable ScT image to an explicitly selected medium."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def sha256(path: Path) -> str:
+    result = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            result.update(block)
+    return result.hexdigest()
+
+
+def version() -> str:
+    return subprocess.check_output(["xorriso", "-version"], text=True, stderr=subprocess.STDOUT).splitlines()[0]
+
+
+def verify(media: Path) -> dict:
+    recover = media / "recovery" / "sct-recover"
+    if not recover.is_file() or recover.is_symlink():
+        raise RuntimeError("media has no safe recovery executable")
+    with tempfile.TemporaryDirectory(prefix="sct-media-readback-") as work:
+        local = Path(work) / "sct-recover"
+        shutil.copyfile(recover, local)
+        local.chmod(0o700)
+        output = subprocess.check_output(
+            [local, "verify-report", media, Path(work) / "original.sqlite"],
+            text=True,
+            stderr=subprocess.PIPE,
+            timeout=7200,
+        )
+    report = json.loads(output)
+    if not report.get("metadata_verified") or report.get("expected_objects") != report.get("verified_objects"):
+        raise RuntimeError("read-back verification is incomplete")
+    return report
+
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--sha256", required=True, help="immutable image SHA-256 shown by ScT")
+sub = parser.add_subparsers(dest="target", required=True)
+filesystem = sub.add_parser("filesystem", help="materialize into an empty mounted filesystem")
+filesystem.add_argument("image", type=Path)
+filesystem.add_argument("directory", type=Path)
+optical = sub.add_parser("optical", help="write a supplied optical device through xorriso")
+optical.add_argument("image", type=Path)
+optical.add_argument("--device", required=True, type=Path)
+optical.add_argument("--readback-directory", type=Path, help="actual read-only mounted media after writing")
+optical.add_argument("--dry-run", action="store_true", help="ask xorriso to simulate the write without laser output")
+args = parser.parse_args()
+
+image = args.image.resolve(strict=True)
+if not image.is_file() or image.is_symlink():
+    raise SystemExit("image must be a regular immutable ISO file")
+actual = sha256(image)
+if actual != args.sha256.lower():
+    raise SystemExit("image SHA-256 differs from the immutable value supplied by ScT")
+
+if args.target == "filesystem":
+    subprocess.run(
+        [ROOT / "scripts" / "materialize-archive-media", "--sha256", actual, image, args.directory],
+        check=True,
+        timeout=7200,
+    )
+    report = verify(args.directory.resolve(strict=True))
+    print(json.dumps({"target":"filesystem", "image_sha256":actual, "verified":True, "report":report}, sort_keys=True))
+    raise SystemExit(0)
+
+device = args.device.resolve(strict=True)
+mode = os.stat(device).st_mode
+if not (stat.S_ISBLK(mode) or stat.S_ISCHR(mode)):
+    raise SystemExit("optical target must be an explicitly supplied block or character device")
+command = ["xorriso", "-as", "cdrecord", f"dev={device}", "-v", "-eject", "-isosize"]
+if args.dry_run:
+    command.append("-dummy")
+command.append(str(image))
+subprocess.run(command, check=True, timeout=7200)
+if args.dry_run:
+    print(json.dumps({"target":"optical", "dry_run":True, "image_sha256":actual, "xorriso":version()}, sort_keys=True))
+    raise SystemExit(0)
+if args.readback_directory is None:
+    raise SystemExit("burn command returned; mount the actual media read-only and rerun with --readback-directory to record verification")
+report = verify(args.readback_directory.resolve(strict=True))
+print(json.dumps({"target":"optical", "device":str(device), "image_sha256":actual, "xorriso":version(), "verified":True, "report":report}, sort_keys=True))

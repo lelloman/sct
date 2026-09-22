@@ -101,6 +101,32 @@ the device. A USB copy is still a physical copy of the same logical disc; label
 its medium and location in ScT. It cannot make a larger device create extra data
 for an already frozen plan, and it must not be mixed with unrelated files.
 
+`scripts/write-archive-media` is the local writer wrapper. It requires the
+immutable SHA-256 and an explicit target, emits a JSON evidence record after
+verification, and never updates ScT's physical-copy ledger itself:
+
+```sh
+./scripts/write-archive-media --sha256 "$ISO_SHA256_FROM_SCT" filesystem \
+  /secure/downloads/disc-001.iso /media/sct-usb-001
+```
+
+For a discovered optical writer, first exercise its no-laser path, then supply
+the same explicit device for the actual write. After mounting the written medium
+read-only, pass that mount to obtain the bound verifier report:
+
+```sh
+./scripts/write-archive-media --sha256 "$ISO_SHA256_FROM_SCT" optical \
+  --device /dev/sr0 --dry-run /secure/downloads/disc-001.iso
+./scripts/write-archive-media --sha256 "$ISO_SHA256_FROM_SCT" optical \
+  --device /dev/sr0 --readback-directory /media/sct-disc-001 \
+  /secure/downloads/disc-001.iso
+```
+
+The writer rejects targets that are not explicitly supplied device nodes and
+does not format, partition, mount, or scan for devices. A successful command is
+evidence to submit through the existing physical-copy workflow; it is not an
+automatic server-side burn claim.
+
 ## Read back the actual disc
 
 After the drive has finished and the medium is mounted read-only, inspect the

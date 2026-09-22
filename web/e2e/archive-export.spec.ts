@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -105,8 +106,14 @@ test("browser previews, exports a real ISO and records bound read-back without s
     const media = join(scratch, "media");
     mkdirSync(media);
     execFileSync(
-      join(process.cwd(), "..", "scripts", "materialize-archive-media"),
-      [iso, media],
+      join(process.cwd(), "..", "scripts", "write-archive-media"),
+      [
+        "--sha256",
+        createHash("sha256").update(readFileSync(iso)).digest("hex"),
+        "filesystem",
+        iso,
+        media,
+      ],
       { stdio: "pipe" },
     );
     const tool = join(media, "recovery", "sct-recover");
