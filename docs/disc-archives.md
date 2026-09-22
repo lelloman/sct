@@ -5,6 +5,9 @@ Implementation tasks SCT-63–79 are assigned to Codex. Account-owned collection
 and a Linux x86_64 standalone recovery bundle are the approved initial defaults.
 Delivery is in progress; this document is a product contract, not a claim that all
 interfaces below are implemented. See [format 1](disc-archive-format.md) and the [approved tasks](disc-archive-tasks.md).
+Operators use the separate [physical optical-media drill](optical-media-drill.md)
+to burn, read back and recover an exported set; its current qualification record
+does not claim hardware support until an actual drive/media run succeeds.
 
 ## Product contract
 
