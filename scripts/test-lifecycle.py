@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Real-process signal/drain and writer-lease shutdown checks (disposable Postgres)."""
+"""Real-process shutdown checks (disposable Postgres); build sct-server/sct-recover first."""
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import socket
@@ -11,7 +12,7 @@ import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
-BINARY = ROOT / 'target/debug/sct-server'
+BINARY = Path(os.environ.get('CARGO_TARGET_DIR', str(ROOT / 'target'))) / 'debug/sct-server'
 
 
 def command(*args, **kwargs):
@@ -57,7 +58,18 @@ def run(env, number, sig, lose_lease=None, drain=False):
             assert process.wait(timeout=20) == (1 if lose_lease else 0)
             log.seek(0)
             output = log.read()
-            assert ('writer-lease' if lose_lease else 'graceful shutdown complete') in output, output
+            records = []
+            for line in output.splitlines():
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+            if lose_lease:
+                assert any(record.get('event') == 'fatal' for record in records), output
+                assert 'writer-lease' in output, output
+                assert not any(record.get('event') == 'shutdown_complete' for record in records), output
+            else:
+                assert any(record.get('event') == 'shutdown_complete' for record in records), output
             with socket.socket() as probe:
                 assert probe.connect_ex(('127.0.0.1', number)) != 0
         finally:
@@ -82,8 +94,13 @@ with tempfile.TemporaryDirectory(prefix='sct-lifecycle-') as directory:
                 break
             time.sleep(.5)
         address = command('docker', 'port', container, '5432/tcp')
-        env.update(SCT_TEST_DATABASE_URL=f'postgres://postgres:sct-test@{address}/sct_test', SCT_E2E_PORT=str(number))
+        env.update(SCT_TEST_DATABASE_URL=f'postgres://postgres:sct-test@{address}/sct_test', SCT_E2E_PORT=str(number), SCT_TEST_RECOVERY_BINARY=str(BINARY.parent / 'sct-recover'))
         subprocess.run(['cargo', 'run', '--locked', '--quiet', '-p', 'sct-server', '--example', 'foundation-fixture', '--', directory], cwd=ROOT, env=env, check=True)
+        # This suite needs only its temporary static fixture, not a frontend build.
+        config_path = fixture / 'config.toml'
+        config, replaced = re.subn(r'^web_dir = .*$', 'web_dir = ' + json.dumps(directory), config_path.read_text(), flags=re.MULTILINE)
+        assert replaced == 1
+        config_path.write_text(config)
         details = json.loads((fixture / 'fixture.json').read_text())
         env.update(SCT_CONFIG=str(fixture / 'config.toml'), SCT_E2E_DATABASE_URL=details['database_url'])
         # Immediate restart verifies that the previous process released its writer lease.

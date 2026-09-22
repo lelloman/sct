@@ -1,3 +1,5 @@
+mod background_worker;
+
 use simple_server::http;
 use simple_server::lifecycle::{Lifecycle, Shutdown, ShutdownOptions, Signals};
 use std::time::Duration;
@@ -119,19 +121,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             None => transfer,
         };
         let archive_worker = transfer.clone();
-        let archive_exports = tokio::spawn(async move {
-            loop {
-                if let Err(error) = archive_worker.archive_tick().await {
-                    eprintln!(
-                        "{}",
-                        serde_json::json!({"event":"archive_retry","code":error.0})
-                    );
+        let mut archive_exports =
+            background_worker::BackgroundWorker::spawn("archive-exports", async move {
+                loop {
+                    if let Err(error) = archive_worker.archive_tick().await {
+                        eprintln!(
+                            "{}",
+                            serde_json::json!({"event":"archive_retry","code":error.0})
+                        );
+                    }
+                    tokio::time::sleep(Duration::from_secs(2)).await;
                 }
-                tokio::time::sleep(Duration::from_secs(2)).await;
-            }
-        });
+            });
         let worker = transfer.clone();
-        let recovery = tokio::spawn(async move {
+        let mut recovery = background_worker::BackgroundWorker::spawn("recovery", async move {
             loop {
                 if let Err(error) = worker.tick().await {
                     eprintln!(
@@ -195,10 +198,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         })?;
         lifecycle
             .run(signals.wait(), async {
-                archive_exports.abort();
-                let _ = archive_exports.await;
-                recovery.abort();
-                let _ = recovery.await;
+                archive_exports.stop().await;
+                recovery.stop().await;
                 let released = writer.release().await;
                 catalog.close().await;
                 released

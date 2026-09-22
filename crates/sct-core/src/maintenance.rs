@@ -311,7 +311,7 @@ impl Writer {
                 } else {
                     "blocked"
                 };
-                sqlx::query("UPDATE maintenance_jobs SET state=$2,attempts=$3,next_attempt_at=CASE WHEN $2='retry_wait' THEN clock_timestamp()+make_interval(secs=>$4) ELSE NULL END,failure=$5,worker_expires_at=NULL,revision=$6 WHERE id=$1").bind(&claim.job).bind(state).bind(attempts.min(100)).bind((1u32<<attempts.min(5)) as f64).bind(json(&error.0)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?;
+                sqlx::query("UPDATE maintenance_jobs SET state=$2,attempts=$3,next_attempt_at=CASE WHEN $2='retry_wait' THEN clock_timestamp()+make_interval(secs=>$4) ELSE NULL END,failure=$5,worker_expires_at=NULL,revision=$6 WHERE id=$1").bind(&claim.job).bind(state).bind(attempts.min(100)).bind(maintenance_retry_seconds(attempts)).bind(json(&error.0)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?;
                 audit(&mut tx,&run_actor,Some(&claim.fence.root),"maintenance.failed_attempt",serde_json::json!({"job_id":claim.job,"state":state,"attempts":attempts,"failure":error.0})).await?;
             }
         }
@@ -354,5 +354,33 @@ impl Writer {
             }
         }
         Ok(())
+    }
+}
+
+// Delay only: PostgreSQL remains authoritative for attempts, clocks and leases.
+fn maintenance_retry_seconds(attempts: i32) -> f64 {
+    let policy = simple_server::task_policies::RetryPolicy {
+        max_attempts: std::num::NonZeroU32::new(7).unwrap(),
+        initial_delay: std::time::Duration::from_secs(1),
+        max_delay: std::time::Duration::from_secs(32),
+        jitter: std::time::Duration::ZERO,
+    };
+    let attempt = u32::try_from(attempts.min(5)).expect("nonnegative persisted attempt count") + 1;
+    policy
+        .delay_after(attempt, 0.0)
+        .expect("bounded retry delay")
+        .as_secs_f64()
+}
+
+#[cfg(test)]
+mod retry_policy_tests {
+    #[test]
+    fn delay_matches_existing_attempt_and_cap_boundaries() {
+        for attempt in 0..=100 {
+            assert_eq!(
+                super::maintenance_retry_seconds(attempt),
+                f64::from(1u32 << attempt.min(5))
+            );
+        }
     }
 }

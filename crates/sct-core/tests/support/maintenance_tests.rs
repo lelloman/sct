@@ -116,11 +116,28 @@ async fn maintenance_retries_authorization_resume_and_capacity_obligations() {
         .unwrap();
     for attempt in 1..=5 {
         let claim = w.claim_maintenance(&job.id).await.unwrap().unwrap();
+        let before: i64 =
+            sqlx::query_scalar("SELECT (extract(epoch FROM clock_timestamp())*1000)::bigint")
+                .fetch_one(&db)
+                .await
+                .unwrap();
         w.finish_maintenance_batch(&claim, Err(Error(ErrorCode::DestinationUnavailable)))
             .await
             .unwrap();
         let status = w.maintenance_job(&a, &job.id).await.unwrap();
         assert_eq!(status.attempts, attempt);
+        let after: i64 =
+            sqlx::query_scalar("SELECT (extract(epoch FROM clock_timestamp())*1000)::bigint")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        if attempt < 5 {
+            let next = status.next_attempt_at_ms.unwrap().get() as i64;
+            let delay = i64::from(1u32 << attempt) * 1000;
+            assert!((before + delay..=after + delay).contains(&next));
+        } else {
+            assert!(status.next_attempt_at_ms.is_none());
+        }
         assert_eq!(
             status.state,
             if attempt < 5 {
