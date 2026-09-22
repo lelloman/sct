@@ -74,6 +74,33 @@ logical disc and all historical dependencies intact. Start again with another
 physical copy of the same ISO, label it as a new physical copy in ScT, and do not
 overwrite, retire or renumber a logical disc.
 
+## USB and other removable filesystems
+
+The media capacity in a collection is an explicit byte value; it is not limited
+to Blu-ray sizes. Select the usable capacity of a USB stick, removable SSD, or
+other mounted filesystem when planning the collection. The export remains an
+immutable ISO so the same verified artifact can be burned to optical media or
+materialized onto a filesystem. The recovery layout on the mounted filesystem is
+identical to the ISO layout.
+
+Download and verify the ISO hash shown in ScT, mount the **empty** destination
+filesystem yourself, then run the supplied materializer. It never formats,
+mounts, discovers, or chooses a block device, and refuses a nonempty destination.
+
+```sh
+./scripts/materialize-archive-media \
+  --sha256 "$ISO_SHA256_FROM_SCT" \
+  /secure/downloads/disc-001.iso /media/sct-usb-001
+```
+
+The materializer extracts the ISO with `xorriso`, copies the on-media recovery
+binary to private temporary storage, and runs its full media verification against
+the USB filesystem. Keep the terminal output as the initial materialization
+record, then run the read-back report below after safely ejecting and remounting
+the device. A USB copy is still a physical copy of the same logical disc; label
+its medium and location in ScT. It cannot make a larger device create extra data
+for an already frozen plan, and it must not be mixed with unrelated files.
+
 ## Read back the actual disc
 
 After the drive has finished and the medium is mounted read-only, inspect the

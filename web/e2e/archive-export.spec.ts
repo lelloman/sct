@@ -103,9 +103,10 @@ test("browser previews, exports a real ISO and records bound read-back without s
     await download.saveAs(iso);
     expect(await download.failure()).toBeNull();
     const media = join(scratch, "media");
+    mkdirSync(media);
     execFileSync(
-      "xorriso",
-      ["-osirrox", "on", "-indev", iso, "-extract", "/", media],
+      join(process.cwd(), "..", "scripts", "materialize-archive-media"),
+      [iso, media],
       { stdio: "pipe" },
     );
     const tool = join(media, "recovery", "sct-recover");

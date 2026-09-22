@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Copy one verified ScT ISO into an empty mounted removable-media directory.
+
+This intentionally writes only a caller-selected directory. It never discovers,
+formats, mounts, or selects a block device.
+"""
+import argparse
+import hashlib
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+def digest(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            value.update(block)
+    return value.hexdigest()
+
+
+parser = argparse.ArgumentParser(
+    description="Extract one immutable ScT ISO to an empty mounted removable-media directory"
+)
+parser.add_argument("image", type=Path)
+parser.add_argument("destination", type=Path)
+parser.add_argument("--sha256", help="expected immutable ISO SHA-256 from ScT")
+arguments = parser.parse_args()
+
+image = arguments.image.resolve(strict=True)
+destination = arguments.destination.resolve(strict=True)
+if not image.is_file() or image.is_symlink():
+    raise SystemExit("image must be a regular ISO file")
+if not destination.is_dir() or destination.is_symlink():
+    raise SystemExit("destination must be a real directory (normally the mounted USB filesystem)")
+if any(destination.iterdir()):
+    raise SystemExit("destination must be empty; refusing to merge archive media with existing files")
+actual = digest(image)
+if arguments.sha256 and actual != arguments.sha256.lower():
+    raise SystemExit("ISO SHA-256 does not match the immutable artifact")
+
+try:
+    subprocess.run(
+        ["xorriso", "-osirrox", "on", "-indev", str(image), "-extract", "/", str(destination)],
+        check=True,
+    )
+except FileNotFoundError:
+    raise SystemExit("xorriso is required to materialize an ISO onto removable media")
+
+recover = destination / "recovery" / "sct-recover"
+if not recover.is_file() or recover.is_symlink():
+    raise SystemExit("extracted media has no safe recovery executable")
+with tempfile.TemporaryDirectory(prefix="sct-media-verify-") as work:
+    local = Path(work) / "sct-recover"
+    shutil.copyfile(recover, local)
+    local.chmod(0o700)
+    subprocess.run([local, "verify", destination, Path(work) / "index.sqlite"], check=True)
+print(f"Materialized and verified {image.name} at {destination} (ISO SHA-256 {actual})")
