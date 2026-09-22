@@ -52,6 +52,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     config["checkpoint_dir"] = json!(dir.join("checkpoints"));
     config["pools"].as_array_mut().unwrap().push(json!({"id":"browser_pool","capacity_bytes":2000000,"overhead_bytes":0,"staging_bytes":200000}));
     config["backends"].as_array_mut().unwrap().push(json!({"pool_id":"browser_pool","settings":{"directory":dir.join("payloads")},"inspection":{"id":"browser_local","display_name":"Browser payload storage","adapter_kind":"local","hints":{},"observed_health":"unknown"}}));
+    // Real executable and ISO generation for browser flow qualification. Full
+    // vendored production bundles are independently tested by the bundle suite.
+    let bundle_dir = dir.join("archive-bundle");
+    std::fs::create_dir_all(bundle_dir.join("recovery"))?;
+    std::fs::copy(
+        std::env::var("SCT_TEST_RECOVERY_BINARY")?,
+        bundle_dir.join("recovery/sct-recover"),
+    )?;
+    std::fs::write(bundle_dir.join("START-HERE.txt"), b"Browser integration fixture. Use recovery/sct-recover. Not a production source distribution.\n")?;
+    std::fs::write(
+        bundle_dir.join("recovery/source.tar.gz"),
+        b"test-only source placeholder",
+    )?;
+    let mut files = Vec::new();
+    for path in [
+        "START-HERE.txt",
+        "recovery/sct-recover",
+        "recovery/source.tar.gz",
+    ] {
+        let data = std::fs::read(bundle_dir.join(path))?;
+        files.push(sct_protocol::ArchiveBundleFile {
+            path: path.into(),
+            length: (data.len() as u64).try_into()?,
+            sha256: sct_protocol::digest(&data).parse()?,
+        });
+    }
+    let bundle = sct_protocol::ArchiveBundle {
+        format: 1,
+        version: "browser-integration".into(),
+        platform: "linux-x86_64-glibc236".into(),
+        files,
+    };
+    std::fs::write(
+        bundle_dir.join("recovery/bundle.json"),
+        sct_protocol::canonical(&bundle)?,
+    )?;
+    config["archive"] = json!({"directory":dir.join("archive-cache"),"bundle_directory":bundle_dir,"quota_bytes":1073741824});
     let value: toml::Value = serde_json::from_value(config)?;
     std::fs::write(dir.join("config.toml"), toml::to_string(&value)?)?;
     std::fs::write(

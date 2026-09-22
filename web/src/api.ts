@@ -71,6 +71,16 @@ export function errorMessage(error: unknown): string {
         "Temporary storage is full. An administrator can review capacity.",
       destination_unavailable:
         "Storage is temporarily unavailable. Try again shortly.",
+      archive_not_configured:
+        "ISO export is not configured. Ask an administrator to configure archive storage and the recovery bundle.",
+      archive_quota_exhausted:
+        "Archive capacity is exhausted. Cancel unfinished exports or ask an administrator to review cache and pin quotas.",
+      archive_expired:
+        "This archive plan or cached image has expired. Refresh its status.",
+      archive_reconciliation_required:
+        "This collection was recovered from a checkpoint and cannot accept new appends. Create a new collection for future discs.",
+      archive_media_too_small:
+        "The chosen disc capacity cannot hold the required index, recovery software, and payload. Choose larger media.",
       invalid_request: "Check the entered values and try again.",
       not_found: "This item is no longer available.",
     };

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ArchiveLimits from "./ArchiveLimits.vue";
 import { onMounted, ref } from "vue";
 import type {
   PrincipalInspection,
@@ -182,6 +183,10 @@ onMounted(() => void run(() => load()));
         <button :disabled="busy || !acknowledged">Save account access</button>
       </div>
     </form>
+    <ArchiveLimits
+      :key="`archive-${selected.id}`"
+      :principal-id="selected.id"
+    />
     <CredentialList :key="selected.id" :principal-id="selected.id" />
   </template>
 </template>

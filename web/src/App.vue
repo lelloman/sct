@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import ArchiveLimits from "./components/ArchiveLimits.vue";
 import ArchiveView from "./components/ArchiveView.vue";
 import RootView from "./components/RootView.vue";
 import CredentialList from "./components/CredentialList.vue";
@@ -274,6 +275,7 @@ onUnmounted(() => {
             {{ account.administrator ? "Administrator" : "Regular account" }}
           </dd>
         </dl>
+        <ArchiveLimits />
         <CredentialList :principal-id="account.principal_id" />
       </section>
       <PrincipalAdmin

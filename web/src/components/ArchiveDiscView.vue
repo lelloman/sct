@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { bytes, segment } from "../api";
+import { computed, ref } from "vue";
+import { bytes, segment, errorMessage } from "../api";
 import { archivePage } from "../archivePaging";
 import type {
   ArchiveDiscObject,
@@ -8,6 +8,7 @@ import type {
   ArchivePhysicalCopy,
   ArchiveSet,
 } from "../generated/api";
+import ArchiveCopyManager from "./ArchiveCopyManager.vue";
 import ArchivePager from "./ArchivePager.vue";
 const props = defineProps<{ collectionId: string; disc: ArchiveLogicalDisc }>();
 defineEmits<{ select: [snapshot: ArchiveSet] }>();
@@ -24,6 +25,31 @@ const objects = archivePage<ArchiveDiscObject>(
   "objects",
 );
 const required = archivePage<ArchiveSet>(() => `${base.value}/sets`, "sets");
+const downloadError = ref("");
+const downloading = ref(false);
+async function download() {
+  downloading.value = true;
+  downloadError.value = "";
+  try {
+    const path = `${base.value}/iso`;
+    const response = await fetch(path, {
+      method: "HEAD",
+      credentials: "same-origin",
+    });
+    if (!response.ok)
+      throw new Error(
+        `ISO download is unavailable (${response.status}). Refresh the disc list; the cache may have expired or your access may have changed.`,
+      );
+    const link = document.createElement("a");
+    link.href = path;
+    link.download = `disc-${props.disc.number}.iso`;
+    link.click();
+  } catch (failure) {
+    downloadError.value = errorMessage(failure);
+  } finally {
+    downloading.value = false;
+  }
+}
 function date(value: number) {
   return new Date(value).toLocaleString();
 }
@@ -41,6 +67,21 @@ function date(value: number) {
       }}<template v-if="disc.artifact">
         · Cache expiry {{ date(disc.artifact.expires_at_ms) }}</template
       >
+    </p>
+    <p v-if="downloadError" role="alert" class="notice error">
+      {{ downloadError }}
+    </p>
+    <button
+      v-if="disc.artifact?.state === 'available'"
+      :disabled="downloading"
+      @click="download"
+    >
+      Download ISO
+    </button>
+    <p v-if="disc.artifact?.state === 'available'" class="muted">
+      The download supports byte ranges and an immutable SHA-256 ETag for
+      resume. Keep the displayed hash; the program SDK can verify and resume
+      interrupted downloads. Downloading does not mark this disc burned.
     </p>
     <details>
       <summary>Content identities</summary>
@@ -83,6 +124,11 @@ function date(value: number) {
       @refresh="required.refresh"
     />
     <h4>Physical copies</h4>
+    <ArchiveCopyManager
+      :collection-id="collectionId"
+      :disc="disc"
+      @changed="copies.refresh"
+    />
     <p class="muted">
       Burn times and read-back results are owner-supplied observations. An ISO
       export or download does not verify a physical disc.
@@ -95,6 +141,12 @@ function date(value: number) {
     </p>
     <article v-for="copy in copies.items.value" :key="copy.id" class="panel">
       <h5>{{ copy.label }}</h5>
+      <ArchiveCopyManager
+        :collection-id="collectionId"
+        :disc="disc"
+        :copy="copy"
+        @changed="copies.refresh"
+      />
       <p>
         Current health: <strong>{{ copy.health.replaceAll("_", " ") }}</strong>
       </p>

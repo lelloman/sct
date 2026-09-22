@@ -22,6 +22,11 @@ if [[ -z "${SCT_TEST_DATABASE_URL:-}" ]]; then
   sct_e2e_port="$(docker port "$sct_e2e_pg" 5432/tcp)"
   export SCT_TEST_DATABASE_URL="postgres://postgres:sct-test@${sct_e2e_port}/sct_test"
 fi
+cargo build --locked -p sct-archive --bin sct-recover
+cargo build --locked -p sct-server --bin sct-server
+npm --prefix web run build
+cp "${CARGO_TARGET_DIR:-target}/debug/sct-recover" "$sct_e2e_fixture/sct-recover"
+export SCT_TEST_RECOVERY_BINARY="$sct_e2e_fixture/sct-recover"
 cargo run --locked --quiet -p sct-server --example foundation-fixture -- "$sct_e2e_fixture"
 export SCT_CONFIG="$sct_e2e_fixture/config.toml"
 export SCT_E2E_DATABASE_URL="$(jq -r .database_url "$sct_e2e_fixture/fixture.json")"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { bytes, segment } from "../api";
 import { archivePage } from "../archivePaging";
 import type {
@@ -8,13 +8,17 @@ import type {
   ArchiveLogicalDisc,
   ArchiveSet,
 } from "../generated/api";
+import ArchiveProgress from "./ArchiveProgress.vue";
 import ArchivePager from "./ArchivePager.vue";
 import ArchiveDiscView from "./ArchiveDiscView.vue";
 const props = defineProps<{
   collection: ArchiveCollection;
   snapshot: ArchiveSet;
 }>();
-defineEmits<{ select: [snapshot: ArchiveSet] }>();
+defineEmits<{
+  select: [snapshot: ArchiveSet];
+  updated: [snapshot: ArchiveSet];
+}>();
 const base = computed(
   () =>
     `/api/v1/archives/${segment(props.collection.id)}/sets/${segment(props.snapshot.id)}`,
@@ -22,6 +26,10 @@ const base = computed(
 const discs = archivePage<ArchiveLogicalDisc>(
   () => `${base.value}/discs`,
   "discs",
+);
+watch(
+  () => props.snapshot.state,
+  () => void discs.refresh(),
 );
 const entries = archivePage<ArchiveEntry>(
   () => `${base.value}/entries`,
@@ -46,6 +54,13 @@ const filtered = computed(() =>
         >· {{ snapshot.failure.replaceAll("_", " ") }}</span
       >
     </p>
+    <ArchiveProgress
+      :snapshot="snapshot"
+      @updated="
+        $emit('updated', $event);
+        void discs.refresh();
+      "
+    />
     <h3>Captured sources</h3>
     <ul>
       <li
@@ -97,6 +112,7 @@ const filtered = computed(() =>
           {{ item.object_count }} payload objects ·
           {{ bytes(item.payload_bytes) }}
         </p>
+        <p>ISO budget: {{ bytes(item.planned_iso_bytes) }}</p>
         <p>Cached ISO: {{ item.artifact?.state ?? "Not created" }}</p>
       </article>
     </div>

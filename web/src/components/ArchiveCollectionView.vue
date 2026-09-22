@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api, bytes, errorMessage, segment } from "../api";
 import { archivePage } from "../archivePaging";
 import type { ArchiveCollection, ArchiveSet } from "../generated/api";
+import ArchivePlanForm from "./ArchivePlanForm.vue";
 import ArchivePager from "./ArchivePager.vue";
 import ArchiveSetView from "./ArchiveSetView.vue";
 const props = defineProps<{ collectionId: string }>();
@@ -120,6 +121,14 @@ function date(value: number) {
           </div>
         </form>
       </details>
+      <ArchivePlanForm
+        :collection="collection"
+        @created="
+          selected = $event;
+          void sets.refresh();
+          void load();
+        "
+      />
       <h2>Recovery-point history</h2>
       <p v-if="sets.error.value" role="alert" class="notice error">
         {{ sets.error.value }}
@@ -172,6 +181,11 @@ function date(value: number) {
         :collection="collection"
         :snapshot="selected"
         @select="selected = $event"
+        @updated="
+          selected = $event;
+          void sets.refresh();
+          void load();
+        "
       />
     </template>
   </section>
