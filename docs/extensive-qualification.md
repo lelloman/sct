@@ -25,6 +25,24 @@ files, server logs and browser traces are retained under
 there is no automatic retry to turn a flaky run green. `SCT_QUALIFICATION_ARTIFACTS`
 can select another artifact directory. Images/build caches are retained for reuse.
 
+## Archive recovery stage
+
+`SCT_QUALIFY_STAGE=archive ./scripts/qualify` runs the focused optical archive
+qualification inside the same isolated Docker environment. Its ISO suite
+creates and extracts real `xorriso` images, verifies every image, and exercises
+interrupted export restart, cancellation fencing, quota failure, download
+revocation and cache expiry. Its archive-reader suite runs the separate
+ten-disc media fixture through missing-last, missing-middle, corrupt-byte,
+duplicate-media, shared-object and spanning-file cases. The stage records
+`archive-reader.log` and `archive-iso.log` under its artifact directory.
+
+The production recovery bundle is qualified separately with
+`scripts/build-recovery-bundle` followed by `scripts/test-recovery-bundle`. That
+test executes the exact on-disc executable in a read-only, networkless Debian
+container and proves any surviving fixture disc can bootstrap its set. ISO
+generation and extraction are media simulations; neither test represents a
+successful physical burn.
+
 ## Campaign
 
 - **Crash boundaries:** 15 versions each on local and local/S3 storage, killing the
@@ -152,3 +170,5 @@ These artifacts are local and ignored by Git; the scripts reproduce the tests.
 | Reference scale | 10,000,000 chunk references; seed 663,192 ms; GC 76,654 ms in 306 batches; sampled worker RSS 19,468–19,604 KiB |
 | Reference integrity | 19,544 unique marks; pinned copy preserved and orphan reclaimed after writer replacement; edge relation/indexes 4,676,493,312 bytes |
 | Independent SDK | Packaged public crates and standalone consumer compiled offline; dependency-boundary assertion passed in corrected image |
+| Archive Docker stage (2026-09-22) | `sct-qualification-20260922-092832-248696`: 2 catalog, 6 reader, 3 ten-disc restore and 4 real-ISO export cases passed; no ignored archive cases remained under the selected filter |
+| Recovery bundle (2026-09-22) | Built `sct-d16-20260922` (42,029,419 bytes, SHA-256 `6e214a4777612fd1b7eabcceb5496a66ecd029adb41d808ebc7ce93802a491a6`); the read-only networkless Debian test passed offline inspection, verification, complete/degraded/resumed recovery |

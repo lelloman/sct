@@ -25,6 +25,14 @@ if [[ "${SCT_QUALIFY_STAGE:-all}" == adapter ]]; then
   cargo test --locked -p sct-core s3_store::tests::real_s3_conformance -- --ignored --nocapture 2>&1 | tee /artifacts/adapter.log
   exit
 fi
+if [[ "${SCT_QUALIFY_STAGE:-all}" == archive ]]; then
+  # These tests create real ISO images with xorriso, extract them, boot every
+  # set from any of its discs, and exercise the ten-disc degraded-recovery
+  # fixture. They use only the disposable PostgreSQL and local scratch space.
+  cargo test --locked -p sct-archive --test reader --test restore --test catalog -- --nocapture 2>&1 | tee /artifacts/archive-reader.log
+  cargo test --locked -p sct-core --test foundation archive_iso -- --ignored --nocapture 2>&1 | tee /artifacts/archive-iso.log
+  exit
+fi
 cargo test --locked -p sct-server --test qualification -- --ignored --nocapture --test-threads=1 2>&1 | tee /artifacts/qualification.log
 cargo test --locked -p sct-core -p sct-server --tests -- --ignored --skip real_transfer_placements --skip million_entry_preview --skip qualification_ 2>&1 | tee /artifacts/integration.log
 SCT_QUALIFY_TREES=1 cargo test --locked -p sct-server --test transfers -- --ignored --nocapture 2>&1 | tee /artifacts/placements.log
