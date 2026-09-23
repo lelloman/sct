@@ -123,27 +123,45 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let archive_worker = transfer.clone();
         let mut archive_exports =
             background_worker::BackgroundWorker::spawn("archive-exports", async move {
-                loop {
-                    if let Err(error) = archive_worker.archive_tick().await {
-                        eprintln!(
-                            "{}",
-                            serde_json::json!({"event":"archive_retry","code":error.0})
-                        );
-                    }
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                }
+                simple_server::task_scheduling::run_poll_worker(
+                    || true,
+                    worker_cadence(),
+                    || async {
+                        match archive_worker.archive_tick().await {
+                            Ok(_) => simple_server::task_scheduling::PollOutcome::Worked,
+                            Err(error) => {
+                                eprintln!(
+                                    "{}",
+                                    serde_json::json!({"event":"archive_retry","code":error.0})
+                                );
+                                simple_server::task_scheduling::PollOutcome::Failed
+                            }
+                        }
+                    },
+                    |_, delay| tokio::time::sleep(delay),
+                )
+                .await;
             });
         let worker = transfer.clone();
         let mut recovery = background_worker::BackgroundWorker::spawn("recovery", async move {
-            loop {
-                if let Err(error) = worker.tick().await {
-                    eprintln!(
-                        "{}",
-                        serde_json::json!({"event":"recovery_retry","code":error.0})
-                    );
-                }
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
+            simple_server::task_scheduling::run_poll_worker(
+                || true,
+                worker_cadence(),
+                || async {
+                    match worker.tick().await {
+                        Ok(_) => simple_server::task_scheduling::PollOutcome::Worked,
+                        Err(error) => {
+                            eprintln!(
+                                "{}",
+                                serde_json::json!({"event":"recovery_retry","code":error.0})
+                            );
+                            simple_server::task_scheduling::PollOutcome::Failed
+                        }
+                    }
+                },
+                |_, delay| tokio::time::sleep(delay),
+            )
+            .await;
         });
         let heartbeat = transfer.clone();
         let app = App {
@@ -323,4 +341,14 @@ async fn copy_checkpoint(
     .await?;
     println!("{}", serde_json::to_string(&descriptor)?);
     Ok(())
+}
+
+// Fixed delay after each completed database-backed cycle, including failures.
+// Cancellation remains owned by BackgroundWorker's explicit abort/join sequence.
+fn worker_cadence() -> simple_server::task_scheduling::PollCadence {
+    simple_server::task_scheduling::PollCadence {
+        worked: Duration::from_secs(2),
+        idle: Duration::from_secs(2),
+        failed: Duration::from_secs(2),
+    }
 }
