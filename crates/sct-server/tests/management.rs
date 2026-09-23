@@ -182,6 +182,42 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
         actor.principal_id()
     );
     let cookie = format!("sct_session={}", session.secret);
+    for (header, status) in [
+        (format!("Bearer {}", admin.secret), 200),
+        (format!("bearer {}", admin.secret), 401),
+        (format!("Bearer  {}", admin.secret), 401),
+        ("Bearer ".to_owned(), 401),
+        ("Bearer".to_owned(), 401),
+    ] {
+        assert_eq!(
+            http.get(format!("{origin}/api/v1/account"))
+                .header("cookie", &cookie)
+                .header("authorization", header)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            status
+        );
+    }
+    let mut repeated = reqwest::header::HeaderMap::new();
+    repeated.append(
+        reqwest::header::AUTHORIZATION,
+        format!("Bearer {}", admin.secret).parse().unwrap(),
+    );
+    repeated.append(
+        reqwest::header::AUTHORIZATION,
+        "Bearer invalid".parse().unwrap(),
+    );
+    assert_eq!(
+        http.get(format!("{origin}/api/v1/account"))
+            .headers(repeated)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        200
+    );
     assert_eq!(
         http.post(&url)
             .header("cookie", &cookie)

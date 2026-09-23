@@ -7,7 +7,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-simple-server = { path = "../../../simple-server", default-features = false, features = ["task-policies"] }
+simple-server = { path = "../../../simple-server", default-features = false, features = ["task-policies", "auth"] }
 sct-protocol.workspace = true
 sqlx.workspace = true
 serde.workspace = true

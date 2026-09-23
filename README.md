@@ -24,6 +24,8 @@ Prerequisites: Rust 1.96.0 (installed by rustup from `rust-toolchain.toml`), Nod
 24.13+ (`nvm use` reads `.nvmrc`), npm, Bash, ripgrep, jq, xorriso, util-linux (`prlimit`), and Docker for disposable PostgreSQL
 integration tests. Dependency versions are captured in `Cargo.lock` and
 `web/package-lock.json`. The check scripts target Linux development/CI hosts.
+`simple-server.rev` records the reviewed shared-library checkout, including the
+auth feature used by the HTTP server and transaction-scoped core checks.
 
 ```sh
 npm --prefix web ci

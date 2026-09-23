@@ -1,6 +1,7 @@
 use crate::oidc::Oidc;
 use sct_core::{auth::Actor, backend::Registry, error::Error, lease::Writer};
 use sct_protocol::*;
+use simple_server::auth::{AsyncAccess, HeaderCredential, RepeatedHeaders, SchemeCase};
 use simple_server::axum::{
     Json, Router,
     extract::Request,
@@ -54,16 +55,57 @@ impl IntoResponse for ApiError {
 }
 type Result<T> = std::result::Result<T, ApiError>;
 pub struct Auth(pub Actor);
+struct AuthContext {
+    writer: Writer,
+    secret: String,
+    is_session: bool,
+    csrf: Option<String>,
+    deny_browser_content_mutation: bool,
+}
+
+async fn authenticate(context: AuthContext) -> Result<Actor> {
+    AsyncAccess::new(|context: &AuthContext| {
+        Box::pin(async move {
+            context
+                .writer
+                .authenticate(&context.secret, context.is_session, context.csrf.as_deref())
+                .await
+                .map_err(ApiError::from)
+        })
+    })
+    .with_check(|_, context| {
+        Box::pin(async move {
+            if context.deny_browser_content_mutation {
+                Err(ApiError(ErrorCode::Forbidden))
+            } else {
+                Ok(())
+            }
+        })
+    })
+    .evaluate(&context)
+    .await
+}
+
 impl FromRequestParts<App> for Auth {
     type Rejection = ApiError;
     async fn from_request_parts(parts: &mut Parts, state: &App) -> Result<Self> {
-        if let Some(auth) = parts.headers.get(header::AUTHORIZATION) {
-            let token = auth
-                .to_str()
-                .ok()
-                .and_then(|s| s.strip_prefix("Bearer "))
-                .ok_or(ApiError(ErrorCode::Unauthorized))?;
-            return Ok(Self(state.writer.authenticate(token, false, None).await?));
+        if parts.headers.contains_key(header::AUTHORIZATION) {
+            let token = HeaderCredential::new(header::AUTHORIZATION)
+                .with_scheme("Bearer", SchemeCase::Exact)
+                .repeated(RepeatedHeaders::First)
+                .allow_empty(true)
+                .extract(&parts.headers)
+                .map_err(|_| ApiError(ErrorCode::Unauthorized))?;
+            return Ok(Self(
+                authenticate(AuthContext {
+                    writer: state.writer.clone(),
+                    secret: token.expose().to_owned(),
+                    is_session: false,
+                    csrf: None,
+                    deny_browser_content_mutation: false,
+                })
+                .await?,
+            ));
         }
         let token =
             cookie(&parts.headers, session_name(state)).ok_or(ApiError(ErrorCode::Unauthorized))?;
@@ -91,15 +133,19 @@ impl FromRequestParts<App> for Auth {
         } else {
             None
         };
-        let actor = state.writer.authenticate(token, true, csrf).await?;
         let route = parts
             .extensions
             .get::<simple_server::axum::extract::MatchedPath>()
             .map(|path| path.as_str())
             .unwrap_or(parts.uri.path());
-        if mutation && browser_content_mutation(route) {
-            return Err(ApiError(ErrorCode::Forbidden));
-        }
+        let actor = authenticate(AuthContext {
+            writer: state.writer.clone(),
+            secret: token.to_owned(),
+            is_session: true,
+            csrf: csrf.map(str::to_owned),
+            deny_browser_content_mutation: mutation && browser_content_mutation(route),
+        })
+        .await?;
         Ok(Self(actor))
     }
 }

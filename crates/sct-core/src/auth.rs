@@ -3,6 +3,7 @@ use crate::{
     lease::Writer,
 };
 use sct_protocol::{Capability, ErrorCode, PrincipalId};
+use simple_server::auth::Access;
 use sqlx::{PgConnection, Row};
 
 /// Constructed only by credential authentication; authority is rechecked per transaction.
@@ -29,7 +30,11 @@ pub(crate) async fn administrator(db: &mut PgConnection, actor: &Actor) -> Resul
       .ok_or(Error(ErrorCode::Unauthorized))
 }
 pub(crate) async fn admin(db: &mut PgConnection, actor: &Actor) -> Result<()> {
-    require(administrator(db, actor).await?, ErrorCode::Forbidden)
+    let administrator = administrator(db, actor).await?;
+    Access::new(|administrator: &bool| Ok(*administrator))
+        .with_check(|administrator, _| require(*administrator, ErrorCode::Forbidden))
+        .evaluate(&administrator)?;
+    Ok(())
 }
 pub(crate) async fn capabilities(
     db: &mut PgConnection,
@@ -76,10 +81,12 @@ pub(crate) async fn authorize(
                 .await?;
         require(kind.as_deref() == Some("token"), ErrorCode::Forbidden)?;
     }
-    require(
-        capabilities(db, actor, root).await?.contains(&capability),
-        ErrorCode::Forbidden,
-    )
+    let granted = capabilities(db, actor, root).await?;
+    let permitted = granted.contains(&capability);
+    Access::new(|permitted: &bool| Ok(*permitted))
+        .with_check(|permitted, _| require(*permitted, ErrorCode::Forbidden))
+        .evaluate(&permitted)?;
+    Ok(())
 }
 pub fn all_capabilities() -> Vec<Capability> {
     vec![
