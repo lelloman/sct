@@ -53,9 +53,13 @@ async fn sdk_tree_and_lifecycle_workflow() {
         transfer: Some(engine),
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap()
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap()
     });
     let client = Client::new(origin.parse().unwrap())
         .unwrap()

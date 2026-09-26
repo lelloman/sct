@@ -1,7 +1,7 @@
 //! Keep ScT's server-generated UUID contract while sharing request scope.
 use simple_server::{
-    axum::{extract::Request, middleware::Next, response::Response},
     correlation::{Correlation, HeaderRequestId, Propagation, current_header_id},
+    web::{extract::Request, middleware::Next, response::Response},
 };
 
 pub(crate) fn request_id() -> String {

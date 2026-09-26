@@ -25,7 +25,8 @@ Prerequisites: Rust 1.96.0 (installed by rustup from `rust-toolchain.toml`), Nod
 integration tests. Dependency versions are captured in `Cargo.lock` and
 `web/package-lock.json`. The check scripts target Linux development/CI hosts.
 `simple-server.rev` records the reviewed shared-library checkout, including the
-auth feature used by the HTTP server and transaction-scoped core checks.
+auth feature used by the HTTP server and transaction-scoped core checks, plus
+the shared routing/HTTP interfaces. See [Step 11](docs/step-11-routing.md).
 
 ```sh
 npm --prefix web ci
@@ -111,7 +112,7 @@ for prerequisites, resource limits and the exact scope.
 | `sct-protocol` | Public Rust-owned contracts with generated OpenAPI, JSON Schema and TypeScript |
 | `sct-client` | Standalone authenticated foundation API client; transfer/chunking follows in M2; depends on protocol, never core/server |
 | `sct-core` | Authorization, catalog, roots, policies, namespace and operation fencing; immutable payload coordination and recovery |
-| `sct-server` | Axum routes, Tokio runtime, configuration and worker wiring |
+| `sct-server` | Shared HTTP routes, Tokio runtime, configuration and worker wiring |
 | `web` | Vue 3/TypeScript UI; wire models are generated from Rust contracts |
 
 The external sample is a template copied to a temporary directory by

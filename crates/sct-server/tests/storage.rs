@@ -36,9 +36,13 @@ async fn storage_http_requires_admin_and_persists_revision_checked_configuration
         transfer: None,
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap()
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap()
     });
     let http = reqwest::Client::new();
     let request = json!({"id":"managed","capacity_bytes":1000,"staging_bytes":100});

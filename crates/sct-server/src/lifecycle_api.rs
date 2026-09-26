@@ -1,6 +1,6 @@
 use crate::api::{ApiError, App, Auth};
 use sct_protocol::*;
-use simple_server::axum::{
+use simple_server::web::{
     Json, Router,
     extract::{Path, Query, State},
     routing::{get, post},
@@ -38,7 +38,7 @@ async fn apply(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(root): Path<String>,
-    body: Result<Json<ApplyChangeRequest>, simple_server::axum::extract::rejection::JsonRejection>,
+    body: Result<Json<ApplyChangeRequest>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<LifecycleJob>, ApiError> {
     Ok(Json(
         engine(&app)?
@@ -87,10 +87,7 @@ async fn create(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(root): Path<String>,
-    body: Result<
-        Json<PreviewChangeRequest>,
-        simple_server::axum::extract::rejection::JsonRejection,
-    >,
+    body: Result<Json<PreviewChangeRequest>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<ChangePreview>, ApiError> {
     Ok(Json(
         app.writer
@@ -128,7 +125,7 @@ async fn versions(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, preview)): Path<(String, String)>,
-    query: Result<Query<ListRequest>, simple_server::axum::extract::rejection::QueryRejection>,
+    query: Result<Query<ListRequest>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<PreviewVersionPage>, ApiError> {
     Ok(Json(
         app.writer
@@ -146,7 +143,7 @@ async fn purge(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(root): Path<String>,
-    body: Result<Json<PurgeRequest>, simple_server::axum::extract::rejection::JsonRejection>,
+    body: Result<Json<PurgeRequest>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<LifecycleJob>, ApiError> {
     Ok(Json(
         engine(&app)?

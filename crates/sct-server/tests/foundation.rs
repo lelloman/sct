@@ -17,7 +17,7 @@ use sct_server::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use simple_server::axum::{
+use simple_server::web::{
     Json, Router,
     extract::{Form, Query, State},
     http::StatusCode,
@@ -173,7 +173,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         codes: Arc::new(Mutex::new(HashMap::new())),
     };
     let provider_task = tokio::spawn(async move {
-        simple_server::axum::serve(
+        simple_server::web::serve(
             provider_listener,
             Router::new()
                 .route("/.well-known/openid-configuration", get(discovery))
@@ -181,6 +181,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
                 .route("/authorize", get(authorize))
                 .route("/token", post(token))
                 .with_state(provider),
+            simple_server::lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -218,9 +219,10 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         secure_cookies: false,
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(
+        simple_server::web::serve(
             listener,
             sct_server::application(app, PathBuf::from("nonexistent")),
+            simple_server::lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()

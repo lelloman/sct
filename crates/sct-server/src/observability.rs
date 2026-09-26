@@ -1,6 +1,6 @@
 //! Bounded route labels and structured metadata-only request logs.
 use crate::api::{ApiError, App, Auth};
-use simple_server::axum::{
+use simple_server::web::{
     Router,
     extract::{MatchedPath, Request, State},
     http::{HeaderValue, StatusCode},
@@ -54,12 +54,21 @@ struct HttpObserver {
     request_id: String,
 }
 impl HttpObserver {
-    fn response_event(&self, response: &Response, latency: Duration) -> serde_json::Value {
+    fn response_event<B>(
+        &self,
+        response: &simple_server::web::http::Response<B>,
+        latency: Duration,
+    ) -> serde_json::Value {
         serde_json::json!({"event":"http_response","request_id":self.request_id,"method":self.method,"route":self.route,"status":response.status().as_u16(),"duration_ms":latency.as_millis() as u64,"code":response.extensions().get::<sct_protocol::ErrorCode>()})
     }
 }
 impl simple_server::http_tracing::Observer for HttpObserver {
-    fn on_response(&mut self, _span: &tracing::Span, response: &Response, latency: Duration) {
+    fn on_response(
+        &mut self,
+        _span: &tracing::Span,
+        response: &simple_server::axum::response::Response,
+        latency: Duration,
+    ) {
         let elapsed = latency.as_secs_f64();
         if let Ok(mut values) = self.metrics.responses.lock() {
             let record = values
@@ -103,7 +112,7 @@ pub(crate) async fn observe(
         method,
         request_id: request_id.clone(),
     };
-    simple_server::http_tracing::trace_with_observer(request, observer, |request| async move {
+    simple_server::web::compat::trace_with_observer(request, observer, |request| async move {
         let mut response = next.run(request).await;
         response.headers_mut().insert(
             "x-request-id",
@@ -221,14 +230,14 @@ mod tests {
 
     #[tokio::test]
     async fn shared_observer_records_headers_without_subscriber_or_body_completion() {
-        use simple_server::axum::body::Body;
+        use simple_server::web::body::Body;
         let metrics = Arc::new(HttpMetrics::default());
         let app = Router::new()
             .route(
                 "/stream/{id}",
                 get(|| async {
                     let first = futures_util::stream::once(async {
-                        Ok::<_, std::io::Error>(simple_server::axum::body::Bytes::from_static(
+                        Ok::<_, std::io::Error>(simple_server::web::body::Bytes::from_static(
                             b"first",
                         ))
                     });
@@ -242,7 +251,9 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
-            simple_server::axum::serve(listener, app).await.unwrap();
+            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+                .await
+                .unwrap();
         });
         let http = reqwest::Client::new();
         let response = http

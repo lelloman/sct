@@ -72,9 +72,13 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
         transfer: Some(engine.clone()),
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap();
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap();
     });
     let client = Client::new(origin.parse().unwrap())
         .unwrap()
@@ -372,9 +376,13 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
         transfer: Some(engine),
     };
     let recovered_server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap();
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap();
     });
     let recovered_client = Client::new(origin.parse().unwrap())
         .unwrap()

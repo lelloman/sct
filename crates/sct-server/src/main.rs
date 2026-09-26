@@ -186,7 +186,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let lease_stop = Shutdown::new();
         let stop_after_http = lease_stop.clone();
         lifecycle.service("http", async move {
-            let result = http::serve(
+            let result = simple_server::web::serve(
                 listener,
                 sct_server::application(app, config.web_dir),
                 shutdown,
@@ -250,7 +250,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     );
     lifecycle.service(
         "http",
-        http::serve(
+        simple_server::web::serve(
             listener,
             sct_server::router(None, web),
             lifecycle.shutdown(),

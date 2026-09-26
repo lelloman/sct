@@ -2,7 +2,7 @@
 use crate::api::{ApiError, App, Auth};
 use sct_core::transfer_io::TransferEngine;
 use sct_protocol::*;
-use simple_server::axum::{
+use simple_server::web::{
     Json, Router,
     extract::{Path, Query, Request, State},
     http::StatusCode,
@@ -68,7 +68,7 @@ async fn create(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(root): Path<String>,
-    body: Result<Json<CreateUploadRequest>, simple_server::axum::extract::rejection::JsonRejection>,
+    body: Result<Json<CreateUploadRequest>, simple_server::extract::RejectionResponse>,
 ) -> Result<Response, ApiError> {
     let body = body.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
     Ok(status(
@@ -101,7 +101,7 @@ async fn page(
     engine(&app)?.upload_status(&actor, &root, &upload).await?;
     let bytes = tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        simple_server::axum::body::to_bytes(request.into_body(), MANIFEST_BYTES),
+        simple_server::web::body::to_bytes(request.into_body(), MANIFEST_BYTES),
     )
     .await
     .map_err(|_| ApiError(ErrorCode::DestinationUnavailable))?
@@ -166,7 +166,7 @@ async fn chunk(
     let _permit = engine.payload_permit().await?;
     let bytes = tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        simple_server::axum::body::to_bytes(request.into_body(), length as usize + 1),
+        simple_server::web::body::to_bytes(request.into_body(), length as usize + 1),
     )
     .await
     .map_err(|_| ApiError(ErrorCode::DestinationUnavailable))?
@@ -234,7 +234,7 @@ async fn content(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, version)): Path<(String, String)>,
-    headers: simple_server::axum::http::HeaderMap,
+    headers: simple_server::web::http::HeaderMap,
 ) -> Result<Response, ApiError> {
     content_response(
         engine(&app)?,
@@ -253,7 +253,7 @@ pub(crate) async fn content_response(
     root: RootId,
     version: VersionId,
     path: Option<RootPath>,
-    headers: simple_server::axum::http::HeaderMap,
+    headers: simple_server::web::http::HeaderMap,
 ) -> Result<Response, ApiError> {
     let manifest = if let Some(path) = &path {
         engine
@@ -315,7 +315,7 @@ pub(crate) async fn content_response(
             .map(|next| next.map(|bytes| (bytes, d)))
             .map_err(std::io::Error::other)
     });
-    let mut response = simple_server::axum::body::Body::from_stream(stream).into_response();
+    let mut response = simple_server::web::body::Body::from_stream(stream).into_response();
     response
         .headers_mut()
         .insert("content-type", "application/octet-stream".parse().unwrap());

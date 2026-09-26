@@ -1,12 +1,10 @@
 use crate::api::{ApiError, App, Auth};
 use sct_protocol::*;
-use simple_server::axum::{
+use simple_server::extract::RejectionResponse;
+use simple_server::web::{
     Json, Router,
     body::Body,
-    extract::{
-        Path, Query, State,
-        rejection::{JsonRejection, QueryRejection},
-    },
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -16,10 +14,10 @@ type Result<T> = std::result::Result<T, ApiError>;
 fn id(s: &str) -> Result<OperationId> {
     s.parse().map_err(|_| ApiError(ErrorCode::InvalidRequest))
 }
-fn body<T>(b: std::result::Result<Json<T>, JsonRejection>) -> Result<T> {
+fn body<T>(b: std::result::Result<Json<T>, RejectionResponse>) -> Result<T> {
     Ok(b.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0)
 }
-fn list(q: std::result::Result<Query<ListRequest>, QueryRejection>) -> Result<ListRequest> {
+fn list(q: std::result::Result<Query<ListRequest>, RejectionResponse>) -> Result<ListRequest> {
     Ok(q.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0)
 }
 pub fn routes() -> Router<App> {
@@ -46,7 +44,7 @@ pub fn routes() -> Router<App> {
 async fn create(
     State(app): State<App>,
     Auth(actor): Auth,
-    b: std::result::Result<Json<CreateCheckpointRequest>, JsonRejection>,
+    b: std::result::Result<Json<CreateCheckpointRequest>, RejectionResponse>,
 ) -> Result<Response> {
     let engine = app
         .transfer
@@ -61,7 +59,7 @@ async fn create(
 async fn all(
     State(app): State<App>,
     Auth(actor): Auth,
-    q: std::result::Result<Query<ListRequest>, QueryRejection>,
+    q: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<CheckpointPage>> {
     Ok(Json(app.writer.list_checkpoints(&actor, &list(q)?).await?))
 }
@@ -78,7 +76,7 @@ async fn release(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(checkpoint): Path<String>,
-    b: std::result::Result<Json<ReleaseCheckpointRequest>, JsonRejection>,
+    b: std::result::Result<Json<ReleaseCheckpointRequest>, RejectionResponse>,
 ) -> Result<Json<CheckpointInspection>> {
     Ok(Json(
         app.writer
@@ -90,7 +88,7 @@ async fn inventory(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(checkpoint): Path<String>,
-    q: std::result::Result<Query<ListRequest>, QueryRejection>,
+    q: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<CheckpointInventoryPage>> {
     Ok(Json(
         app.writer

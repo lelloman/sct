@@ -2,10 +2,11 @@ use crate::oidc::Oidc;
 use sct_core::{auth::Actor, backend::Registry, error::Error, lease::Writer};
 use sct_protocol::*;
 use simple_server::auth::{AsyncAccess, HeaderCredential, RepeatedHeaders, SchemeCase};
-use simple_server::axum::{
+use simple_server::extract::RejectionResponse;
+use simple_server::web::{
     Json, Router,
     extract::Request,
-    extract::{FromRequestParts, Path, Query, State, rejection::JsonRejection},
+    extract::{FromRequestParts, Path, Query, State},
     http::{HeaderMap, StatusCode, header, request::Parts},
     middleware::{self, Next},
     response::{IntoResponse, Redirect, Response},
@@ -30,12 +31,23 @@ impl From<Error> for ApiError {
 }
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        simple_server::extract::IntoRejectionResponse::into_rejection_response(self).into_response()
+    }
+}
+impl simple_server::extract::IntoRejectionResponse for ApiError {
+    fn into_rejection_response(self) -> simple_server::extract::RejectionResponse {
         let request_id = crate::correlation::request_id();
         let status =
             StatusCode::from_u16(self.0.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let body = ErrorResponse::new(request_id.parse().unwrap(), self.0.clone());
         let retry = matches!(body.retry, RetryGuidance::After { .. });
-        let mut response = (status, Json(body)).into_response();
+        let mut response = simple_server::web::http::Response::new(
+            serde_json::to_vec(&body).expect("protocol error serializes"),
+        );
+        *response.status_mut() = status;
+        response
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
         response
             .headers_mut()
             .insert("x-request-id", request_id.parse().unwrap());
@@ -50,7 +62,7 @@ impl IntoResponse for ApiError {
                 .headers_mut()
                 .insert(header::RETRY_AFTER, "1".parse().unwrap());
         }
-        response
+        response.into()
     }
 }
 type Result<T> = std::result::Result<T, ApiError>;
@@ -111,9 +123,9 @@ impl FromRequestParts<App> for Auth {
             cookie(&parts.headers, session_name(state)).ok_or(ApiError(ErrorCode::Unauthorized))?;
         let mutation = !matches!(
             parts.method,
-            simple_server::axum::http::Method::GET
-                | simple_server::axum::http::Method::HEAD
-                | simple_server::axum::http::Method::OPTIONS
+            simple_server::web::http::Method::GET
+                | simple_server::web::http::Method::HEAD
+                | simple_server::web::http::Method::OPTIONS
         );
         let csrf = if mutation {
             let origin = parts
@@ -135,7 +147,7 @@ impl FromRequestParts<App> for Auth {
         };
         let route = parts
             .extensions
-            .get::<simple_server::axum::extract::MatchedPath>()
+            .get::<simple_server::web::extract::MatchedPath>()
             .map(|path| path.as_str())
             .unwrap_or(parts.uri.path());
         let actor = authenticate(AuthContext {
@@ -209,13 +221,13 @@ fn set_cookie(
         .headers_mut()
         .append(header::SET_COOKIE, value.parse().expect("generated cookie"));
 }
-fn body<T>(value: std::result::Result<Json<T>, JsonRejection>) -> Result<T> {
+fn body<T>(value: std::result::Result<Json<T>, RejectionResponse>) -> Result<T> {
     value
         .map(|j| j.0)
         .map_err(|_| ApiError(ErrorCode::InvalidRequest))
 }
 fn query<T>(
-    value: std::result::Result<Query<T>, simple_server::axum::extract::rejection::QueryRejection>,
+    value: std::result::Result<Query<T>, simple_server::extract::RejectionResponse>,
 ) -> Result<T> {
     value
         .map(|q| q.0)
@@ -257,7 +269,7 @@ pub fn routes(state: App) -> Router {
         .route("/api/v1/admin/allocations", get(list_allocations))
         .route(
             "/api/v1/admin/roots/{root}/policy-constraints",
-            simple_server::axum::routing::patch(policy_constraints),
+            simple_server::web::routing::patch(policy_constraints),
         )
         .route("/api/v1/admin/pools/{pool}", get(pool))
         .route("/api/v1/admin/allocations/{allocation}", get(allocation))
@@ -340,17 +352,14 @@ async fn capabilities(Auth(_): Auth) -> Json<Capabilities> {
 async fn list_roots(
     State(s): State<App>,
     Auth(a): Auth,
-    q: std::result::Result<
-        Query<ListRequest>,
-        simple_server::axum::extract::rejection::QueryRejection,
-    >,
+    q: std::result::Result<Query<ListRequest>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<RootPage>> {
     Ok(Json(s.writer.list_roots(&a, &query(q)?).await?))
 }
 async fn create_root(
     State(s): State<App>,
     Auth(a): Auth,
-    b: std::result::Result<Json<CreateRootRequest>, JsonRejection>,
+    b: std::result::Result<Json<CreateRootRequest>, RejectionResponse>,
 ) -> Result<Json<RootInspection>> {
     Ok(Json(s.writer.create_root(&a, &body(b)?).await?))
 }
@@ -365,7 +374,7 @@ async fn update_root(
     State(s): State<App>,
     Auth(a): Auth,
     Path(root): Path<String>,
-    b: std::result::Result<Json<UpdateRootRequest>, JsonRejection>,
+    b: std::result::Result<Json<UpdateRootRequest>, RejectionResponse>,
 ) -> Result<Json<RootInspection>> {
     Ok(Json(
         s.writer
@@ -386,10 +395,7 @@ async fn resolve(
     State(s): State<App>,
     Auth(a): Auth,
     Path(root): Path<String>,
-    q: std::result::Result<
-        Query<ResolvePathRequest>,
-        simple_server::axum::extract::rejection::QueryRejection,
-    >,
+    q: std::result::Result<Query<ResolvePathRequest>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<EntryInspection>> {
     Ok(Json(
         s.writer
@@ -401,7 +407,7 @@ async fn create_directory(
     State(s): State<App>,
     Auth(a): Auth,
     Path(root): Path<String>,
-    b: std::result::Result<Json<CreateDirectoryRequest>, JsonRejection>,
+    b: std::result::Result<Json<CreateDirectoryRequest>, RejectionResponse>,
 ) -> Result<Json<EntryInspection>> {
     Ok(Json(
         s.writer
@@ -413,10 +419,7 @@ async fn list_entries(
     State(s): State<App>,
     Auth(a): Auth,
     Path(root): Path<String>,
-    q: std::result::Result<
-        Query<ListEntriesQuery>,
-        simple_server::axum::extract::rejection::QueryRejection,
-    >,
+    q: std::result::Result<Query<ListEntriesQuery>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<EntryPage>> {
     let q = query(q)?;
     let cursor = match (q.cursor, q.directory_revision) {
@@ -456,7 +459,7 @@ async fn rename(
     State(s): State<App>,
     Auth(a): Auth,
     Path(entry): Path<String>,
-    b: std::result::Result<Json<RenameEntryRequest>, JsonRejection>,
+    b: std::result::Result<Json<RenameEntryRequest>, RejectionResponse>,
 ) -> Result<Json<EntryInspection>> {
     Ok(Json(
         s.writer
@@ -467,24 +470,21 @@ async fn rename(
 async fn effective_policy(
     State(s): State<App>,
     Auth(a): Auth,
-    q: std::result::Result<
-        Query<PolicyScope>,
-        simple_server::axum::extract::rejection::QueryRejection,
-    >,
+    q: std::result::Result<Query<PolicyScope>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<EffectivePolicy>> {
     Ok(Json(s.writer.effective_policy(&a, &query(q)?).await?))
 }
 async fn set_policy(
     State(s): State<App>,
     Auth(a): Auth,
-    b: std::result::Result<Json<SetPolicyRequest>, JsonRejection>,
+    b: std::result::Result<Json<SetPolicyRequest>, RejectionResponse>,
 ) -> Result<Json<EffectivePolicy>> {
     Ok(Json(s.writer.set_policy(&a, &body(b)?).await?))
 }
 async fn create_grant(
     State(s): State<App>,
     Auth(a): Auth,
-    b: std::result::Result<Json<CreateGrantRequest>, JsonRejection>,
+    b: std::result::Result<Json<CreateGrantRequest>, RejectionResponse>,
 ) -> Result<Json<GrantInspection>> {
     Ok(Json(s.writer.create_grant(&a, &body(b)?).await?))
 }
@@ -501,7 +501,7 @@ async fn update_grant(
     State(s): State<App>,
     Auth(a): Auth,
     Path(grant): Path<String>,
-    b: std::result::Result<Json<UpdateGrantRequest>, JsonRejection>,
+    b: std::result::Result<Json<UpdateGrantRequest>, RejectionResponse>,
 ) -> Result<Json<GrantInspection>> {
     Ok(Json(
         s.writer
@@ -513,10 +513,7 @@ async fn revoke_grant(
     State(s): State<App>,
     Auth(a): Auth,
     Path(grant): Path<String>,
-    q: std::result::Result<
-        Query<ExpectedRevision>,
-        simple_server::axum::extract::rejection::QueryRejection,
-    >,
+    q: std::result::Result<Query<ExpectedRevision>, simple_server::extract::RejectionResponse>,
 ) -> Result<StatusCode> {
     s.writer
         .revoke_grant(&a, &identifier(&grant)?, &query(q)?.expected_revision)
@@ -526,10 +523,7 @@ async fn revoke_grant(
 async fn list_grants(
     State(s): State<App>,
     Auth(a): Auth,
-    q: std::result::Result<
-        Query<ListGrantsQuery>,
-        simple_server::axum::extract::rejection::QueryRejection,
-    >,
+    q: std::result::Result<Query<ListGrantsQuery>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<GrantPage>> {
     let q = query(q)?;
     Ok(Json(
@@ -605,10 +599,7 @@ struct Callback {
 async fn callback(
     State(s): State<App>,
     headers: HeaderMap,
-    q: std::result::Result<
-        Query<Callback>,
-        simple_server::axum::extract::rejection::QueryRejection,
-    >,
+    q: std::result::Result<Query<Callback>, simple_server::extract::RejectionResponse>,
 ) -> Result<Response> {
     let q = query(q)?;
     let oidc = s
@@ -718,10 +709,7 @@ async fn revoke_token(
 async fn list_allocations(
     State(s): State<App>,
     Auth(a): Auth,
-    q: std::result::Result<
-        Query<ListRequest>,
-        simple_server::axum::extract::rejection::QueryRejection,
-    >,
+    q: std::result::Result<Query<ListRequest>, simple_server::extract::RejectionResponse>,
 ) -> Result<Json<AllocationPage>> {
     Ok(Json(s.writer.list_allocations(&a, &query(q)?).await?))
 }
@@ -729,7 +717,7 @@ async fn policy_constraints(
     State(s): State<App>,
     Auth(a): Auth,
     Path(root): Path<String>,
-    b: std::result::Result<Json<PolicyConstraintsRequest>, JsonRejection>,
+    b: std::result::Result<Json<PolicyConstraintsRequest>, RejectionResponse>,
 ) -> Result<Json<RootInspection>> {
     let request = body(b)?;
     let root = identifier(&root)?;
@@ -744,6 +732,44 @@ async fn policy_constraints(
         )
         .await?;
     Ok(Json(s.writer.inspect_root(&a, &root).await?))
+}
+
+#[cfg(test)]
+mod rejection_contract {
+    use super::*;
+
+    #[tokio::test]
+    async fn protocol_errors_preserve_metadata_and_exact_json_for_rejections_and_handlers() {
+        for code in [ErrorCode::Unauthorized, ErrorCode::RateLimited] {
+            for extraction in [false, true] {
+                let response = if extraction {
+                    simple_server::extract::IntoRejectionResponse::into_rejection_response(
+                        ApiError(code.clone()),
+                    )
+                    .into_response()
+                } else {
+                    ApiError(code.clone()).into_response()
+                };
+                assert_eq!(response.status().as_u16(), code.http_status());
+                assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+                assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+                assert_eq!(response.extensions().get::<ErrorCode>(), Some(&code));
+                let request_id = response.headers()["x-request-id"].to_str().unwrap();
+                let uuid = uuid::Uuid::parse_str(request_id).unwrap();
+                assert_eq!(uuid.get_version_num(), 4);
+                let expected = ErrorResponse::new(request_id.parse().unwrap(), code.clone());
+                if code == ErrorCode::RateLimited {
+                    assert_eq!(response.headers()[header::RETRY_AFTER], "1");
+                } else {
+                    assert!(!response.headers().contains_key(header::RETRY_AFTER));
+                }
+                assert_eq!(
+                    response.into_body().collect(4096).await.unwrap().as_ref(),
+                    serde_json::to_vec(&expected).unwrap()
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -770,12 +796,10 @@ mod response_header_tests {
             .layer(middleware::from_fn(response_headers));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
-        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let stop = simple_server::lifecycle::Shutdown::new();
+        let stopped = stop.clone();
         let server = tokio::spawn(async move {
-            simple_server::axum::serve(listener, router)
-                .with_graceful_shutdown(async {
-                    let _ = stopped.await;
-                })
+            simple_server::web::serve(listener, router, stopped)
                 .await
                 .unwrap();
         });
@@ -807,7 +831,7 @@ mod response_header_tests {
                 assert!(serde_json::from_str::<serde_json::Value>(&body).is_ok());
             }
         }
-        stop.send(()).unwrap();
+        stop.request();
         server.await.unwrap();
     }
 }

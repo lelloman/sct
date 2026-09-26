@@ -21,9 +21,13 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
         transfer: None,
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap()
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap()
     });
     let http = reqwest::Client::new();
     assert!(

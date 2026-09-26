@@ -69,9 +69,13 @@ async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status(
         transfer: Some(engine.clone()),
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap()
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap()
     });
     let http = reqwest::Client::new();
     let request = json!({"idempotency_key":"scan","root_id":root.id,"kind":"integrity_scan"});

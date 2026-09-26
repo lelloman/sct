@@ -4,15 +4,14 @@ use std::path::PathBuf;
 async fn sdk_reaches_live_server_without_advertising_unimplemented_storage() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
-    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let stop = simple_server::lifecycle::Shutdown::new();
+    let stopped = stop.clone();
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(
+        simple_server::web::serve(
             listener,
             sct_server::router(None, PathBuf::from("nonexistent-web")),
+            stopped,
         )
-        .with_graceful_shutdown(async {
-            let _ = stopped.await;
-        })
         .await
         .unwrap();
     });
@@ -65,6 +64,6 @@ async fn sdk_reaches_live_server_without_advertising_unimplemented_storage() {
             .status(),
         503
     );
-    stop.send(()).unwrap();
+    stop.request();
     server.await.unwrap();
 }

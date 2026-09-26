@@ -1,12 +1,13 @@
 use crate::api::{ApiError, App, Auth};
 use sct_protocol::*;
-use simple_server::axum::{
+use simple_server::extract::RejectionResponse;
+use simple_server::web::{
     Json, Router,
-    extract::{Path, Query, State, rejection::QueryRejection},
+    extract::{Path, Query, State},
     routing::get,
 };
 type Result<T> = std::result::Result<T, ApiError>;
-type List = std::result::Result<Query<ListRequest>, QueryRejection>;
+type List = std::result::Result<Query<ListRequest>, RejectionResponse>;
 fn id<T: std::str::FromStr>(s: &str) -> Result<T> {
     s.parse().map_err(|_| ApiError(ErrorCode::InvalidRequest))
 }

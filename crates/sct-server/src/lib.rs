@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use sct_core::catalog::Catalog;
 use sct_protocol::{ErrorCode, ErrorResponse};
-use simple_server::axum::{
+use simple_server::web::{
     Json, Router,
     extract::State,
     http::StatusCode,
@@ -17,12 +17,12 @@ pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
     Router::new()
         .route(
             "/health/live",
-            simple_server::axum::routing::get_service(
+            simple_server::web::routing::get_service(
                 simple_server::health::Probe::liveness().endpoint(|result| {
                     result.expect("infallible liveness");
-                    simple_server::axum::http::Response::builder()
+                    simple_server::web::http::Response::builder()
                         .header("content-type", "text/plain; charset=utf-8")
-                        .body(simple_server::axum::body::Body::from("ok\n"))
+                        .body(simple_server::web::body::Body::from("ok\n"))
                         .expect("static liveness response")
                 }),
             ),
@@ -83,7 +83,7 @@ pub mod oidc;
 pub fn application(app: api::App, web_directory: PathBuf) -> Router {
     let router =
         router(Some(app.writer.catalog().clone()), web_directory).merge(api::routes(app.clone()));
-    observability::install(router, app).layer(simple_server::axum::middleware::from_fn(
+    observability::install(router, app).layer(simple_server::web::middleware::from_fn(
         correlation::middleware,
     ))
 }

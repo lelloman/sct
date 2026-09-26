@@ -32,9 +32,13 @@ async fn browser_archives_require_csrf_keep_account_isolation_and_forbid_source_
         transfer: None,
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap()
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap()
     });
     let http = reqwest::Client::new();
     let client = sct_client::Client::new(origin.parse().unwrap())
@@ -282,9 +286,13 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
         transfer: Some(engine.clone()),
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap()
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap()
     });
     let http = reqwest::Client::new();
     let url = format!("{origin}/api/v1/archives/collection/discs/disc/iso");

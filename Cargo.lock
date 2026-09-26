@@ -2138,13 +2138,16 @@ name = "simple-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "bytes",
  "chrono",
  "cron",
  "futures-util",
  "http",
  "http-body",
  "rand 0.8.8",
+ "serde",
  "tokio",
+ "tower",
  "tower-layer",
  "tower-service",
  "tracing",

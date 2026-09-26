@@ -1,11 +1,9 @@
 use crate::api::{ApiError, App, Auth};
 use sct_protocol::*;
-use simple_server::axum::{
+use simple_server::extract::RejectionResponse;
+use simple_server::web::{
     Json, Router,
-    extract::{
-        Path, Query, State,
-        rejection::{JsonRejection, QueryRejection},
-    },
+    extract::{Path, Query, State},
     routing::{get, post},
 };
 type Result<T> = std::result::Result<T, ApiError>;
@@ -30,7 +28,7 @@ pub fn routes() -> Router<App> {
         )
         .route(
             "/api/v1/archives/{collection}/copies/{copy}",
-            simple_server::axum::routing::patch(update_copy),
+            simple_server::web::routing::patch(update_copy),
         )
         .route(
             "/api/v1/archives/{collection}/copies/{copy}/reports",
@@ -70,7 +68,7 @@ pub fn routes() -> Router<App> {
 async fn collections(
     State(app): State<App>,
     Auth(actor): Auth,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveCollectionPage>> {
     Ok(Json(
         app.writer
@@ -99,7 +97,7 @@ async fn sets(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(collection): Path<String>,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveSetPage>> {
     Ok(Json(
         app.writer
@@ -126,7 +124,7 @@ async fn discs(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, set)): Path<(String, String)>,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveDiscPage>> {
     Ok(Json(
         app.writer
@@ -143,7 +141,7 @@ async fn entries(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, set)): Path<(String, String)>,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveEntryPage>> {
     Ok(Json(
         app.writer
@@ -160,7 +158,7 @@ async fn objects(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, disc)): Path<(String, String)>,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveObjectPage>> {
     Ok(Json(
         app.writer
@@ -176,7 +174,7 @@ async fn objects(
 async fn create_collection(
     State(app): State<App>,
     Auth(actor): Auth,
-    request: std::result::Result<Json<CreateArchiveCollectionRequest>, JsonRejection>,
+    request: std::result::Result<Json<CreateArchiveCollectionRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveCollection>> {
     Ok(Json(
         app.writer
@@ -191,7 +189,7 @@ async fn update_collection(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(collection): Path<String>,
-    request: std::result::Result<Json<UpdateArchiveCollectionRequest>, JsonRejection>,
+    request: std::result::Result<Json<UpdateArchiveCollectionRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveCollection>> {
     Ok(Json(
         app.writer
@@ -207,7 +205,7 @@ async fn plan(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(collection): Path<String>,
-    request: std::result::Result<Json<CreateArchivePlanRequest>, JsonRejection>,
+    request: std::result::Result<Json<CreateArchivePlanRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveSet>> {
     Ok(Json(
         app.writer
@@ -223,7 +221,7 @@ async fn confirm(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, set)): Path<(String, String)>,
-    request: std::result::Result<Json<ArchiveSetActionRequest>, JsonRejection>,
+    request: std::result::Result<Json<ArchiveSetActionRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveSet>> {
     Ok(Json(
         app.writer
@@ -240,7 +238,7 @@ async fn cancel(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, set)): Path<(String, String)>,
-    request: std::result::Result<Json<ArchiveSetActionRequest>, JsonRejection>,
+    request: std::result::Result<Json<ArchiveSetActionRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveSet>> {
     Ok(Json(
         app.writer
@@ -276,10 +274,10 @@ async fn iso(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, disc)): Path<(String, String)>,
-    headers: simple_server::axum::http::HeaderMap,
-    method: simple_server::axum::http::Method,
-) -> Result<simple_server::axum::response::Response> {
-    use simple_server::axum::{body::Body, http::StatusCode, response::IntoResponse};
+    headers: simple_server::web::http::HeaderMap,
+    method: simple_server::web::http::Method,
+) -> Result<simple_server::web::response::Response> {
+    use simple_server::web::{body::Body, http::StatusCode, response::IntoResponse};
     let engine = app
         .transfer
         .as_ref()
@@ -315,7 +313,7 @@ async fn iso(
         }
     }
     let mut range = None;
-    if method != simple_server::axum::http::Method::HEAD
+    if method != simple_server::web::http::Method::HEAD
         && headers
             .get("if-range")
             .is_none_or(|v| v.to_str().ok() == Some(etag.as_str()))
@@ -333,7 +331,7 @@ async fn iso(
         }
     }
     let (start, end) = range.unwrap_or((0, length));
-    let mut response = if method == simple_server::axum::http::Method::HEAD {
+    let mut response = if method == simple_server::web::http::Method::HEAD {
         Body::empty().into_response()
     } else {
         let download = engine
@@ -413,7 +411,7 @@ async fn update_account_limits(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(principal): Path<String>,
-    request: std::result::Result<Json<UpdateArchiveAccountLimitsRequest>, JsonRejection>,
+    request: std::result::Result<Json<UpdateArchiveAccountLimitsRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveAccountLimits>> {
     Ok(Json(
         app.writer
@@ -430,7 +428,7 @@ async fn copies(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, disc)): Path<(String, String)>,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveCopyPage>> {
     Ok(Json(
         app.writer
@@ -447,7 +445,7 @@ async fn register_copy(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, disc)): Path<(String, String)>,
-    request: std::result::Result<Json<RegisterArchiveCopyRequest>, JsonRejection>,
+    request: std::result::Result<Json<RegisterArchiveCopyRequest>, RejectionResponse>,
 ) -> Result<Json<ArchivePhysicalCopy>> {
     Ok(Json(
         app.writer
@@ -464,7 +462,7 @@ async fn update_copy(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, copy)): Path<(String, String)>,
-    request: std::result::Result<Json<UpdateArchiveCopyRequest>, JsonRejection>,
+    request: std::result::Result<Json<UpdateArchiveCopyRequest>, RejectionResponse>,
 ) -> Result<Json<ArchivePhysicalCopy>> {
     Ok(Json(
         app.writer
@@ -481,7 +479,7 @@ async fn reports(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, copy)): Path<(String, String)>,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveReportPage>> {
     Ok(Json(
         app.writer
@@ -498,7 +496,7 @@ async fn submit_report(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, copy)): Path<(String, String)>,
-    request: std::result::Result<Json<SubmitArchiveVerificationRequest>, JsonRejection>,
+    request: std::result::Result<Json<SubmitArchiveVerificationRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveVerificationReport>> {
     Ok(Json(
         app.writer
@@ -515,7 +513,7 @@ async fn copy_events(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, copy)): Path<(String, String)>,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveCopyEventPage>> {
     Ok(Json(
         app.writer
@@ -533,7 +531,7 @@ async fn disc_sets(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, disc)): Path<(String, String)>,
-    request: std::result::Result<Query<ListRequest>, QueryRejection>,
+    request: std::result::Result<Query<ListRequest>, RejectionResponse>,
 ) -> Result<Json<ArchiveSetPage>> {
     Ok(Json(
         app.writer

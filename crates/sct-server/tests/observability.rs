@@ -32,9 +32,13 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
         transfer: None,
     };
     let server = tokio::spawn(async move {
-        simple_server::axum::serve(listener, sct_server::application(app, "nonexistent".into()))
-            .await
-            .unwrap();
+        simple_server::web::serve(
+            listener,
+            sct_server::application(app, "nonexistent".into()),
+            simple_server::lifecycle::Shutdown::new(),
+        )
+        .await
+        .unwrap();
     });
     let http = reqwest::Client::new();
     assert_eq!(
