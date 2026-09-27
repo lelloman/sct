@@ -1,7 +1,7 @@
 # Step 11: shared routing and HTTP core
 
 Active branch: `master`, baseline `3b1144f`.
-Reviewed shared source: `23626b234eb1e854c3b3df5d62fe63375ec7a197`, pinned
+Reviewed shared source: `ca98a4159e1cb0dd7b9db2faa9a076d198b7973b`, pinned
 in `simple-server.rev` for the existing reproducible checkout workflow.
 Unrelated original untracked `.validation-work/` and `docs/step-04c-cors.md`
 are preserved and excluded from this migration.
@@ -21,10 +21,9 @@ supports standard HTTP Method for the archive ISO GET/HEAD handler; it preserves
 HEAD and custom methods, and sees changes made by earlier head extractors.
 Streamed ISO/checkpoint/transfer bodies and range/HEAD policies remain unchanged.
 
-The one remaining Axum type exposure is the tracing observer's backend response
-callback, through `web::compat::trace_with_observer`. There is no protocol adapter
-or backend router conversion in ordinary routing. HTTP core completion does not
-claim complete removal of that tracing compatibility boundary.
+The tracing observer now receives backend-independent `web::tracing::ResponseInfo`
+through `web::tracing::trace_with_observer`. There is no protocol adapter, backend
+response type or backend router conversion in SCT's routing and observability code.
 
 ## Verification
 

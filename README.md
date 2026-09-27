@@ -26,7 +26,9 @@ integration tests. Dependency versions are captured in `Cargo.lock` and
 `web/package-lock.json`. The check scripts target Linux development/CI hosts.
 `simple-server.rev` records the reviewed shared-library checkout, including the
 auth feature used by the HTTP server and transaction-scoped core checks, plus
-the shared routing/HTTP interfaces. See [Step 11](docs/step-11-routing.md).
+the shared routing, HTTP interfaces and backend-independent tracing observer.
+See [Step 03c](docs/step-03c-http-tracing.md) and
+[Step 11](docs/step-11-routing.md).
 
 ```sh
 npm --prefix web ci

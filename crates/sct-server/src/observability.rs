@@ -54,19 +54,19 @@ struct HttpObserver {
     request_id: String,
 }
 impl HttpObserver {
-    fn response_event<B>(
+    fn response_event(
         &self,
-        response: &simple_server::web::http::Response<B>,
+        response: &simple_server::web::tracing::ResponseInfo<'_>,
         latency: Duration,
     ) -> serde_json::Value {
         serde_json::json!({"event":"http_response","request_id":self.request_id,"method":self.method,"route":self.route,"status":response.status().as_u16(),"duration_ms":latency.as_millis() as u64,"code":response.extensions().get::<sct_protocol::ErrorCode>()})
     }
 }
-impl simple_server::http_tracing::Observer for HttpObserver {
+impl simple_server::web::tracing::Observer for HttpObserver {
     fn on_response(
         &mut self,
         _span: &tracing::Span,
-        response: &simple_server::axum::response::Response,
+        response: &simple_server::web::tracing::ResponseInfo<'_>,
         latency: Duration,
     ) {
         let elapsed = latency.as_secs_f64();
@@ -112,7 +112,7 @@ pub(crate) async fn observe(
         method,
         request_id: request_id.clone(),
     };
-    simple_server::web::compat::trace_with_observer(request, observer, |request| async move {
+    simple_server::web::tracing::trace_with_observer(request, observer, |request| async move {
         let mut response = next.run(request).await;
         response.headers_mut().insert(
             "x-request-id",
@@ -211,7 +211,7 @@ mod tests {
         assert_eq!(method("UNTRUSTED"), "OTHER");
     }
     #[test]
-    fn legacy_event_preserves_approved_metadata_and_header_latency() {
+    fn owned_event_preserves_approved_metadata_and_header_latency() {
         let observer = HttpObserver {
             metrics: Arc::new(HttpMetrics::default()),
             route: "/api/v1/roots/{root}".into(),
@@ -223,7 +223,10 @@ mod tests {
             .extensions_mut()
             .insert(sct_protocol::ErrorCode::UnsupportedOperation);
         assert_eq!(
-            observer.response_event(&response, Duration::from_micros(12_999)),
+            observer.response_event(
+                &simple_server::web::tracing::ResponseInfo::new(&response),
+                Duration::from_micros(12_999),
+            ),
             serde_json::json!({"event":"http_response","request_id":"0123456789abcdef0123456789abcdef","method":"GET","route":"/api/v1/roots/{root}","status":404,"duration_ms":12,"code":sct_protocol::ErrorCode::UnsupportedOperation})
         );
     }
