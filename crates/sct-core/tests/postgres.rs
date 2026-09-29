@@ -15,6 +15,19 @@ mod support;
 
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL; run scripts/test-integration"]
+async fn migration_preflight_rejects_changed_sqlx_checksum() {
+    let (catalog, pool) = support::database().await;
+    catalog.migrate().await.unwrap();
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = decode('00', 'hex') WHERE version = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let error = catalog.migrate().await.unwrap_err();
+    assert!(error.to_string().contains("DigestMismatch"), "{error}");
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL; run scripts/test-integration"]
 async fn migrations_constraints_and_rollback() {
     let (catalog, pool) = support::database().await;
     catalog.migrate().await.unwrap();

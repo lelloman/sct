@@ -1,6 +1,10 @@
 use std::time::Duration;
 
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use simple_server::database::migrations::{
+    CompletionState, MigrationEntry, MigrationObservation, MigrationPlan, MigrationVersion,
+    RecordedMigration,
+};
+use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 
 /// Connection wiring only; migrations and authoritative catalog entities follow in SCT-8.
 #[derive(Clone)]
@@ -198,14 +202,70 @@ impl Catalog {
                 false,
             ),
         ];
-        sqlx::migrate::Migrator {
+        let migrator = sqlx::migrate::Migrator {
             migrations: migrations.into(),
             ignore_missing: false,
             locking: true,
             no_tx: false,
-        }
-        .run(&self.pool)
-        .await
+        };
+        let namespace = "sct/postgres-catalog".to_owned();
+        let plan = MigrationPlan {
+            namespace: namespace.clone(),
+            entries: migrator
+                .iter()
+                .filter(|migration| migration.migration_type.is_up_migration())
+                .map(|migration| MigrationEntry {
+                    version: MigrationVersion::Number(migration.version as u64),
+                    name: migration.description.to_string(),
+                    digest: Some(hex::encode(&migration.checksum)),
+                })
+                .collect(),
+        };
+        let has_ledger: Option<String> =
+            sqlx::query_scalar("SELECT to_regclass('_sqlx_migrations')::text")
+                .fetch_one(&self.pool)
+                .await?;
+        let rows = if has_ledger.is_none() {
+            Vec::new()
+        } else {
+            sqlx::query("SELECT version, description, success, encode(checksum, 'hex') AS checksum FROM _sqlx_migrations ORDER BY version")
+                .fetch_all(&self.pool)
+                .await?
+        };
+        let observation = MigrationObservation {
+            namespace,
+            entries: rows
+                .iter()
+                .map(|row| {
+                    let version: i64 = row.get("version");
+                    Ok(RecordedMigration {
+                        entry: MigrationEntry {
+                            version: MigrationVersion::Number(u64::try_from(version).map_err(
+                                |_| {
+                                    sqlx::migrate::MigrateError::Source(Box::new(
+                                        std::io::Error::new(
+                                            std::io::ErrorKind::InvalidData,
+                                            format!("invalid migration version {version}"),
+                                        ),
+                                    ))
+                                },
+                            )?),
+                            name: row.get("description"),
+                            digest: Some(row.get("checksum")),
+                        },
+                        state: if row.get("success") {
+                            CompletionState::Applied
+                        } else {
+                            CompletionState::Dirty
+                        },
+                    })
+                })
+                .collect::<Result<Vec<_>, sqlx::migrate::MigrateError>>()?,
+            high_water_mark: None,
+        };
+        plan.inspect(&observation)
+            .map_err(|error| sqlx::migrate::MigrateError::Source(Box::new(error)))?;
+        migrator.run(&self.pool).await
     }
 
     pub async fn ping(&self) -> Result<(), sqlx::Error> {
