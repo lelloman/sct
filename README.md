@@ -24,7 +24,7 @@ Prerequisites: Rust 1.96.0 (installed by rustup from `rust-toolchain.toml`), Nod
 24.13+ (`nvm use` reads `.nvmrc`), npm, Bash, ripgrep, jq, xorriso, util-linux (`prlimit`), and Docker for disposable PostgreSQL
 integration tests. Dependency versions are captured in `Cargo.lock` and
 `web/package-lock.json`. The check scripts target Linux development/CI hosts.
-`simple-server.rev` records the reviewed shared-library checkout, including the
+The crates.io package `lelloman-simple-server` (aliased as `simple-server`) provides the
 auth feature used by the HTTP server and transaction-scoped core checks, plus
 the shared routing, HTTP interfaces and backend-independent tracing observer.
 See [Step 03c](docs/step-03c-http-tracing.md) and

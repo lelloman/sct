@@ -488,7 +488,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1085,6 +1085,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "lelloman-simple-server"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f3187c81c94701cd041df7ab17ce968b73c967db77c551170e3c24960b6c77a"
+dependencies = [
+ "axum",
+ "bytes",
+ "chrono",
+ "cron",
+ "futures-util",
+ "http",
+ "http-body",
+ "rand 0.8.8",
+ "serde",
+ "tokio",
+ "tower",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1258,7 +1280,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "getrandom 0.2.17",
  "http",
@@ -1530,7 +1552,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1752,7 +1774,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1849,12 +1871,12 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "sct-archive"
 version = "0.1.0"
 dependencies = [
+ "lelloman-simple-server",
  "rustix",
  "sct-protocol",
  "serde",
  "serde_json",
  "sha2",
- "simple-server",
  "sqlx",
  "tokio",
  "uuid",
@@ -1880,6 +1902,7 @@ dependencies = [
  "futures-util",
  "hex",
  "hmac",
+ "lelloman-simple-server",
  "quick-xml",
  "reqwest",
  "rustix",
@@ -1888,7 +1911,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "simple-server",
  "sqlx",
  "tokio",
  "tokio-util",
@@ -1914,6 +1936,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "futures-util",
+ "lelloman-simple-server",
  "openidconnect",
  "reqwest",
  "sct-client",
@@ -1922,7 +1945,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "simple-server",
  "sqlx",
  "tokio",
  "toml",
@@ -2133,26 +2155,6 @@ checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "digest",
  "rand_core 0.6.4",
-]
-
-[[package]]
-name = "simple-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "bytes",
- "chrono",
- "cron",
- "futures-util",
- "http",
- "http-body",
- "rand 0.8.8",
- "serde",
- "tokio",
- "tower",
- "tower-layer",
- "tower-service",
- "tracing",
 ]
 
 [[package]]
@@ -3009,7 +3011,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

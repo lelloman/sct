@@ -4,9 +4,9 @@ Run `./scripts/qualify` from the repository root. It builds a test image, starts
 isolated PostgreSQL 17, pinned MinIO and a controllable TCP fault proxy, and runs
 the actual Rust service, SDK and Chromium inside the test runner. Docker is the
 only host runtime required besides Bash, Git, tar and ordinary core utilities.
-The adjacent `simple-server` Git repository must contain the commit recorded in
-`simple-server.rev`; the build exports that exact revision, regardless of its
-current checkout. Source modifications in ScT are included deliberately.
+The shared library is downloaded from crates.io as `lelloman-simple-server`,
+using the version and checksum in the exported `Cargo.lock`. No adjacent library
+checkout is needed. Source modifications in ScT are included deliberately.
 
 The build downloads Rust/Node dependencies and Chromium; missing backend images
 are pulled before startup. Cargo runs offline during the campaign. Runtime containers share

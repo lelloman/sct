@@ -29,18 +29,15 @@ cleanup() {
 }
 trap cleanup EXIT
 # Include only source snapshots, never developer credentials or unrelated projects.
-sct_expected="$(tr -d '\n' < simple-server.rev)"
-git -C ../simple-server cat-file -e "$sct_expected^{commit}"
-mkdir -p "$sct_context/sct" "$sct_context/simple-server"
-git -C ../simple-server archive "$sct_expected" | tar -x -C "$sct_context/simple-server"
-tar --exclude='web/node_modules' --exclude='web/dist' --exclude='web/test-results' --exclude='web/playwright-report' --exclude='__pycache__' -cf - Cargo.toml Cargo.lock rust-toolchain.toml simple-server.rev README.md .gitignore config.example.toml config.local.example.toml crates web scripts tests examples contracts docs | tar -xf - -C "$sct_context/sct"
+mkdir -p "$sct_context/sct"
+tar --exclude='web/node_modules' --exclude='web/dist' --exclude='web/test-results' --exclude='web/playwright-report' --exclude='__pycache__' -cf - Cargo.toml Cargo.lock rust-toolchain.toml README.md .gitignore config.example.toml config.local.example.toml crates web scripts tests examples contracts docs | tar -xf - -C "$sct_context/sct"
 { git rev-parse HEAD; git diff --stat; } > "$sct_artifacts/source.txt"
 (cd "$sct_context" && find . -type f -print0 | sort -z | xargs -0 sha256sum) > "$sct_artifacts/source.sha256"
 sct_overlay=()
 sct_image=sct-qualification:local
 if [[ "${SCT_QUALIFY_DEV:-0}" == 1 ]]; then
   echo 'DEVELOPMENT OVERLAY: reuse existing image, rebuild current Rust source inside runner' | tee "$sct_artifacts/build.log"
-  sct_overlay=(-v "$sct_repo/crates:/work/sct/crates:ro" -v "$sct_repo/scripts:/work/sct/scripts:ro" -v "$sct_repo/tests:/work/sct/tests:ro" -v "$sct_repo/Cargo.toml:/work/sct/Cargo.toml:ro" -v "$sct_repo/Cargo.lock:/work/sct/Cargo.lock:ro" -v "$sct_context/simple-server:/work/simple-server:ro")
+  sct_overlay=(-v "$sct_repo/crates:/work/sct/crates:ro" -v "$sct_repo/scripts:/work/sct/scripts:ro" -v "$sct_repo/tests:/work/sct/tests:ro" -v "$sct_repo/Cargo.toml:/work/sct/Cargo.toml:ro" -v "$sct_repo/Cargo.lock:/work/sct/Cargo.lock:ro")
 else
   sct_image="sct-qualification:$sct_run"
   docker build -t "$sct_image" -t sct-qualification:local -f tests/qualification/Dockerfile "$sct_context" 2>&1 | tee "$sct_artifacts/build.log"
