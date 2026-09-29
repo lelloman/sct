@@ -1,8 +1,6 @@
+use crate::sqlite_connection::connect_archive;
 use crate::*;
-use sqlx::{
-    ConnectOptions, Connection, Row, SqliteConnection,
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
-};
+use sqlx::{Connection, Row, SqliteConnection};
 use std::{
     fs::OpenOptions,
     io::{BufRead, BufReader},
@@ -15,18 +13,7 @@ pub struct ArchiveIndex {
     pub descriptor: ArchiveDiscDescriptor,
 }
 async fn connect(path: &Path) -> Result<SqliteConnection> {
-    Ok(SqliteConnection::connect_with(
-        &SqliteConnectOptions::new()
-            .filename(path)
-            .foreign_keys(true)
-            .journal_mode(SqliteJournalMode::Delete)
-            .synchronous(SqliteSynchronous::Full)
-            .statement_cache_capacity(32)
-            .pragma("cache_size", "-8192")
-            .pragma("temp_store", "FILE")
-            .disable_statement_logging(),
-    )
-    .await?)
+    connect_archive(path).await
 }
 impl ArchiveIndex {
     /// `database` must be a new file in a private, caller-owned working directory.

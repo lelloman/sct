@@ -1,9 +1,7 @@
 //! Offline, append-only metadata catalog. No accounts or physical-copy claims.
+use crate::sqlite_connection::connect_archive;
 use crate::*;
-use sqlx::{
-    ConnectOptions, Connection, Row, SqliteConnection,
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
-};
+use sqlx::{Connection, Row, SqliteConnection};
 use std::{
     fs::OpenOptions,
     io::{BufRead, BufReader},
@@ -47,18 +45,7 @@ impl ArchiveCatalog {
             "catalog must be a regular private file",
         )?;
         rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)?;
-        let mut connection = SqliteConnection::connect_with(
-            &SqliteConnectOptions::new()
-                .filename(database)
-                .foreign_keys(true)
-                .journal_mode(SqliteJournalMode::Delete)
-                .synchronous(SqliteSynchronous::Full)
-                .statement_cache_capacity(32)
-                .pragma("cache_size", "-8192")
-                .pragma("temp_store", "FILE")
-                .disable_statement_logging(),
-        )
-        .await?;
+        let mut connection = connect_archive(database).await?;
         if new {
             let mut tx = connection.begin().await?;
             sqlx::raw_sql("CREATE TABLE catalog_meta(format INTEGER NOT NULL CHECK(format=1)); INSERT INTO catalog_meta VALUES(1);
