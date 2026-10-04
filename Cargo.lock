@@ -1086,9 +1086,9 @@ dependencies = [
 
 [[package]]
 name = "lelloman-simple-server"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f3187c81c94701cd041df7ab17ce968b73c967db77c551170e3c24960b6c77a"
+checksum = "d31aa705a4b51e0dfea8fdc334de20f8cf6048b049dedb970ef63227a7661d46"
 dependencies = [
  "axum",
  "bytes",

@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 sct-protocol.workspace = true
-simple-server = { workspace = true, features = ["database-sqlite"] }
+simple-server = { workspace = true, features = ["database-sqlite-schema"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

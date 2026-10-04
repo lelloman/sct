@@ -6,6 +6,7 @@ mod restore;
 mod verification;
 pub use restore::RestoreSummary;
 mod safe_fs;
+mod schema;
 mod sqlite_connection;
 pub use index::ArchiveIndex;
 pub use safe_fs::SafeDir;
