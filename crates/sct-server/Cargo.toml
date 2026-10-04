@@ -10,10 +10,9 @@ publish = false
 sct-core.workspace = true
 sct-protocol.workspace = true
 uuid = { version = "1.26.0", features = ["v4"] }
-simple-server = { workspace = true, features = ["response-headers", "task-scheduling"] }
+simple-server = { workspace = true, features = ["response-headers", "task-scheduling", "static-files"] }
 tracing = "0.1"
 tokio.workspace = true
-tower-http.workspace = true
 serde.workspace = true
 futures-util = "0.3"
 serde_json.workspace = true

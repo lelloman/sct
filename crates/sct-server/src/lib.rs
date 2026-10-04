@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use sct_core::catalog::Catalog;
 use sct_protocol::{ErrorCode, ErrorResponse};
+use simple_server::web::static_files::StaticDir;
 use simple_server::web::{
     Json, Router,
     extract::State,
@@ -11,7 +12,6 @@ use simple_server::web::{
     response::IntoResponse,
     routing::{any, get},
 };
-use tower_http::services::ServeDir;
 
 pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
     Router::new()
@@ -31,7 +31,7 @@ pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
         // Reserve API paths so missing API operations never return web HTML.
         .route("/api", any(api_not_implemented))
         .route("/api/{*path}", any(api_not_implemented))
-        .fallback_service(ServeDir::new(web_directory))
+        .fallback_service(StaticDir::new(web_directory))
         .with_state(catalog)
 }
 

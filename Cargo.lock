@@ -1086,9 +1086,9 @@ dependencies = [
 
 [[package]]
 name = "lelloman-simple-server"
-version = "0.1.2"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d31aa705a4b51e0dfea8fdc334de20f8cf6048b049dedb970ef63227a7661d46"
+checksum = "4f37d395af4d6ca8495ad190b8cecc5ab078ddfc92b8e9b3a41bc9eee80d3fce"
 dependencies = [
  "axum",
  "bytes",
@@ -1101,6 +1101,7 @@ dependencies = [
  "serde",
  "tokio",
  "tower",
+ "tower-http",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -1948,7 +1949,6 @@ dependencies = [
  "sqlx",
  "tokio",
  "toml",
- "tower-http",
  "tracing",
  "uuid",
 ]
