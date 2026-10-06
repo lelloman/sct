@@ -1,0 +1,58 @@
+{
+  "profile": "dev",
+  "trials": [
+    {
+      "trial": 1,
+      "backend": "source",
+      "clean_seconds": 36.49256436599535,
+      "edit_seconds": 1.1312823409971315
+    },
+    {
+      "trial": 1,
+      "backend": "engine",
+      "clean_seconds": 33.76775786899816,
+      "edit_seconds": 1.1394979399992735
+    },
+    {
+      "trial": 2,
+      "backend": "engine",
+      "clean_seconds": 33.08230478400219,
+      "edit_seconds": 1.1524184929949115
+    },
+    {
+      "trial": 2,
+      "backend": "source",
+      "clean_seconds": 34.76605309399747,
+      "edit_seconds": 1.2012073480000254
+    },
+    {
+      "trial": 3,
+      "backend": "source",
+      "clean_seconds": 38.95270325100137,
+      "edit_seconds": 1.1013880829996197
+    },
+    {
+      "trial": 3,
+      "backend": "engine",
+      "clean_seconds": 33.91835008600174,
+      "edit_seconds": 1.199089483001444
+    }
+  ],
+  "prebuilt_engine_cost_included": false,
+  "baseline_revision": "9e118e6",
+  "library_revision": "cf3aa18cf9879b70ee556e05e2140917710e9342",
+  "system": "Linux-6.8.0-142-generic-x86_64-with-glibc2.39",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: x86_64-unknown-linux-gnu\nrelease: 1.96.0\nLLVM version: 22.1.2\n",
+  "edit": "main.rs timestamp only; no behavior change",
+  "cargo_build_jobs": 8,
+  "medians": {
+    "source": {
+      "clean_seconds": 36.49256436599535,
+      "edit_seconds": 1.1312823409971315
+    },
+    "engine": {
+      "clean_seconds": 33.76775786899816,
+      "edit_seconds": 1.1524184929949115
+    }
+  }
+}

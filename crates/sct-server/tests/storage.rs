@@ -25,7 +25,7 @@ async fn storage_http_requires_admin_and_persists_revision_checked_configuration
     let mut registry = Registry::default();
     registry.register(Arc::new(TestAdapter)).unwrap();
     writer.configure(&registry, &[], &[]).await.unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -36,7 +36,7 @@ async fn storage_http_requires_admin_and_persists_revision_checked_configuration
         transfer: None,
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),

@@ -271,12 +271,14 @@ pub async fn run(client: &Client, root: &RootId, directory: &Path) {
     assert!(client.inspect_entry(&atomic.id).await.is_err());
 }
 async fn finish(client: &Client, root: &RootId, id: &OperationId) {
+    let mut last = None;
     for _ in 0..200 {
         let job = client.advance_lifecycle_job(root, id).await.unwrap();
         if job.state == LifecycleState::Completed {
             return;
         }
         assert_ne!(job.state, LifecycleState::Blocked, "{:?}", job.failure);
+        last = Some(job);
     }
-    panic!("job did not finish")
+    panic!("job did not finish: {last:?}")
 }

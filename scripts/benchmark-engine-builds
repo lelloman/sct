@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Compare locked source/engine server builds; run without competing compiler work."""
+import argparse, json, os, pathlib, platform, statistics, subprocess, tempfile, time
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--baseline", type=pathlib.Path, required=True)
+parser.add_argument("--engine", type=pathlib.Path, default=pathlib.Path.cwd())
+parser.add_argument("--engine-dir", type=pathlib.Path, required=True)
+parser.add_argument("--output", type=pathlib.Path, required=True)
+parser.add_argument("--trials", type=int, default=3)
+args = parser.parse_args()
+if args.trials < 1: parser.error("trials must be positive")
+baseline, engine = args.baseline.resolve(), args.engine.resolve()
+args.output = args.output.resolve()
+args.output.parent.mkdir(parents=True, exist_ok=True)
+result = {'profile':'dev', 'trials':[], 'prebuilt_engine_cost_included':False,
+          'baseline_revision':'9e118e6', 'library_revision':(engine/'simple-server.rev').read_text().strip(),
+          'system':platform.platform(), 'rustc':subprocess.check_output(['rustc','-Vv'],text=True),
+          'edit':'main.rs timestamp only; no behavior change', 'cargo_build_jobs':8}
+env = dict(os.environ, SIMPLE_SERVER_ENGINE_DIR=str(args.engine_dir.resolve()), CARGO_BUILD_JOBS='8')
+for trial in range(args.trials):
+    for kind, directory in ([('source',baseline),('engine',engine)] if trial % 2 == 0 else [('engine',engine),('source',baseline)]):
+        with tempfile.TemporaryDirectory(prefix='sct-compile-measure-') as target:
+            command=['cargo','build','--locked','--offline','-p','sct-server','--bin','sct-server','--target-dir',target]
+            entry={'trial':trial+1, 'backend':kind}
+            with open(args.output.with_name(f'{args.output.stem}-{trial+1}-{kind}.log'),'w') as log:
+                started=time.monotonic(); subprocess.run(command,cwd=directory,env=env,stdout=log,stderr=log,check=True)
+                entry['clean_seconds']=time.monotonic()-started
+                path=directory/'crates/sct-server/src/main.rs'; saved=path.stat()
+                try:
+                    os.utime(path,None)
+                    started=time.monotonic();subprocess.run(command,cwd=directory,env=env,stdout=log,stderr=log,check=True)
+                    entry['edit_seconds']=time.monotonic()-started
+                finally: os.utime(path,ns=(saved.st_atime_ns,saved.st_mtime_ns))
+            result['trials'].append(entry)
+            print(json.dumps(entry),flush=True)
+            args.output.write_text(json.dumps(result,indent=2)+'\n')
+result['medians']={kind:{field:statistics.median(row[field] for row in result['trials'] if row['backend']==kind) for field in ['clean_seconds','edit_seconds']} for kind in ['source','engine']}
+args.output.write_text(json.dumps(result,indent=2)+'\n')

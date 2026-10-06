@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+sct_graph=$(mktemp)
+trap 'rm -f "$sct_graph"' EXIT
+cargo tree --locked -p sct-server --edges normal,build --prefix none > "$sct_graph"
+if rg '^axum(-[^ ]*)? ' "$sct_graph"; then
+  echo 'ScT unexpectedly compiles the source HTTP server backend' >&2; exit 1
+fi
+readelf -d "${1:-target/debug/sct-server}" | rg -F '[libsimple_server_engine.so.1]'
+echo 'ScT links the shared engine; no Axum in its normal/build graph'

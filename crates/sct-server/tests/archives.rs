@@ -21,7 +21,7 @@ async fn browser_archives_require_csrf_keep_account_isolation_and_forbid_source_
         .issue_token(&admin, &"user".parse().unwrap())
         .await
         .unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -32,7 +32,7 @@ async fn browser_archives_require_csrf_keep_account_isolation_and_forbid_source_
         transfer: None,
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),
@@ -275,7 +275,7 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
     sqlx::query("INSERT INTO archive_discs(id,collection_id,set_id,number,index_sha256,bundle_sha256,inventory_sha256,payload_bytes,object_count,planned_iso_bytes) VALUES('disc','collection','set',1,$1,$1,$1,0,0,1000000)").bind(&hash).execute(&mut *tx).await.unwrap();
     sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,sha256,length,relative_path,expires_at) VALUES($1,'disc','available',$2,$3,$4,clock_timestamp()+interval '1 hour')").bind(&artifact).bind(&digest).bind(body.len() as i64).bind(format!("cache/{artifact}.iso")).execute(&mut *tx).await.unwrap();
     tx.commit().await.unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -286,7 +286,7 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
         transfer: Some(engine.clone()),
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),

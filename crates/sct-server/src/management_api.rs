@@ -1,11 +1,11 @@
 use crate::api::{ApiError, App, Auth};
-use sct_protocol::*;
-use simple_server::extract::RejectionResponse;
-use simple_server::web::{
+use crate::web::{
     Json, Router,
     extract::{Path, Query, State},
     routing::{delete, get, patch},
 };
+use sct_protocol::*;
+use simple_server::extract::RejectionResponse;
 type Result<T> = std::result::Result<T, ApiError>;
 type Body<T> = std::result::Result<Json<T>, RejectionResponse>;
 type List = std::result::Result<Query<ListRequest>, RejectionResponse>;
@@ -140,10 +140,10 @@ async fn revoke(
     State(app): State<App>,
     Auth(actor): Auth,
     Path(credential): Path<String>,
-) -> Result<simple_server::web::http::StatusCode> {
+) -> Result<crate::web::http::StatusCode> {
     let credential: CredentialId = id(&credential)?;
     app.writer
         .revoke_credential(&actor, credential.as_str())
         .await?;
-    Ok(simple_server::web::http::StatusCode::NO_CONTENT)
+    Ok(crate::web::http::StatusCode::NO_CONTENT)
 }

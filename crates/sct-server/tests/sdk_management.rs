@@ -33,7 +33,7 @@ async fn standalone_sdk_manages_accounts_capacity_grants_jobs_and_verified_check
     let engine = TransferEngine::new(writer.clone(), Default::default(), 2, 3600)
         .unwrap()
         .with_checkpoint_directory(exports.clone());
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -44,7 +44,7 @@ async fn standalone_sdk_manages_accounts_capacity_grants_jobs_and_verified_check
         transfer: Some(engine.clone()),
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),

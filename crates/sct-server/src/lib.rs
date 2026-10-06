@@ -2,36 +2,35 @@
 
 use std::path::PathBuf;
 
-use sct_core::catalog::Catalog;
-use sct_protocol::{ErrorCode, ErrorResponse};
-use simple_server::web::static_files::StaticDir;
-use simple_server::web::{
+use crate::web::{
     Json, Router,
     extract::State,
     http::StatusCode,
     response::IntoResponse,
     routing::{any, get},
 };
+use sct_core::catalog::Catalog;
+use sct_protocol::{ErrorCode, ErrorResponse};
 
 pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
     Router::new()
         .route(
             "/health/live",
-            simple_server::web::routing::get_service(
-                simple_server::health::Probe::liveness().endpoint(|result| {
+            crate::web::routing::get_service(simple_server::health::Probe::liveness().endpoint(
+                |result| {
                     result.expect("infallible liveness");
-                    simple_server::web::http::Response::builder()
+                    crate::web::http::Response::builder()
                         .header("content-type", "text/plain; charset=utf-8")
-                        .body(simple_server::web::body::Body::from("ok\n"))
+                        .body(crate::web::body::Body::from("ok\n"))
                         .expect("static liveness response")
-                }),
-            ),
+                },
+            )),
         )
         .route("/health/database", get(database_health))
         // Reserve API paths so missing API operations never return web HTML.
         .route("/api", any(api_not_implemented))
         .route("/api/{*path}", any(api_not_implemented))
-        .fallback_service(StaticDir::new(web_directory))
+        .fallback_static_dir(web_directory)
         .with_state(catalog)
 }
 
@@ -83,9 +82,8 @@ pub mod oidc;
 pub fn application(app: api::App, web_directory: PathBuf) -> Router {
     let router =
         router(Some(app.writer.catalog().clone()), web_directory).merge(api::routes(app.clone()));
-    observability::install(router, app).layer(simple_server::web::middleware::from_fn(
-        correlation::middleware,
-    ))
+    observability::install(router, app)
+        .layer(crate::web::middleware::from_fn(correlation::middleware))
 }
 pub fn capabilities() -> sct_protocol::Capabilities {
     use sct_protocol::*;
@@ -127,3 +125,5 @@ mod maintenance_api;
 mod observability;
 
 mod correlation;
+
+pub mod web;

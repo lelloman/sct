@@ -10,6 +10,13 @@ use sct_core::{
     backend::{Registry, TestAdapter},
     roots::{BackendSetup, PoolSetup},
 };
+use sct_server::web::{
+    Json, Router,
+    extract::{Form, Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Redirect, Response},
+    routing::{get, post},
+};
 use sct_server::{
     api::App,
     config::{Config, OidcConfig},
@@ -17,13 +24,6 @@ use sct_server::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use simple_server::web::{
-    Json, Router,
-    extract::{Form, Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Redirect, Response},
-    routing::{get, post},
-};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -157,9 +157,9 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         .authenticate(&admin.secret, false, None)
         .await
         .unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
-    let provider_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let provider_listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let provider_origin = format!("http://{}", provider_listener.local_addr().unwrap());
     let provider = Provider {
         origin: provider_origin.clone(),
@@ -173,7 +173,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         codes: Arc::new(Mutex::new(HashMap::new())),
     };
     let provider_task = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             provider_listener,
             Router::new()
                 .route("/.well-known/openid-configuration", get(discovery))
@@ -219,7 +219,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         secure_cookies: false,
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, PathBuf::from("nonexistent")),
             simple_server::lifecycle::Shutdown::new(),

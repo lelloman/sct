@@ -1,6 +1,6 @@
 //! Bounded route labels and structured metadata-only request logs.
 use crate::api::{ApiError, App, Auth};
-use simple_server::web::{
+use crate::web::{
     Router,
     extract::{MatchedPath, Request, State},
     http::{HeaderValue, StatusCode},
@@ -56,17 +56,17 @@ struct HttpObserver {
 impl HttpObserver {
     fn response_event(
         &self,
-        response: &simple_server::web::tracing::ResponseInfo<'_>,
+        response: &crate::web::tracing::ResponseInfo<'_>,
         latency: Duration,
     ) -> serde_json::Value {
         serde_json::json!({"event":"http_response","request_id":self.request_id,"method":self.method,"route":self.route,"status":response.status().as_u16(),"duration_ms":latency.as_millis() as u64,"code":response.extensions().get::<sct_protocol::ErrorCode>()})
     }
 }
-impl simple_server::web::tracing::Observer for HttpObserver {
+impl crate::web::tracing::Observer for HttpObserver {
     fn on_response(
         &mut self,
         _span: &tracing::Span,
-        response: &simple_server::web::tracing::ResponseInfo<'_>,
+        response: &crate::web::tracing::ResponseInfo<'_>,
         latency: Duration,
     ) {
         let elapsed = latency.as_secs_f64();
@@ -112,7 +112,7 @@ pub(crate) async fn observe(
         method,
         request_id: request_id.clone(),
     };
-    simple_server::web::tracing::trace_with_observer(request, observer, |request| async move {
+    crate::web::tracing::trace_with_observer(request, observer, |request| async move {
         let mut response = next.run(request).await;
         response.headers_mut().insert(
             "x-request-id",
@@ -224,7 +224,7 @@ mod tests {
             .insert(sct_protocol::ErrorCode::UnsupportedOperation);
         assert_eq!(
             observer.response_event(
-                &simple_server::web::tracing::ResponseInfo::new(&response),
+                &crate::web::tracing::ResponseInfo::new(&response),
                 Duration::from_micros(12_999),
             ),
             serde_json::json!({"event":"http_response","request_id":"0123456789abcdef0123456789abcdef","method":"GET","route":"/api/v1/roots/{root}","status":404,"duration_ms":12,"code":sct_protocol::ErrorCode::UnsupportedOperation})
@@ -233,16 +233,14 @@ mod tests {
 
     #[tokio::test]
     async fn shared_observer_records_headers_without_subscriber_or_body_completion() {
-        use simple_server::web::body::Body;
+        use crate::web::body::Body;
         let metrics = Arc::new(HttpMetrics::default());
         let app = Router::new()
             .route(
                 "/stream/{id}",
                 get(|| async {
                     let first = futures_util::stream::once(async {
-                        Ok::<_, std::io::Error>(simple_server::web::body::Bytes::from_static(
-                            b"first",
-                        ))
+                        Ok::<_, std::io::Error>(crate::web::body::Bytes::from_static(b"first"))
                     });
                     let pending = futures_util::stream::pending();
                     use futures_util::StreamExt;
@@ -251,10 +249,10 @@ mod tests {
             )
             .layer(middleware::from_fn_with_state(metrics.clone(), observe))
             .layer(middleware::from_fn(crate::correlation::middleware));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = crate::web::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
-            simple_server::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
+            crate::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
                 .await
                 .unwrap();
         });

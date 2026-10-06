@@ -61,7 +61,7 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
     let engine = TransferEngine::new(writer.clone(), Default::default(), 4, 3600)
         .unwrap()
         .with_checkpoint_directory(directory.join("exports"));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -72,7 +72,7 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
         transfer: Some(engine.clone()),
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),
@@ -365,7 +365,7 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
         );
     }
     let engine = TransferEngine::new(restored.clone(), stores, 4, 3600).unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: restored.clone(),
@@ -376,7 +376,7 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
         transfer: Some(engine),
     };
     let recovered_server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),

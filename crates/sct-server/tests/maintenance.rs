@@ -58,7 +58,7 @@ async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status(
     let engine = TransferEngine::new(writer.clone(), Default::default(), 1, 3600)
         .unwrap()
         .with_checkpoint_directory(checkpoint_directory.clone());
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -69,7 +69,7 @@ async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status(
         transfer: Some(engine.clone()),
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),

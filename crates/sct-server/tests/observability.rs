@@ -21,7 +21,7 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
         .issue_token(&actor, &"reader-private".parse().unwrap())
         .await
         .unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -32,7 +32,7 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
         transfer: None,
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),

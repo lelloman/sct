@@ -10,7 +10,7 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
     let (catalog, _) = support::database().await;
     let writer = catalog.acquire_writer().await.unwrap();
     let admin = writer.recover_administrator().await.unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -21,7 +21,7 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
         transfer: None,
     };
     let server = tokio::spawn(async move {
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
             simple_server::lifecycle::Shutdown::new(),

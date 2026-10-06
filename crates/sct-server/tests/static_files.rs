@@ -23,10 +23,10 @@ impl Drop for Files {
 #[tokio::test]
 async fn production_static_fallback_preserves_http_and_api_boundaries() {
     let files = Files::new();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let shutdown = Shutdown::new();
-    let server = tokio::spawn(simple_server::web::serve(
+    let server = tokio::spawn(sct_server::web::serve(
         listener,
         sct_server::router(None, files.0.clone()),
         shutdown.clone(),

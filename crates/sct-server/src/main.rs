@@ -1,6 +1,6 @@
 mod background_worker;
 
-use simple_server::http;
+use sct_server::web as http;
 use simple_server::lifecycle::{Lifecycle, Shutdown, ShutdownOptions, Signals};
 use std::time::Duration;
 
@@ -186,7 +186,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let lease_stop = Shutdown::new();
         let stop_after_http = lease_stop.clone();
         lifecycle.service("http", async move {
-            let result = simple_server::web::serve(
+            let result = sct_server::web::serve(
                 listener,
                 sct_server::application(app, config.web_dir),
                 shutdown,
@@ -250,7 +250,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     );
     lifecycle.service(
         "http",
-        simple_server::web::serve(
+        sct_server::web::serve(
             listener,
             sct_server::router(None, web),
             lifecycle.shutdown(),

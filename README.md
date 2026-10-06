@@ -24,9 +24,54 @@ Prerequisites: Rust 1.96.0 (installed by rustup from `rust-toolchain.toml`), Nod
 24.13+ (`nvm use` reads `.nvmrc`), npm, Bash, ripgrep, jq, xorriso, util-linux (`prlimit`), and Docker for disposable PostgreSQL
 integration tests. Dependency versions are captured in `Cargo.lock` and
 `web/package-lock.json`. The check scripts target Linux development/CI hosts.
-The crates.io package `lelloman-simple-server` (aliased as `simple-server`) provides the
-auth feature used by the HTTP server and transaction-scoped core checks, plus
-the shared routing, HTTP interfaces and backend-independent tracing observer.
+The server links a separately built `libsimple_server_engine.so.1`. The matching
+host library lives in the sibling `../simple-server` checkout at the commit in
+`simple-server.rev`; the source backend is no longer compiled into ScT.
+PostgreSQL/SQLx, OIDC/Reqwest and application Tokio remain on the application side.
+The shared engine serves HTTP and static files; `sct-server::web` keeps static
+route declarations concise and bridges graceful shutdown to the engine.
+
+For local development, check out the recorded library revision, then build its
+engine once and expose it to Cargo and the runtime loader:
+
+```sh
+cargo build --locked --manifest-path ../simple-server/crates/engine/Cargo.toml
+export SIMPLE_SERVER_ENGINE_DIR="$(realpath ../simple-server/crates/engine/target/debug)"
+export LD_LIBRARY_PATH="$SIMPLE_SERVER_ENGINE_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+ln -sf libsimple_server_engine.so "$SIMPLE_SERVER_ENGINE_DIR/libsimple_server_engine.so.1"
+```
+
+`./scripts/build-image` builds a reusable, revision-tagged engine image and a
+local `sct-engine-canary:local` runtime image. It exports the exact library commit,
+verifies the engine checksum, and copies the same `.so` into builder and runtime
+images. The consumer builder does not compile the native engine. Repeated builds
+reuse the engine image and BuildKit Cargo caches; nothing is pushed. `scripts/qualify` uses the same
+pinned source and engine image. Production storage/configuration remains
+application-owned and must be supplied when running the image.
+
+The local canary on 6 October 2026 passed all 61 workspace tests (92 existing
+ignores), all 12 database-backed server tests, and real-process HTTP drain,
+SIGINT/SIGTERM, writer-release/restart and lease-loss checks. The release container
+loads the engine and serves static/API/health responses before graceful shutdown.
+A bounded-concurrency run also passed 65 core database contracts, explicitly
+excluding the known failure below. The broader core suite has an existing archive migration-name mismatch
+(`draft_names` versus `draft names`), reproduced on the unchanged source backend;
+its unrestricted parallel run also exhibits database/timing failures. This is
+not a claim that the full qualification matrix is green. No image was published
+or deployed.
+
+Three isolated debug-build trials (eight Cargo jobs, engine prebuild excluded)
+gave median clean builds of **36.49s source / 33.77s engine** (about 7.5% faster).
+Timestamp-only rebuilds were **1.13s / 1.15s**, effectively unchanged. ScT still
+compiles its own database/client/runtime dependencies. See the
+[raw measurements](docs/measurements/sct-engine-build-2026-10-06.json).
+To reproduce, export baseline commit `9e118e6` into a separate directory and run:
+
+```sh
+./scripts/benchmark-engine-builds --baseline /path/to/baseline \
+  --engine-dir "$SIMPLE_SERVER_ENGINE_DIR" --output /tmp/sct-builds.json
+```
+
 See [Step 03c](docs/step-03c-http-tracing.md) and
 [Step 11](docs/step-11-routing.md).
 

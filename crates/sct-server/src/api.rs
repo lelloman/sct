@@ -1,9 +1,5 @@
 use crate::oidc::Oidc;
-use sct_core::{auth::Actor, backend::Registry, error::Error, lease::Writer};
-use sct_protocol::*;
-use simple_server::auth::{AsyncAccess, HeaderCredential, RepeatedHeaders, SchemeCase};
-use simple_server::extract::RejectionResponse;
-use simple_server::web::{
+use crate::web::{
     Json, Router,
     extract::Request,
     extract::{FromRequestParts, Path, Query, State},
@@ -12,6 +8,10 @@ use simple_server::web::{
     response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
 };
+use sct_core::{auth::Actor, backend::Registry, error::Error, lease::Writer};
+use sct_protocol::*;
+use simple_server::auth::{AsyncAccess, HeaderCredential, RepeatedHeaders, SchemeCase};
+use simple_server::extract::RejectionResponse;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -41,7 +41,7 @@ impl simple_server::extract::IntoRejectionResponse for ApiError {
             StatusCode::from_u16(self.0.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let body = ErrorResponse::new(request_id.parse().unwrap(), self.0.clone());
         let retry = matches!(body.retry, RetryGuidance::After { .. });
-        let mut response = simple_server::web::http::Response::new(
+        let mut response = crate::web::http::Response::new(
             serde_json::to_vec(&body).expect("protocol error serializes"),
         );
         *response.status_mut() = status;
@@ -123,9 +123,9 @@ impl FromRequestParts<App> for Auth {
             cookie(&parts.headers, session_name(state)).ok_or(ApiError(ErrorCode::Unauthorized))?;
         let mutation = !matches!(
             parts.method,
-            simple_server::web::http::Method::GET
-                | simple_server::web::http::Method::HEAD
-                | simple_server::web::http::Method::OPTIONS
+            crate::web::http::Method::GET
+                | crate::web::http::Method::HEAD
+                | crate::web::http::Method::OPTIONS
         );
         let csrf = if mutation {
             let origin = parts
@@ -147,7 +147,7 @@ impl FromRequestParts<App> for Auth {
         };
         let route = parts
             .extensions
-            .get::<simple_server::web::extract::MatchedPath>()
+            .get::<crate::web::extract::MatchedPath>()
             .map(|path| path.as_str())
             .unwrap_or(parts.uri.path());
         let actor = authenticate(AuthContext {
@@ -269,7 +269,7 @@ pub fn routes(state: App) -> Router {
         .route("/api/v1/admin/allocations", get(list_allocations))
         .route(
             "/api/v1/admin/roots/{root}/policy-constraints",
-            simple_server::web::routing::patch(policy_constraints),
+            crate::web::routing::patch(policy_constraints),
         )
         .route("/api/v1/admin/pools/{pool}", get(pool))
         .route("/api/v1/admin/allocations/{allocation}", get(allocation))
@@ -284,7 +284,14 @@ pub fn routes(state: App) -> Router {
         .merge(crate::inspection_api::routes())
         .merge(crate::maintenance_api::routes())
         .merge(crate::checkpoint_api::routes())
-        .layer(simple_server::body_limit::BodyLimit::max(65536))
+        .layer(middleware::from_fn(
+            |mut request: Request, next: Next| async move {
+                request
+                    .extensions_mut()
+                    .insert(simple_server::engine_web::extract::BodyLimit(65536));
+                next.run(request).await
+            },
+        ))
         .layer(middleware::from_fn(response_headers))
         .with_state(state)
 }
@@ -794,14 +801,12 @@ mod response_header_tests {
             )
             .route("/error", get(|| async { StatusCode::BAD_REQUEST }))
             .layer(middleware::from_fn(response_headers));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = crate::web::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let stop = simple_server::lifecycle::Shutdown::new();
         let stopped = stop.clone();
         let server = tokio::spawn(async move {
-            simple_server::web::serve(listener, router, stopped)
-                .await
-                .unwrap();
+            crate::web::serve(listener, router, stopped).await.unwrap();
         });
         let client = reqwest::Client::new();
         for (method, path, status) in [
