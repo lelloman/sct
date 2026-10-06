@@ -28,11 +28,14 @@ The server links a separately built `libsimple_server_engine.so.1`. The matching
 host library lives in the sibling `../simple-server` checkout at the commit in
 `simple-server.rev`; the source backend is no longer compiled into ScT.
 `#[simple_server::main]` owns the production runtime. HTTP serving, outbound
-HTTP (including OIDC transport and S3), PostgreSQL pools/transactions, tasks,
+HTTP (including S3), OIDC discovery/token verification, PostgreSQL pools/transactions, tasks,
 timers and shutdown use that engine. Storage uses the shared asynchronous I/O
 interfaces and engine blocking workers. SQL, authorization and business rules
 remain in ScT. The server's normal/build graph excludes Tokio, SQLx, Reqwest,
-Axum and Hyper; `scripts/check-engine-link` enforces this alongside ELF linking.
+Axum, Hyper and OIDC implementation/crypto dependencies; `scripts/check-engine-link`
+enforces this alongside ELF linking. OIDC uses the shared engine API; ScT keeps
+browser binding, single-use flow storage, issuer/subject account mapping, sessions
+and permissions. Its signing fixture retains `openidconnect` as a dev-dependency.
 
 The independent SDK and offline `sct-recover` utility retain their own runtime
 and drivers. They are not production server dependencies. Integration tests may
@@ -68,6 +71,25 @@ excluding the known failure below. The broader core suite has an existing archiv
 its unrestricted parallel run also exhibits database/timing failures. This is
 not a claim that the full qualification matrix is green. No image was published
 or deployed.
+
+The subsequent OIDC migration (7 October) moves discovery, PKCE, token exchange
+and ID-token verification into the engine at the current `simple-server.rev`.
+The production graph shrinks from 164 to 109 package/version entries (55 removed,
+none added). The signing fixture still compiles OIDC as a dev-dependency.
+Workspace tests (61 passed, 92 ignored), strict Clippy, extended OIDC login and
+both process tests pass; shared OIDC contracts also verify discovery policy and
+cancellation cleanup. This step does not change S3, URL parsing or standalone tools.
+
+Three fresh-target, alternating-order dev build pairs at eight jobs measured
+**24.41s before / 22.42s after** (about **2.0s, 8%** less compilation), excluding
+the engine prebuild. Both sides already use the engine runtime/database/HTTP;
+this is the additional OIDC saving. Timestamp-only medians were 0.89s / 0.74s;
+this is not a measurement of typical semantic edits or runtime throughput.
+[Raw OIDC measurements](docs/measurements/sct-oidc-build-2026-10-07.json).
+The local `sct-engine-oidc:local` release image also passed engine loading/checksum,
+readiness, static/API routes, SIGTERM/SIGINT and writer-release/restart checks.
+The extended login fixture passed against its release `.so` as well as the debug
+engine. Nothing was published or deployed.
 
 The completed runtime migration pins simple-server `be6dde0`. Three paired,
 alternating-order builds (eight jobs, fresh targets, cached downloads, dev profile)

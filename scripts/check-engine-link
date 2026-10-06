@@ -4,8 +4,8 @@ cd "$(dirname "$0")/.."
 sct_graph=$(mktemp)
 trap 'rm -f "$sct_graph"' EXIT
 cargo tree --locked -p sct-server --edges normal,build --prefix none > "$sct_graph"
-if rg '^(axum|tokio|sqlx|reqwest|hyper)(-[^ ]*)? ' "$sct_graph"; then
-  echo 'ScT unexpectedly compiles an engine-owned runtime, database or HTTP dependency' >&2; exit 1
+if rg '^(axum|tokio|sqlx|reqwest|hyper|openidconnect|oauth2|rsa|p256|p384|ed25519-dalek)(-[^ ]*)? ' "$sct_graph"; then
+  echo 'ScT unexpectedly compiles an engine-owned runtime, database, HTTP or OIDC dependency' >&2; exit 1
 fi
 readelf -d "${1:-target/debug/sct-server}" | rg -F '[libsimple_server_engine.so.1]'
-echo 'ScT links the shared engine; no Tokio, SQLx, Reqwest, Axum or Hyper in its normal/build graph'
+echo 'ScT links the shared engine; no Tokio, SQLx, Reqwest, Axum, Hyper or OIDC implementation in its normal/build graph'

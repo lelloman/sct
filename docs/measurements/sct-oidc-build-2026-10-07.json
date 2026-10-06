@@ -1,0 +1,62 @@
+{
+  "profile": "dev",
+  "trials": [
+    {
+      "trial": 1,
+      "backend": "before_oidc",
+      "clean_seconds": 24.352105039994058,
+      "edit_seconds": 0.8886990760001936
+    },
+    {
+      "trial": 1,
+      "backend": "after_oidc",
+      "clean_seconds": 22.33222644399939,
+      "edit_seconds": 0.738286527004675
+    },
+    {
+      "trial": 2,
+      "backend": "after_oidc",
+      "clean_seconds": 22.420436555003107,
+      "edit_seconds": 0.7423092929966515
+    },
+    {
+      "trial": 2,
+      "backend": "before_oidc",
+      "clean_seconds": 24.406496121999226,
+      "edit_seconds": 0.8858195869979681
+    },
+    {
+      "trial": 3,
+      "backend": "before_oidc",
+      "clean_seconds": 24.527384958993935,
+      "edit_seconds": 0.8975101749965688
+    },
+    {
+      "trial": 3,
+      "backend": "after_oidc",
+      "clean_seconds": 22.678398100004415,
+      "edit_seconds": 0.7404188119980972
+    }
+  ],
+  "prebuilt_engine_cost_included": false,
+  "baseline_revision": "a9217a4516fa97a31b725117d753903cdb80c949",
+  "library_revision": "5050786abbc5cbda032bd340b785b85718894c6c",
+  "system": "Linux-6.8.0-142-generic-x86_64-with-glibc2.39",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)\nbinary: rustc\ncommit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96\ncommit-date: 2026-05-25\nhost: x86_64-unknown-linux-gnu\nrelease: 1.96.0\nLLVM version: 22.1.2\n",
+  "edit": "main.rs timestamp only; no behavior change",
+  "cargo_build_jobs": 8,
+  "medians": {
+    "before_oidc": {
+      "clean_seconds": 24.406496121999226,
+      "edit_seconds": 0.8886990760001936
+    },
+    "after_oidc": {
+      "clean_seconds": 22.420436555003107,
+      "edit_seconds": 0.7404188119980972
+    }
+  },
+  "baseline_library_revision": "be6dde034e34c038755aeef417510e1688050342",
+  "engine_sha256": "e35f53beb30a6bb90403d9debe7bad6475de988c6f4408a1065ee4cfa1166837",
+  "scope": "Additional OIDC migration only; both sides already use the engine for runtime, HTTP and PostgreSQL",
+  "method": "Alternating order, fresh target per build, offline cached downloads, same prebuilt engine for both sides; no concurrent verification builds."
+}
