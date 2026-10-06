@@ -4,7 +4,7 @@ use sct_core::backend::Registry;
 use sct_protocol::*;
 use serde_json::json;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn account_http_scope_secrets_revocation_and_csrf() {
     let (catalog, _) = support::database().await;
@@ -20,11 +20,11 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
         secure_cookies: false,
         transfer: None,
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -241,4 +241,16 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
         .unwrap();
     assert_eq!(valid.status(), 200);
     server.abort();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

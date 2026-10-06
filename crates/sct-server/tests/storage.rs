@@ -4,7 +4,7 @@ use sct_core::backend::{Registry, TestAdapter};
 use sct_protocol::*;
 use serde_json::json;
 use std::sync::Arc;
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn storage_http_requires_admin_and_persists_revision_checked_configuration() {
     let (catalog, _) = support::database().await;
@@ -35,11 +35,11 @@ async fn storage_http_requires_admin_and_persists_revision_checked_configuration
         secure_cookies: false,
         transfer: None,
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -137,4 +137,16 @@ async fn storage_http_requires_admin_and_persists_revision_checked_configuration
         vec![configured]
     );
     server.abort();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

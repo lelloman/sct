@@ -1,3 +1,4 @@
+use simple_server::database::postgres as db;
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
 use sct_client::{CheckpointArtifact, Client, TreeJob, TreeMutation, UploadJob, protocol::*};
@@ -41,7 +42,7 @@ fn success(output: std::process::Output) -> CheckpointDescriptor {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn m4_independent_recovery_from_http_export_survives_loss_of_original_storage() {
     let (catalog, _) = support::database().await;
@@ -71,11 +72,11 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
         secure_cookies: false,
         transfer: Some(engine.clone()),
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap();
@@ -299,7 +300,7 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
         RecoveryPackageState::PayloadVerified
     );
     let (target, db) = support::database().await;
-    let schema: String = sqlx::query_scalar("SELECT current_schema()")
+    let schema: String = db::query_scalar("SELECT current_schema()")
         .fetch_one(&db)
         .await
         .unwrap();
@@ -375,11 +376,11 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
         secure_cookies: false,
         transfer: Some(engine),
     };
-    let recovered_server = tokio::spawn(async move {
+    let recovered_server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap();
@@ -427,4 +428,16 @@ async fn m4_independent_recovery_from_http_export_survives_loss_of_original_stor
     println!(
         "M4 independent recovery qualified: file and atomic-tree bytes recovered with original storage removed"
     );
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

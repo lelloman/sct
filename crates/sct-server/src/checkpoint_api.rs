@@ -9,7 +9,7 @@ use crate::web::{
 };
 use sct_protocol::*;
 use simple_server::extract::RejectionResponse;
-use tokio::io::AsyncReadExt;
+use simple_server::io::AsyncReadExt;
 type Result<T> = std::result::Result<T, ApiError>;
 fn id(s: &str) -> Result<OperationId> {
     s.parse().map_err(|_| ApiError(ErrorCode::InvalidRequest))

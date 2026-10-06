@@ -54,7 +54,7 @@ async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {
             simple_server::health::Check::new("database", move || {
                 let catalog = catalog.clone();
                 async move {
-                    tokio::time::timeout(std::time::Duration::from_secs(2), catalog.ping())
+                    simple_server::time::timeout(std::time::Duration::from_secs(2), catalog.ping())
                         .await
                         .ok()
                         .and_then(Result::ok)

@@ -99,7 +99,7 @@ async fn page(
     let digest = id(&digest)?;
     // Authorize the session before consuming even a manifest page body.
     engine(&app)?.upload_status(&actor, &root, &upload).await?;
-    let bytes = tokio::time::timeout(
+    let bytes = simple_server::time::timeout(
         std::time::Duration::from_secs(60),
         crate::web::body::to_bytes(request.into_body(), MANIFEST_BYTES),
     )
@@ -164,7 +164,7 @@ async fn chunk(
         .chunk_permission(&actor, &root, &upload, &digest)
         .await?;
     let _permit = engine.payload_permit().await?;
-    let bytes = tokio::time::timeout(
+    let bytes = simple_server::time::timeout(
         std::time::Duration::from_secs(60),
         crate::web::body::to_bytes(request.into_body(), length as usize + 1),
     )

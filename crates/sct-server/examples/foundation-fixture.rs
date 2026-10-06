@@ -1,9 +1,10 @@
 //! Disposable browser-test fixture, never linked into the production server.
+use db::PgPool;
 use sct_core::catalog::Catalog;
 use serde_json::json;
-use sqlx::PgPool;
+use simple_server::database::postgres as db;
 
-#[tokio::main]
+#[simple_server::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::path::PathBuf::from(
         std::env::args()
@@ -23,13 +24,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             return Err("invalid test schema".into());
         }
-        sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+        db::query(&format!("DROP SCHEMA {schema} CASCADE"))
             .execute(&admin)
             .await?;
         return Ok(());
     }
     let schema = format!("sct_e2e_{}", uuid::Uuid::new_v4().simple());
-    sqlx::query(&format!("CREATE SCHEMA {schema}"))
+    db::query(&format!("CREATE SCHEMA {schema}"))
         .execute(&admin)
         .await?;
     let separator = if url.contains('?') { '&' } else { '?' };

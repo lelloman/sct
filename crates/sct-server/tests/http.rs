@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 async fn sdk_reaches_live_server_without_advertising_unimplemented_storage() {
     let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
-    let stop = simple_server::lifecycle::Shutdown::new();
+    let stop = simple_server::engine_lifecycle::Shutdown::new();
     let stopped = stop.clone();
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::router(None, PathBuf::from("nonexistent-web")),
@@ -66,4 +66,16 @@ async fn sdk_reaches_live_server_without_advertising_unimplemented_storage() {
     );
     stop.request();
     server.await.unwrap();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

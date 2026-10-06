@@ -10,8 +10,8 @@ use crate::{
 };
 use sct_protocol::*;
 use sha2::{Digest, Sha256};
-use sqlx::Row;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use simple_server::database::postgres as db;
+use simple_server::io::{AsyncReadExt, AsyncSeekExt};
 #[derive(Debug, Clone)]
 pub struct ArchiveImageInfo {
     pub artifact: ArchiveArtifact,
@@ -23,7 +23,7 @@ pub struct ArchiveDownload {
     collection: ArchiveCollectionId,
     disc: ArchiveDiscId,
     lease: String,
-    file: tokio::fs::File,
+    file: simple_server::fs::File,
     position: u64,
     hash: Option<Sha256>,
     released: bool,
@@ -61,16 +61,16 @@ impl TransferEngine {
             return Ok(());
         };
         let mut tx = self.writer.transaction().await?;
-        sqlx::query("DELETE FROM archive_downloads WHERE id IN (SELECT id FROM archive_downloads WHERE expires_at<=clock_timestamp() ORDER BY expires_at,id LIMIT 128 FOR UPDATE SKIP LOCKED)").execute(&mut *tx).await?;
+        db::query("DELETE FROM archive_downloads WHERE id IN (SELECT id FROM archive_downloads WHERE expires_at<=clock_timestamp() ORDER BY expires_at,id LIMIT 128 FOR UPDATE SKIP LOCKED)").execute(&mut *tx).await?;
         // Locking the artifact serializes this intent with new download leases.
         // Existing streams renew independently; a live lease prevents intent.
-        let rows = sqlx::query("SELECT a.id FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE s.state='ready' AND a.state='available' AND (a.cleanup_pending OR a.expires_at<=clock_timestamp()) AND NOT EXISTS(SELECT 1 FROM archive_downloads l WHERE l.artifact_id=a.id AND l.expires_at>clock_timestamp()) ORDER BY a.expires_at,a.id LIMIT 16 FOR UPDATE OF a SKIP LOCKED").fetch_all(&mut *tx).await?;
+        let rows = db::query("SELECT a.id FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE s.state='ready' AND a.state='available' AND (a.cleanup_pending OR a.expires_at<=clock_timestamp()) AND NOT EXISTS(SELECT 1 FROM archive_downloads l WHERE l.artifact_id=a.id AND l.expires_at>clock_timestamp()) ORDER BY a.expires_at,a.id LIMIT 16 FOR UPDATE OF a SKIP LOCKED").fetch_all(&mut *tx).await?;
         let mut artifacts = Vec::new();
         for row in rows {
             let artifact: String = row.get("id");
             // A separate statement gets a fresh READ COMMITTED snapshot after
             // acquiring the row lock; a concurrent new lease cannot be missed.
-            let marked = sqlx::query("UPDATE archive_artifacts SET cleanup_pending=true WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM archive_downloads WHERE artifact_id=$1 AND expires_at>clock_timestamp())")
+            let marked = db::query("UPDATE archive_artifacts SET cleanup_pending=true WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM archive_downloads WHERE artifact_id=$1 AND expires_at>clock_timestamp())")
                 .bind(&artifact).execute(&mut *tx).await?.rows_affected();
             if marked == 1 {
                 artifacts.push(artifact);
@@ -82,8 +82,10 @@ impl TransferEngine {
                 artifact.len() == 32 && artifact.bytes().all(|b| b.is_ascii_hexdigit()),
                 ErrorCode::IntegrityFailure,
             )?;
-            match tokio::fs::remove_file(runtime.directory.join(format!("cache/{artifact}.iso")))
-                .await
+            match simple_server::fs::remove_file(
+                runtime.directory.join(format!("cache/{artifact}.iso")),
+            )
+            .await
             {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -93,25 +95,21 @@ impl TransferEngine {
             // Durable intent survives a crash on either side of unlink. Debit
             // once, only after unlink succeeded or the file is already absent.
             let mut tx = self.writer.transaction().await?;
-            let owner: String = sqlx::query_scalar("SELECT c.owner_id FROM archive_collections c JOIN archive_discs d ON d.collection_id=c.id JOIN archive_artifacts a ON a.disc_id=d.id WHERE a.id=$1 FOR UPDATE OF c").bind(&artifact).fetch_one(&mut *tx).await?;
-            sqlx::query("SELECT singleton FROM archive_storage WHERE singleton FOR UPDATE")
+            let owner: String = db::query_scalar("SELECT c.owner_id FROM archive_collections c JOIN archive_discs d ON d.collection_id=c.id JOIN archive_artifacts a ON a.disc_id=d.id WHERE a.id=$1 FOR UPDATE OF c").bind(&artifact).fetch_one(&mut *tx).await?;
+            db::query("SELECT singleton FROM archive_storage WHERE singleton FOR UPDATE")
                 .fetch_one(&mut *tx)
                 .await?;
-            sqlx::query(
-                "SELECT principal_id FROM archive_accounts WHERE principal_id=$1 FOR UPDATE",
-            )
-            .bind(&owner)
-            .fetch_one(&mut *tx)
-            .await?;
-            let released: Option<i64> = sqlx::query_scalar("UPDATE archive_artifacts SET state='expired',relative_path=NULL,cleanup_pending=false WHERE id=$1 AND state='available' AND cleanup_pending RETURNING length").bind(&artifact).fetch_optional(&mut *tx).await?;
-            if let Some(bytes) = released {
-                sqlx::query(
-                    "UPDATE archive_storage SET cache_bytes=cache_bytes-$1 WHERE singleton",
-                )
-                .bind(bytes)
-                .execute(&mut *tx)
+            db::query("SELECT principal_id FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
+                .bind(&owner)
+                .fetch_one(&mut *tx)
                 .await?;
-                sqlx::query(
+            let released: Option<i64> = db::query_scalar("UPDATE archive_artifacts SET state='expired',relative_path=NULL,cleanup_pending=false WHERE id=$1 AND state='available' AND cleanup_pending RETURNING length").bind(&artifact).fetch_optional(&mut *tx).await?;
+            if let Some(bytes) = released {
+                db::query("UPDATE archive_storage SET cache_bytes=cache_bytes-$1 WHERE singleton")
+                    .bind(bytes)
+                    .execute(&mut *tx)
+                    .await?;
+                db::query(
                     "UPDATE archive_accounts SET cache_bytes=cache_bytes-$2 WHERE principal_id=$1",
                 )
                 .bind(&owner)
@@ -139,7 +137,7 @@ impl TransferEngine {
             set.state == ArchiveJobState::Ready,
             ErrorCode::ArchiveArtifactUnavailable,
         )?;
-        let row=sqlx::query("SELECT a.*,d.number,(extract(epoch FROM a.expires_at)*1000)::bigint AS expires_ms FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE a.disc_id=$1 AND a.state='available' AND NOT a.cleanup_pending AND a.expires_at>clock_timestamp()").bind(disc.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::ArchiveArtifactUnavailable))?;
+        let row=db::query("SELECT a.*,d.number,(extract(epoch FROM a.expires_at)*1000)::bigint AS expires_ms FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE a.disc_id=$1 AND a.state='available' AND NOT a.cleanup_pending AND a.expires_at>clock_timestamp()").bind(disc.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::ArchiveArtifactUnavailable))?;
         let info = ArchiveImageInfo {
             artifact: ArchiveArtifact {
                 id: row.get::<String, _>("id").parse()?,
@@ -164,7 +162,7 @@ impl TransferEngine {
         let path = runtime.directory.join(format!("cache/{artifact}.iso"));
         if archive_iso::regular(&path).is_err() {
             let mut tx = self.writer.transaction().await?;
-            sqlx::query("UPDATE archive_artifacts SET expires_at=least(expires_at,clock_timestamp()) WHERE id=$1 AND state='available'").bind(artifact).execute(&mut *tx).await?;
+            db::query("UPDATE archive_artifacts SET expires_at=least(expires_at,clock_timestamp()) WHERE id=$1 AND state='available'").bind(artifact).execute(&mut *tx).await?;
             tx.commit().await?;
             return Err(Error(ErrorCode::ArchiveArtifactUnavailable));
         }
@@ -187,7 +185,7 @@ impl TransferEngine {
             set.state == ArchiveJobState::Ready,
             ErrorCode::ArchiveArtifactUnavailable,
         )?;
-        let row=sqlx::query("SELECT * FROM archive_artifacts WHERE disc_id=$1 AND state='available' AND NOT cleanup_pending AND expires_at>clock_timestamp() FOR UPDATE").bind(disc.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::ArchiveArtifactUnavailable))?;
+        let row=db::query("SELECT * FROM archive_artifacts WHERE disc_id=$1 AND state='available' AND NOT cleanup_pending AND expires_at>clock_timestamp() FOR UPDATE").bind(disc.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::ArchiveArtifactUnavailable))?;
         let artifact: String = row.get("id");
         require(
             artifact.len() == 32 && artifact.bytes().all(|b| b.is_ascii_hexdigit()),
@@ -202,8 +200,8 @@ impl TransferEngine {
         let (start, end) = range.unwrap_or((0, length));
         require(start < end && end <= length, ErrorCode::InvalidRequest)?;
         let lease = id();
-        sqlx::query("INSERT INTO archive_downloads(id,artifact_id,principal_id,credential_id,expires_at) VALUES($1,$2,$3,$4,clock_timestamp()+interval '30 seconds')").bind(&lease).bind(&artifact).bind(actor.principal_id()).bind(&actor.credential).execute(&mut *tx).await?;
-        sqlx::query("UPDATE archive_artifacts SET download_count=download_count+1 WHERE id=$1")
+        db::query("INSERT INTO archive_downloads(id,artifact_id,principal_id,credential_id,expires_at) VALUES($1,$2,$3,$4,clock_timestamp()+interval '30 seconds')").bind(&lease).bind(&artifact).bind(actor.principal_id()).bind(&actor.credential).execute(&mut *tx).await?;
+        db::query("UPDATE archive_artifacts SET download_count=download_count+1 WHERE id=$1")
             .bind(&artifact)
             .execute(&mut *tx)
             .await?;
@@ -229,7 +227,7 @@ impl TransferEngine {
             Ok(file) => file,
             Err(error) => {
                 let mut tx = self.writer.transaction().await?;
-                sqlx::query("DELETE FROM archive_downloads WHERE id=$1")
+                db::query("DELETE FROM archive_downloads WHERE id=$1")
                     .bind(&lease)
                     .execute(&mut *tx)
                     .await?;
@@ -262,7 +260,7 @@ impl ArchiveDownload {
     async fn renew(&self) -> Result<()> {
         let mut tx = self.writer.transaction().await?;
         disc_access(&mut tx, &self.actor, &self.collection, &self.disc).await?;
-        let n=sqlx::query("UPDATE archive_downloads l SET expires_at=least(clock_timestamp()+interval '30 seconds',deadline) FROM archive_artifacts a WHERE l.id=$1 AND l.principal_id=$2 AND l.credential_id=$3 AND l.expires_at>clock_timestamp() AND l.deadline>clock_timestamp() AND a.id=l.artifact_id AND a.state='available' AND NOT a.cleanup_pending").bind(&self.lease).bind(self.actor.principal_id()).bind(&self.actor.credential).execute(&mut *tx).await?.rows_affected();
+        let n=db::query("UPDATE archive_downloads l SET expires_at=least(clock_timestamp()+interval '30 seconds',deadline) FROM archive_artifacts a WHERE l.id=$1 AND l.principal_id=$2 AND l.credential_id=$3 AND l.expires_at>clock_timestamp() AND l.deadline>clock_timestamp() AND a.id=l.artifact_id AND a.state='available' AND NOT a.cleanup_pending").bind(&self.lease).bind(self.actor.principal_id()).bind(&self.actor.credential).execute(&mut *tx).await?.rows_affected();
         require(n == 1, ErrorCode::ArchiveExpired)?;
         tx.commit().await?;
         Ok(())
@@ -295,7 +293,7 @@ impl ArchiveDownload {
     pub async fn release(&mut self) -> Result<()> {
         if !self.released {
             let mut tx = self.writer.transaction().await?;
-            sqlx::query("DELETE FROM archive_downloads WHERE id=$1")
+            db::query("DELETE FROM archive_downloads WHERE id=$1")
                 .bind(&self.lease)
                 .execute(&mut *tx)
                 .await?;
@@ -310,10 +308,10 @@ impl Drop for ArchiveDownload {
         if !self.released {
             let writer = self.writer.clone();
             let lease = self.lease.clone();
-            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            if let Ok(runtime) = simple_server::runtime::Handle::try_current() {
                 runtime.spawn(async move {
                     if let Ok(mut tx) = writer.transaction().await {
-                        let _ = sqlx::query("DELETE FROM archive_downloads WHERE id=$1")
+                        let _ = db::query("DELETE FROM archive_downloads WHERE id=$1")
                             .bind(lease)
                             .execute(&mut *tx)
                             .await;
@@ -325,7 +323,7 @@ impl Drop for ArchiveDownload {
     }
 }
 
-fn account_limits(row: &sqlx::postgres::PgRow) -> Result<ArchiveAccountLimits> {
+fn account_limits(row: &db::PgRow) -> Result<ArchiveAccountLimits> {
     Ok(ArchiveAccountLimits {
         principal_id: row.get::<String, _>("principal_id").parse()?,
         revision: row.get::<String, _>("revision").parse()?,
@@ -349,17 +347,16 @@ impl Writer {
                 || actor.principal_id() == principal.as_str(),
             ErrorCode::Forbidden,
         )?;
-        let exists: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM principals WHERE id=$1)")
-                .bind(principal.as_str())
-                .fetch_one(&mut *tx)
-                .await?;
+        let exists: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM principals WHERE id=$1)")
+            .bind(principal.as_str())
+            .fetch_one(&mut *tx)
+            .await?;
         require(exists, ErrorCode::NotFound)?;
-        sqlx::query("INSERT INTO archive_accounts(principal_id) VALUES($1) ON CONFLICT DO NOTHING")
+        db::query("INSERT INTO archive_accounts(principal_id) VALUES($1) ON CONFLICT DO NOTHING")
             .bind(principal.as_str())
             .execute(&mut *tx)
             .await?;
-        let row = sqlx::query("SELECT * FROM archive_accounts WHERE principal_id=$1")
+        let row = db::query("SELECT * FROM archive_accounts WHERE principal_id=$1")
             .bind(principal.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -382,7 +379,7 @@ impl Writer {
         )?;
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
-        let row = sqlx::query("SELECT * FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
+        let row = db::query("SELECT * FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
             .bind(principal.as_str())
             .fetch_optional(&mut *tx)
             .await?
@@ -398,12 +395,12 @@ impl Writer {
                 && row.get::<i64, _>("pinned_bytes") as u64 <= request.pin_quota_bytes.get(),
             ErrorCode::ArchiveResourceLimit,
         )?;
-        let active: i64 = sqlx::query_scalar("SELECT count(*) FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE c.owner_id=$1 AND s.state IN ('capturing','planning','awaiting_confirmation','building')").bind(principal.as_str()).fetch_one(&mut *tx).await?;
+        let active: i64 = db::query_scalar("SELECT count(*) FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE c.owner_id=$1 AND s.state IN ('capturing','planning','awaiting_confirmation','building')").bind(principal.as_str()).fetch_one(&mut *tx).await?;
         require(
             active <= request.max_active as i64,
             ErrorCode::ArchiveResourceLimit,
         )?;
-        let row = sqlx::query("UPDATE archive_accounts SET revision=$2,quota_bytes=$3,pin_quota_bytes=$4,max_active=$5,max_capture_records=$6,pin_deadline_seconds=$7,cache_ttl_seconds=$8 WHERE principal_id=$1 RETURNING *").bind(principal.as_str()).bind(id()).bind(request.quota_bytes.get() as i64).bind(request.pin_quota_bytes.get() as i64).bind(request.max_active as i32).bind(request.max_capture_records.get() as i64).bind(request.pin_deadline_seconds as i32).bind(request.cache_ttl_seconds as i32).fetch_one(&mut *tx).await?;
+        let row = db::query("UPDATE archive_accounts SET revision=$2,quota_bytes=$3,pin_quota_bytes=$4,max_active=$5,max_capture_records=$6,pin_deadline_seconds=$7,cache_ttl_seconds=$8 WHERE principal_id=$1 RETURNING *").bind(principal.as_str()).bind(id()).bind(request.quota_bytes.get() as i64).bind(request.pin_quota_bytes.get() as i64).bind(request.max_active as i32).bind(request.max_capture_records.get() as i64).bind(request.pin_deadline_seconds as i32).bind(request.cache_ttl_seconds as i32).fetch_one(&mut *tx).await?;
         crate::management::audit(
             &mut tx,
             actor,

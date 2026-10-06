@@ -6,8 +6,9 @@ use crate::{
     paging,
     roots::{json, lock_root, revision, root_row},
 };
+use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use sqlx::{PgConnection, Row, postgres::PgRow};
+use simple_server::database::postgres as db;
 
 pub(crate) async fn audit(
     db: &mut PgConnection,
@@ -16,7 +17,7 @@ pub(crate) async fn audit(
     event: &str,
     details: serde_json::Value,
 ) -> Result<()> {
-    sqlx::query(
+    db::query(
         "INSERT INTO management_audit(root_id,principal_id,event,details) VALUES($1,$2,$3,$4)",
     )
     .bind(root)
@@ -48,7 +49,7 @@ async fn root_management(
 ) -> Result<RootManagement> {
     let capabilities = auth::capabilities(db, actor, root.as_str()).await?;
     require(!capabilities.is_empty(), ErrorCode::Forbidden)?;
-    let row = sqlx::query("SELECT *, (extract(epoch FROM last_commit_at)*1000)::bigint AS last_commit_ms,
+    let row = db::query("SELECT *, (extract(epoch FROM last_commit_at)*1000)::bigint AS last_commit_ms,
         (extract(epoch FROM last_commit_at + expected_upload_interval_seconds * interval '1 second')*1000)::bigint AS next_expected_ms,
         COALESCE(last_commit_at + expected_upload_interval_seconds * interval '1 second' < clock_timestamp(),false) AS overdue FROM roots WHERE id=$1")
         .bind(root.as_str()).fetch_one(db).await?;
@@ -103,7 +104,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         account_access(&mut tx, actor, target).await?;
         principal(
-            &sqlx::query("SELECT * FROM principals WHERE id=$1")
+            &db::query("SELECT * FROM principals WHERE id=$1")
                 .bind(target.as_str())
                 .fetch_optional(&mut *tx)
                 .await?
@@ -123,7 +124,7 @@ impl Writer {
             Some(token) => paging::consume(&mut tx, actor, scope, token, &binding).await?,
             None => String::new(),
         };
-        let rows = sqlx::query("SELECT * FROM principals WHERE id>$1 ORDER BY id LIMIT $2")
+        let rows = db::query("SELECT * FROM principals WHERE id>$1 ORDER BY id LIMIT $2")
             .bind(after)
             .bind(request.limit.get() as i64 + 1)
             .fetch_all(&mut *tx)
@@ -162,11 +163,11 @@ impl Writer {
     ) -> Result<PrincipalInspection> {
         let mut tx = self.transaction().await?;
         // Serialize role changes before acquiring authentication's principal locks.
-        sqlx::query("SELECT pg_advisory_xact_lock(73628491)")
+        db::query("SELECT pg_advisory_xact_lock(73628491)")
             .execute(&mut *tx)
             .await?;
         auth::admin(&mut tx, actor).await?;
-        let row = sqlx::query("SELECT * FROM principals WHERE id=$1 FOR UPDATE")
+        let row = db::query("SELECT * FROM principals WHERE id=$1 FOR UPDATE")
             .bind(target.as_str())
             .fetch_optional(&mut *tx)
             .await?
@@ -176,7 +177,7 @@ impl Writer {
             && !row.get::<bool, _>("disabled")
             && (!request.administrator || request.disabled)
         {
-            let others: i64 = sqlx::query_scalar(
+            let others: i64 = db::query_scalar(
                 "SELECT count(*) FROM principals WHERE administrator AND NOT disabled AND id<>$1",
             )
             .bind(target.as_str())
@@ -184,7 +185,7 @@ impl Writer {
             .await?;
             require(others > 0, ErrorCode::InvalidRequest)?;
         }
-        let row = sqlx::query("UPDATE principals SET administrator=$2,disabled=$3,revision=$4 WHERE id=$1 RETURNING *").bind(target.as_str()).bind(request.administrator).bind(request.disabled).bind(id()).fetch_one(&mut *tx).await?;
+        let row = db::query("UPDATE principals SET administrator=$2,disabled=$3,revision=$4 WHERE id=$1 RETURNING *").bind(target.as_str()).bind(request.administrator).bind(request.disabled).bind(id()).fetch_one(&mut *tx).await?;
         audit(&mut tx,actor,None,"principal.updated",serde_json::json!({"principal_id":target,"administrator":request.administrator,"disabled":request.disabled})).await?;
         tx.commit().await?;
         principal(&row)
@@ -197,11 +198,10 @@ impl Writer {
     ) -> Result<CredentialPage> {
         let mut tx = self.transaction().await?;
         account_access(&mut tx, actor, target).await?;
-        let exists: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM principals WHERE id=$1)")
-                .bind(target.as_str())
-                .fetch_one(&mut *tx)
-                .await?;
+        let exists: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM principals WHERE id=$1)")
+            .bind(target.as_str())
+            .fetch_one(&mut *tx)
+            .await?;
         require(exists, ErrorCode::NotFound)?;
         let scope = format!("credentials:{}", target.as_str());
         let binding = json(&request.limit)?;
@@ -209,7 +209,7 @@ impl Writer {
             Some(token) => paging::consume(&mut tx, actor, &scope, token, &binding).await?,
             None => String::new(),
         };
-        let rows = sqlx::query("SELECT id,principal_id,kind,revoked,(extract(epoch FROM expires_at)*1000)::bigint AS expires_ms FROM credentials WHERE principal_id=$1 AND id>$2 ORDER BY id LIMIT $3").bind(target.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows = db::query("SELECT id,principal_id,kind,revoked,(extract(epoch FROM expires_at)*1000)::bigint AS expires_ms FROM credentials WHERE principal_id=$1 AND id>$2 ORDER BY id LIMIT $3").bind(target.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let credentials = rows
             .iter()
@@ -269,7 +269,7 @@ impl Writer {
             ErrorCode::QuotaExhausted,
         )?;
         // A ceiling is authorization, not proof of physical capacity.
-        let capacities = sqlx::query("SELECT a.capacity,count(*) AS copies FROM root_backends rb JOIN backends b ON b.id=rb.backend_id JOIN allocations a ON a.pool_id=b.pool_id AND a.root_id=rb.root_id WHERE rb.root_id=$1 GROUP BY a.id,a.capacity").bind(root.as_str()).fetch_all(&mut *tx).await?;
+        let capacities = db::query("SELECT a.capacity,count(*) AS copies FROM root_backends rb JOIN backends b ON b.id=rb.backend_id JOIN allocations a ON a.pool_id=b.pool_id AND a.root_id=rb.root_id WHERE rb.root_id=$1 GROUP BY a.id,a.capacity").bind(root.as_str()).fetch_all(&mut *tx).await?;
         for capacity in capacities {
             require(
                 request
@@ -280,7 +280,7 @@ impl Writer {
                 ErrorCode::QuotaExhausted,
             )?;
         }
-        sqlx::query("UPDATE roots SET display_name=$2,quota=$3,expected_upload_interval_seconds=$4,revision=$5 WHERE id=$1").bind(root.as_str()).bind(request.display_name.as_str()).bind(request.quota_bytes.get() as i64).bind(request.expected_upload_interval_seconds.map(|n|n.get() as i64)).bind(id()).execute(&mut *tx).await?;
+        db::query("UPDATE roots SET display_name=$2,quota=$3,expected_upload_interval_seconds=$4,revision=$5 WHERE id=$1").bind(root.as_str()).bind(request.display_name.as_str()).bind(request.quota_bytes.get() as i64).bind(request.expected_upload_interval_seconds.map(|n|n.get() as i64)).bind(id()).execute(&mut *tx).await?;
         audit(&mut tx,actor,Some(root.as_str()),"root.settings_updated",serde_json::json!({"quota_bytes":request.quota_bytes,"expected_upload_interval_seconds":request.expected_upload_interval_seconds})).await?;
         let result = root_management(&mut tx, actor, root).await?;
         tx.commit().await?;
@@ -301,7 +301,7 @@ impl Writer {
             request.quota_ceiling_bytes.get() >= row.get::<i64, _>("quota") as u64,
             ErrorCode::InvalidRequest,
         )?;
-        sqlx::query("UPDATE roots SET quota_ceiling=$2,revision=$3 WHERE id=$1")
+        db::query("UPDATE roots SET quota_ceiling=$2,revision=$3 WHERE id=$1")
             .bind(root.as_str())
             .bind(request.quota_ceiling_bytes.get() as i64)
             .bind(id())

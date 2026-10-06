@@ -1,3 +1,4 @@
+use simple_server::database::postgres as db;
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
 #[path = "support/tree_workflow.rs"]
@@ -13,7 +14,6 @@ use sct_core::{
 };
 use sct_protocol::*;
 use serde_json::json;
-use sqlx::Row;
 use std::{
     collections::BTreeMap,
     path::Path,
@@ -92,7 +92,7 @@ async fn job(client: &Client, root: &RootId, source: &Path, directory: &Path) ->
     )
     .unwrap()
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires disposable PostgreSQL and S3; scripts/test-transfers"]
 async fn real_transfer_placements() {
     let endpoint = std::env::var("SCT_TEST_S3_ENDPOINT").expect("real S3 required");
@@ -153,7 +153,7 @@ async fn real_transfer_placements() {
     let engine = TransferEngine::new(writer.clone(), stores, 4, 86400).unwrap();
     let renewal_writer = writer.clone();
     let renewal_engine = engine.clone();
-    let renewal = tokio::spawn(async move {
+    let renewal = sct_spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             renewal_writer.renew().await.unwrap();
@@ -170,11 +170,11 @@ async fn real_transfer_placements() {
         secure_cookies: false,
         transfer: Some(engine.clone()),
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -302,14 +302,14 @@ async fn real_transfer_placements() {
         assert_eq!(history.versions.len(), 1);
         assert_eq!(history.versions[0].id, latest.version_id);
         // Ensure both physical copies are charged even in the same pool.
-        let ledger: i64 = sqlx::query_scalar("SELECT occupied FROM allocations WHERE root_id=$1")
+        let ledger: i64 = db::query_scalar("SELECT occupied FROM allocations WHERE root_id=$1")
             .bind(root.id.as_str())
             .fetch_one(&pool)
             .await
             .unwrap();
-        let physical:i64=sqlx::query_scalar("SELECT COALESCE(sum(c.bytes),0)::bigint FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE a.root_id=$1 AND c.state='available'").bind(root.id.as_str()).fetch_one(&pool).await.unwrap();
+        let physical:i64=db::query_scalar("SELECT COALESCE(sum(c.bytes),0)::bigint FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE a.root_id=$1 AND c.state='available'").bind(root.id.as_str()).fetch_one(&pool).await.unwrap();
         assert_eq!(ledger, physical);
-        assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM object_copies WHERE root_id=$1 AND digest=$2 AND state='available'").bind(root.id.as_str()).bind(digest(b"replacement")).fetch_one(&pool).await.unwrap(),names.len() as i64);
+        assert_eq!(db::query_scalar::<_,i64>("SELECT count(*) FROM object_copies WHERE root_id=$1 AND digest=$2 AND state='available'").bind(root.id.as_str()).bind(digest(b"replacement")).fetch_one(&pool).await.unwrap(),names.len() as i64);
         // Changed reusable/source bytes must not publish a plan silently.
         let changed = job(
             &client,
@@ -334,7 +334,7 @@ async fn real_transfer_placements() {
         engine.tick().await.unwrap();
         // Corrupt real local payload: a mirror succeeds; a single copy fails.
         if names[0] == "local1" {
-            let row=sqlx::query("SELECT generation FROM object_copies WHERE root_id=$1 AND backend_id='local1' AND digest=$2 AND state='available'").bind(root.id.as_str()).bind(digest(b"replacement")).fetch_one(&pool).await.unwrap();
+            let row=db::query("SELECT generation FROM object_copies WHERE root_id=$1 AND backend_id='local1' AND digest=$2 AND state='available'").bind(root.id.as_str()).bind(digest(b"replacement")).fetch_one(&pool).await.unwrap();
             let key = ObjectKey {
                 root: root.id.clone(),
                 digest: digest(b"replacement").parse().unwrap(),
@@ -450,7 +450,7 @@ async fn real_transfer_placements() {
                     .is_err()
             );
             let copies: i64 =
-                sqlx::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
+                db::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
                     .bind(tree.id.as_str())
                     .fetch_one(&pool)
                     .await
@@ -555,7 +555,7 @@ async fn real_transfer_placements() {
             1
         );
         assert_eq!(
-            sqlx::query_scalar::<_, i64>(
+            db::query_scalar::<_, i64>(
                 "SELECT count(*) FROM object_copies WHERE root_id=$1 AND digest=$2"
             )
             .bind(small.id.as_str())
@@ -565,7 +565,7 @@ async fn real_transfer_placements() {
             .unwrap(),
             0
         );
-        sqlx::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(upload.as_str()).execute(&pool).await.unwrap();
+        db::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(upload.as_str()).execute(&pool).await.unwrap();
         engine.tick().await.unwrap();
         assert_eq!(
             client
@@ -630,4 +630,16 @@ async fn real_transfer_placements() {
     renewal.abort();
     writer.release().await.unwrap();
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

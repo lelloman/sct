@@ -1,7 +1,7 @@
 mod background_worker;
 
 use sct_server::web as http;
-use simple_server::lifecycle::{Lifecycle, Shutdown, ShutdownOptions, Signals};
+use simple_server::engine_lifecycle::{Lifecycle, Shutdown, ShutdownOptions, Signals};
 use std::time::Duration;
 
 use sct_core::{
@@ -11,7 +11,7 @@ use sct_core::{
 use sct_server::{api::App, config::Config};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-#[tokio::main]
+#[simple_server::main]
 async fn main() {
     if let Err(error) = run().await {
         eprintln!(
@@ -123,43 +123,43 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let archive_worker = transfer.clone();
         let mut archive_exports =
             background_worker::BackgroundWorker::spawn("archive-exports", async move {
-                simple_server::task_scheduling::run_poll_worker(
+                simple_server::task_drivers::run_poll_worker(
                     || true,
                     worker_cadence(),
                     || async {
                         match archive_worker.archive_tick().await {
-                            Ok(_) => simple_server::task_scheduling::PollOutcome::Worked,
+                            Ok(_) => simple_server::task_drivers::PollOutcome::Worked,
                             Err(error) => {
                                 eprintln!(
                                     "{}",
                                     serde_json::json!({"event":"archive_retry","code":error.0})
                                 );
-                                simple_server::task_scheduling::PollOutcome::Failed
+                                simple_server::task_drivers::PollOutcome::Failed
                             }
                         }
                     },
-                    |_, delay| tokio::time::sleep(delay),
+                    |_, delay| simple_server::time::sleep(delay),
                 )
                 .await;
             });
         let worker = transfer.clone();
         let mut recovery = background_worker::BackgroundWorker::spawn("recovery", async move {
-            simple_server::task_scheduling::run_poll_worker(
+            simple_server::task_drivers::run_poll_worker(
                 || true,
                 worker_cadence(),
                 || async {
                     match worker.tick().await {
-                        Ok(_) => simple_server::task_scheduling::PollOutcome::Worked,
+                        Ok(_) => simple_server::task_drivers::PollOutcome::Worked,
                         Err(error) => {
                             eprintln!(
                                 "{}",
                                 serde_json::json!({"event":"recovery_retry","code":error.0})
                             );
-                            simple_server::task_scheduling::PollOutcome::Failed
+                            simple_server::task_drivers::PollOutcome::Failed
                         }
                     }
                 },
-                |_, delay| tokio::time::sleep(delay),
+                |_, delay| simple_server::time::sleep(delay),
             )
             .await;
         });
@@ -198,10 +198,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let lease = writer.clone();
         lifecycle.service("writer-lease", async move {
             loop {
-                tokio::select! {
-                    biased;
-                    _ = lease_stop.requested() => return Ok::<_, sct_core::error::Error>(()),
-                    _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                match futures_util::future::select(Box::pin(lease_stop.requested()), Box::pin(simple_server::time::sleep(Duration::from_secs(10)))).await {
+                    futures_util::future::Either::Left(_) => return Ok::<_, sct_core::error::Error>(()),
+                    futures_util::future::Either::Right(_) => {
                         if let Err(error) = lease.renew().await {
                             eprintln!("{}", serde_json::json!({"event":"writer_lease_lost","code":error.0}));
                             return Err(error);
@@ -304,9 +303,9 @@ async fn copy_checkpoint(
     sources: &str,
     destination: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use tokio::io::AsyncReadExt;
+    use simple_server::io::AsyncReadExt;
     let mut bytes = Vec::new();
-    tokio::fs::File::open(sources)
+    simple_server::fs::File::open(sources)
         .await?
         .take(1024 * 1024 + 1)
         .read_to_end(&mut bytes)
@@ -345,8 +344,8 @@ async fn copy_checkpoint(
 
 // Fixed delay after each completed database-backed cycle, including failures.
 // Cancellation remains owned by BackgroundWorker's explicit abort/join sequence.
-fn worker_cadence() -> simple_server::task_scheduling::PollCadence {
-    simple_server::task_scheduling::PollCadence {
+fn worker_cadence() -> simple_server::task_drivers::PollCadence {
+    simple_server::task_drivers::PollCadence {
         worked: Duration::from_secs(2),
         idle: Duration::from_secs(2),
         failed: Duration::from_secs(2),

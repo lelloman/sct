@@ -166,7 +166,7 @@ pub(crate) fn install(router: Router, app: App) -> Router {
     let endpoint = Router::new().route("/metrics",get(move |State(app):State<App>,Auth(actor):Auth| {
         let metrics = scrape.clone();
         async move {
-            let snapshot = tokio::time::timeout(std::time::Duration::from_secs(5),app.writer.service_metrics(&actor)).await
+            let snapshot = simple_server::time::timeout(std::time::Duration::from_secs(5),app.writer.service_metrics(&actor)).await
                 .map_err(|_|ApiError(sct_protocol::ErrorCode::DestinationUnavailable))??;
             let mut out = metrics.render();
             group(&mut out,"sct_roots", &["enabled","disabled","recovering"], &snapshot.root_states);
@@ -182,6 +182,19 @@ pub(crate) fn install(router: Router, app: App) -> Router {
     router
         .merge(endpoint)
         .layer(middleware::from_fn_with_state(metrics, observe))
+}
+
+#[cfg(test)]
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }
 
 #[cfg(test)]
@@ -231,7 +244,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[simple_server::test(host_runtime = true)]
     async fn shared_observer_records_headers_without_subscriber_or_body_completion() {
         use crate::web::body::Body;
         let metrics = Arc::new(HttpMetrics::default());
@@ -251,10 +264,14 @@ mod tests {
             .layer(middleware::from_fn(crate::correlation::middleware));
         let listener = crate::web::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            crate::web::serve(listener, app, simple_server::lifecycle::Shutdown::new())
-                .await
-                .unwrap();
+        let server = super::sct_spawn(async move {
+            crate::web::serve(
+                listener,
+                app,
+                simple_server::engine_lifecycle::Shutdown::new(),
+            )
+            .await
+            .unwrap();
         });
         let http = reqwest::Client::new();
         let response = http

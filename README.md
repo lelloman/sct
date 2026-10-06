@@ -27,9 +27,18 @@ integration tests. Dependency versions are captured in `Cargo.lock` and
 The server links a separately built `libsimple_server_engine.so.1`. The matching
 host library lives in the sibling `../simple-server` checkout at the commit in
 `simple-server.rev`; the source backend is no longer compiled into ScT.
-PostgreSQL/SQLx, OIDC/Reqwest and application Tokio remain on the application side.
-The shared engine serves HTTP and static files; `sct-server::web` keeps static
-route declarations concise and bridges graceful shutdown to the engine.
+`#[simple_server::main]` owns the production runtime. HTTP serving, outbound
+HTTP (including OIDC transport and S3), PostgreSQL pools/transactions, tasks,
+timers and shutdown use that engine. Storage uses the shared asynchronous I/O
+interfaces and engine blocking workers. SQL, authorization and business rules
+remain in ScT. The server's normal/build graph excludes Tokio, SQLx, Reqwest,
+Axum and Hyper; `scripts/check-engine-link` enforces this alongside ELF linking.
+
+The independent SDK and offline `sct-recover` utility retain their own runtime
+and drivers. They are not production server dependencies. Integration tests may
+use `#[simple_server::test(host_runtime = true)]` to run independent Tokio client
+fixtures while polling ScT code in an engine scope. The memory qualification
+example uses this same explicit test-only interoperability arrangement.
 
 For local development, check out the recorded library revision, then build its
 engine once and expose it to Cargo and the runtime loader:
@@ -60,10 +69,30 @@ its unrestricted parallel run also exhibits database/timing failures. This is
 not a claim that the full qualification matrix is green. No image was published
 or deployed.
 
-Three isolated debug-build trials (eight Cargo jobs, engine prebuild excluded)
-gave median clean builds of **36.49s source / 33.77s engine** (about 7.5% faster).
-Timestamp-only rebuilds were **1.13s / 1.15s**, effectively unchanged. ScT still
-compiles its own database/client/runtime dependencies. See the
+The completed runtime migration pins simple-server `be6dde0`. Three paired,
+alternating-order builds (eight jobs, fresh targets, cached downloads, dev profile)
+measured median clean builds of **50.46s source / 28.08s engine**, a **44%**
+reduction; individual paired reductions ranged from **30–47%**. Engine prebuild
+cost is excluded. Timestamp-only incremental builds show little consistent
+benefit (medians 1.09s / 0.97s; one engine trial was slower). These are compilation
+measurements, not runtime throughput results. See the
+[current raw measurements](docs/measurements/sct-runtime-build-2026-10-06.json).
+
+Final runtime verification passed 61 workspace tests (92 ignored), 65 bounded
+core database contracts, all 12 server database tests, the writer lease test,
+strict workspace Clippy, protocol/client checks and the production dependency/ELF
+guard. The PostgreSQL catalog suite passed four tests; its management-upgrade
+test hits the same existing migration-name mismatch, confirmed with the unchanged
+baseline executable. Full S3 verification was blocked by authorization failure
+pulling the pinned MinIO fixture; browser and large qualification workloads were
+not rerun. The local release image passed readiness, static/API routing,
+SIGTERM, restart and SIGINT checks. No artifact was published or deployed.
+
+The earlier HTTP-only canary, before the full runtime migration, used three
+isolated debug-build trials (eight Cargo jobs, engine prebuild excluded) and gave median clean builds of **36.49s source / 33.77s engine** (about 7.5% faster).
+Timestamp-only rebuilds were **1.13s / 1.15s**, effectively unchanged. That earlier revision still
+compiled database/client/runtime dependencies. Those timings do not describe the
+full runtime migration. See the
 [raw measurements](docs/measurements/sct-engine-build-2026-10-06.json).
 To reproduce, export baseline commit `9e118e6` into a separate directory and run:
 
@@ -159,7 +188,7 @@ for prerequisites, resource limits and the exact scope.
 | `sct-protocol` | Public Rust-owned contracts with generated OpenAPI, JSON Schema and TypeScript |
 | `sct-client` | Standalone authenticated foundation API client; transfer/chunking follows in M2; depends on protocol, never core/server |
 | `sct-core` | Authorization, catalog, roots, policies, namespace and operation fencing; immutable payload coordination and recovery |
-| `sct-server` | Shared HTTP routes, Tokio runtime, configuration and worker wiring |
+| `sct-server` | Shared engine runtime/HTTP, configuration and worker wiring |
 | `web` | Vue 3/TypeScript UI; wire models are generated from Rust contracts |
 
 The external sample is a template copied to a temporary directory by

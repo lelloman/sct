@@ -742,10 +742,23 @@ async fn policy_constraints(
 }
 
 #[cfg(test)]
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
+}
+
+#[cfg(test)]
 mod rejection_contract {
     use super::*;
 
-    #[tokio::test]
+    #[simple_server::test(host_runtime = true)]
     async fn protocol_errors_preserve_metadata_and_exact_json_for_rejections_and_handlers() {
         for code in [ErrorCode::Unauthorized, ErrorCode::RateLimited] {
             for extraction in [false, true] {
@@ -783,7 +796,7 @@ mod rejection_contract {
 mod response_header_tests {
     use super::*;
 
-    #[tokio::test]
+    #[simple_server::test(host_runtime = true)]
     async fn response_policy_preserves_success_and_normalizes_early_errors_without_storage() {
         let router = Router::new()
             .route(
@@ -803,9 +816,9 @@ mod response_header_tests {
             .layer(middleware::from_fn(response_headers));
         let listener = crate::web::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
-        let stop = simple_server::lifecycle::Shutdown::new();
+        let stop = simple_server::engine_lifecycle::Shutdown::new();
         let stopped = stop.clone();
-        let server = tokio::spawn(async move {
+        let server = super::sct_spawn(async move {
             crate::web::serve(listener, router, stopped).await.unwrap();
         });
         let client = reqwest::Client::new();

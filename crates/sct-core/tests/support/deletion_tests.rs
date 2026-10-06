@@ -7,9 +7,10 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn hide_directory_preserves_charges_histories_and_latest_protection() {
     let (w, a, db) = setup().await;
@@ -31,11 +32,11 @@ async fn hide_directory_preserves_charges_histories_and_latest_protection() {
         )
         .await
         .unwrap();
-    sqlx::query("UPDATE pools SET capacity=220000")
+    db::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE allocations SET capacity=100000")
+    db::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -124,7 +125,7 @@ async fn hide_directory_preserves_charges_histories_and_latest_protection() {
         .0,
         ErrorCode::NotFound
     );
-    let before: i64 = sqlx::query_scalar("SELECT sum(occupied)::bigint FROM allocations")
+    let before: i64 = db::query_scalar("SELECT sum(occupied)::bigint FROM allocations")
         .fetch_one(&db)
         .await
         .unwrap();
@@ -139,7 +140,7 @@ async fn hide_directory_preserves_charges_histories_and_latest_protection() {
         hidden
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM entries WHERE hidden")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM entries WHERE hidden")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -147,7 +148,7 @@ async fn hide_directory_preserves_charges_histories_and_latest_protection() {
         "only the ancestor changes visibility"
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT sum(occupied)::bigint FROM allocations")
+        db::query_scalar::<_, i64>("SELECT sum(occupied)::bigint FROM allocations")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -273,7 +274,7 @@ async fn hide_directory_preserves_charges_histories_and_latest_protection() {
     }
     assert!(rejected);
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM file_versions WHERE NOT retired")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM file_versions WHERE NOT retired")
             .fetch_one(&db)
             .await
             .unwrap(),

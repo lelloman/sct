@@ -2,9 +2,10 @@ use crate::{
     error::{Error, Result, hash, id, require},
     lease::Writer,
 };
+use db::PgConnection;
 use sct_protocol::{Capability, ErrorCode, PrincipalId};
 use simple_server::auth::Access;
-use sqlx::{PgConnection, Row};
+use simple_server::database::postgres as db;
 
 /// Constructed only by credential authentication; authority is rechecked per transaction.
 #[derive(Clone)]
@@ -25,7 +26,7 @@ pub struct IssuedCredential {
 }
 
 pub(crate) async fn administrator(db: &mut PgConnection, actor: &Actor) -> Result<bool> {
-    sqlx::query_scalar("SELECT p.administrator FROM principals p JOIN credentials c ON c.principal_id=p.id WHERE p.id=$1 AND c.id=$2 AND NOT p.disabled AND NOT c.revoked AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()) FOR SHARE OF p,c")
+    db::query_scalar("SELECT p.administrator FROM principals p JOIN credentials c ON c.principal_id=p.id WHERE p.id=$1 AND c.id=$2 AND NOT p.disabled AND NOT c.revoked AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp()) FOR SHARE OF p,c")
       .bind(&actor.principal).bind(&actor.credential).fetch_optional(db).await?
       .ok_or(Error(ErrorCode::Unauthorized))
 }
@@ -42,7 +43,7 @@ pub(crate) async fn capabilities(
     root: &str,
 ) -> Result<Vec<Capability>> {
     let is_admin = administrator(db, actor).await?;
-    let owner: String = sqlx::query_scalar("SELECT owner_id FROM roots WHERE id=$1")
+    let owner: String = db::query_scalar("SELECT owner_id FROM roots WHERE id=$1")
         .bind(root)
         .fetch_optional(&mut *db)
         .await?
@@ -51,7 +52,7 @@ pub(crate) async fn capabilities(
         return Ok(all_capabilities());
     }
     let value: Option<serde_json::Value> =
-        sqlx::query_scalar("SELECT capabilities FROM grants WHERE root_id=$1 AND principal_id=$2")
+        db::query_scalar("SELECT capabilities FROM grants WHERE root_id=$1 AND principal_id=$2")
             .bind(root)
             .bind(&actor.principal)
             .fetch_optional(db)
@@ -74,7 +75,7 @@ pub(crate) async fn authorize(
         Capability::Write | Capability::Delete | Capability::Purge
     ) {
         let kind: Option<String> =
-            sqlx::query_scalar("SELECT kind FROM credentials WHERE id=$1 AND principal_id=$2")
+            db::query_scalar("SELECT kind FROM credentials WHERE id=$1 AND principal_id=$2")
                 .bind(&actor.credential)
                 .bind(&actor.principal)
                 .fetch_optional(&mut *db)
@@ -106,7 +107,7 @@ async fn issue(db: &mut PgConnection, principal: &str, session: bool) -> Result<
         secret: format!("{}{}", id(), id()),
         csrf: session.then(|| format!("{}{}", id(), id())),
     };
-    sqlx::query("INSERT INTO credentials(id,principal_id,secret_hash,kind,csrf_hash,expires_at) VALUES($1,$2,$3,$4,$5,CASE WHEN $4='session' THEN clock_timestamp()+interval '12 hours' ELSE NULL END)")
+    db::query("INSERT INTO credentials(id,principal_id,secret_hash,kind,csrf_hash,expires_at) VALUES($1,$2,$3,$4,$5,CASE WHEN $4='session' THEN clock_timestamp()+interval '12 hours' ELSE NULL END)")
       .bind(&credential.id).bind(principal).bind(hash(&credential.secret)).bind(if session {"session"} else {"token"}).bind(credential.csrf.as_deref().map(hash)).execute(db).await?;
     Ok(credential)
 }
@@ -132,8 +133,8 @@ impl Writer {
     /// run with the server stopped. Replaces all credentials of the local admin.
     pub async fn recover_administrator(&self) -> Result<IssuedCredential> {
         let mut tx = self.transaction().await?;
-        sqlx::query("INSERT INTO principals(id,administrator) VALUES('local_admin',true) ON CONFLICT(id) DO UPDATE SET administrator=true,disabled=false").execute(&mut *tx).await?;
-        sqlx::query("UPDATE credentials SET revoked=true WHERE principal_id='local_admin'")
+        db::query("INSERT INTO principals(id,administrator) VALUES('local_admin',true) ON CONFLICT(id) DO UPDATE SET administrator=true,disabled=false").execute(&mut *tx).await?;
+        db::query("UPDATE credentials SET revoked=true WHERE principal_id='local_admin'")
             .execute(&mut *tx)
             .await?;
         let credential = issue(&mut tx, "local_admin", false).await?;
@@ -148,7 +149,7 @@ impl Writer {
     ) -> Result<Actor> {
         require(secret.len() == 64, ErrorCode::Unauthorized)?;
         let mut tx = self.control_transaction().await?;
-        let row = sqlx::query("SELECT c.id,c.principal_id,c.csrf_hash FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE c.secret_hash=$1 AND c.kind=$2 AND NOT c.revoked AND NOT p.disabled AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp())")
+        let row = db::query("SELECT c.id,c.principal_id,c.csrf_hash FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE c.secret_hash=$1 AND c.kind=$2 AND NOT c.revoked AND NOT p.disabled AND (c.expires_at IS NULL OR c.expires_at>clock_timestamp())")
           .bind(hash(secret)).bind(if session {"session"} else {"token"}).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::Unauthorized))?;
         if let Some(csrf) = csrf {
             require(
@@ -164,7 +165,7 @@ impl Writer {
     pub async fn create_principal(&self, actor: &Actor, principal: &PrincipalId) -> Result<()> {
         let mut tx = self.transaction().await?;
         admin(&mut tx, actor).await?;
-        sqlx::query("INSERT INTO principals(id) VALUES($1)")
+        db::query("INSERT INTO principals(id) VALUES($1)")
             .bind(principal.as_str())
             .execute(&mut *tx)
             .await?;
@@ -191,7 +192,7 @@ impl Writer {
             ErrorCode::Forbidden,
         )?;
         let enabled: bool =
-            sqlx::query_scalar("SELECT NOT disabled FROM principals WHERE id=$1 FOR SHARE")
+            db::query_scalar("SELECT NOT disabled FROM principals WHERE id=$1 FOR SHARE")
                 .bind(principal.as_str())
                 .fetch_optional(&mut *tx)
                 .await?
@@ -213,7 +214,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         let is_admin = administrator(&mut tx, actor).await?;
         let principal: String =
-            sqlx::query_scalar("SELECT principal_id FROM credentials WHERE id=$1")
+            db::query_scalar("SELECT principal_id FROM credentials WHERE id=$1")
                 .bind(credential)
                 .fetch_optional(&mut *tx)
                 .await?
@@ -222,7 +223,7 @@ impl Writer {
             is_admin || actor.principal == principal,
             ErrorCode::Forbidden,
         )?;
-        sqlx::query("UPDATE credentials SET revoked=true WHERE id=$1")
+        db::query("UPDATE credentials SET revoked=true WHERE id=$1")
             .bind(credential)
             .execute(&mut *tx)
             .await?;
@@ -248,9 +249,9 @@ impl Writer {
             ErrorCode::Unauthorized,
         )?;
         let mut tx = self.transaction().await?;
-        let principal: String=sqlx::query_scalar("INSERT INTO principals(id,issuer,subject) VALUES($1,$2,$3) ON CONFLICT(issuer,subject) DO UPDATE SET subject=EXCLUDED.subject RETURNING id")
+        let principal: String=db::query_scalar("INSERT INTO principals(id,issuer,subject) VALUES($1,$2,$3) ON CONFLICT(issuer,subject) DO UPDATE SET subject=EXCLUDED.subject RETURNING id")
           .bind(id()).bind(issuer).bind(subject).fetch_one(&mut *tx).await?;
-        let disabled: bool = sqlx::query_scalar("SELECT disabled FROM principals WHERE id=$1")
+        let disabled: bool = db::query_scalar("SELECT disabled FROM principals WHERE id=$1")
             .bind(&principal)
             .fetch_one(&mut *tx)
             .await?;
@@ -267,21 +268,21 @@ impl Writer {
         verifier: &str,
     ) -> Result<()> {
         let mut tx = self.transaction().await?;
-        sqlx::query("DELETE FROM oidc_flows WHERE expires_at<=clock_timestamp()")
+        db::query("DELETE FROM oidc_flows WHERE expires_at<=clock_timestamp()")
             .execute(&mut *tx)
             .await?;
-        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM oidc_flows")
+        let count: i64 = db::query_scalar("SELECT count(*) FROM oidc_flows")
             .fetch_one(&mut *tx)
             .await?;
         require(count < 10000, ErrorCode::RateLimited)?;
-        sqlx::query("INSERT INTO oidc_flows(state_hash,browser_hash,nonce,pkce_verifier) VALUES($1,$2,$3,$4)")
+        db::query("INSERT INTO oidc_flows(state_hash,browser_hash,nonce,pkce_verifier) VALUES($1,$2,$3,$4)")
           .bind(hash(state)).bind(hash(browser)).bind(nonce).bind(verifier).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }
     pub async fn consume_oidc_flow(&self, state: &str, browser: &str) -> Result<(String, String)> {
         let mut tx = self.transaction().await?;
-        let row=sqlx::query("DELETE FROM oidc_flows WHERE state_hash=$1 AND browser_hash=$2 AND expires_at>clock_timestamp() RETURNING nonce,pkce_verifier")
+        let row=db::query("DELETE FROM oidc_flows WHERE state_hash=$1 AND browser_hash=$2 AND expires_at>clock_timestamp() RETURNING nonce,pkce_verifier")
           .bind(hash(state)).bind(hash(browser)).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::Unauthorized))?;
         tx.commit().await?;
         Ok((row.get("nonce"), row.get("pkce_verifier")))
@@ -292,7 +293,7 @@ impl Writer {
     pub async fn revoke_session(&self, actor: &Actor, secret: &str) -> Result<()> {
         let mut tx = self.transaction().await?;
         administrator(&mut tx, actor).await?;
-        sqlx::query("UPDATE credentials SET revoked=true WHERE principal_id=$1 AND kind='session' AND secret_hash=$2").bind(&actor.principal).bind(hash(secret)).execute(&mut *tx).await?;
+        db::query("UPDATE credentials SET revoked=true WHERE principal_id=$1 AND kind='session' AND secret_hash=$2").bind(&actor.principal).bind(hash(secret)).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }

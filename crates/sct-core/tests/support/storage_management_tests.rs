@@ -1,4 +1,5 @@
 use super::*;
+use simple_server::database::postgres as db;
 
 fn page() -> ListRequest {
     ListRequest {
@@ -6,7 +7,7 @@ fn page() -> ListRequest {
         cursor: None,
     }
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn storage_budgets_and_configuration_survive_bootstrap_replay() {
     let (w, a, db) = setup().await;
@@ -79,7 +80,7 @@ async fn storage_budgets_and_configuration_survive_bootstrap_replay() {
         .into_iter()
         .find(|x| matches!(x.owner, AllocationOwner::ServerStaging))
         .unwrap();
-    sqlx::query("UPDATE allocations SET reserved=10,occupied=20,pending_cleanup=5 WHERE id=$1")
+    db::query("UPDATE allocations SET reserved=10,occupied=20,pending_cleanup=5 WHERE id=$1")
         .bind(staged.id.as_str())
         .execute(&db)
         .await
@@ -235,7 +236,7 @@ async fn storage_budgets_and_configuration_survive_bootstrap_replay() {
     );
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn runtime_local_destination_accepts_bytes_and_populated_root_keeps_references() {
     use sct_core::{local_store::LocalAdapter, transfer_io::TransferEngine};
@@ -310,7 +311,7 @@ async fn runtime_local_destination_accepts_bytes_and_populated_root_keeps_refere
     .await
     .unwrap();
     assert!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM object_copies WHERE state='available'")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM object_copies WHERE state='available'")
             .fetch_one(&db)
             .await
             .unwrap()
@@ -325,12 +326,12 @@ async fn runtime_local_destination_accepts_bytes_and_populated_root_keeps_refere
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn ledger_counters_do_not_invert_pool_capacity_lock_order() {
     let (_w, _a, db) = setup().await;
     let mut capacity = db.begin().await.unwrap();
-    sqlx::query("SELECT id FROM pools WHERE id='pool' FOR UPDATE")
+    db::query("SELECT id FROM pools WHERE id='pool' FOR UPDATE")
         .fetch_one(&mut *capacity)
         .await
         .unwrap();
@@ -339,7 +340,7 @@ async fn ledger_counters_do_not_invert_pool_capacity_lock_order() {
     // shared staging row. Charging bytes must not acquire the pool in reverse.
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(2),
-        sqlx::query(
+        db::query(
             "UPDATE allocations SET reserved=reserved+1 WHERE pool_id='pool' AND root_id IS NULL",
         )
         .execute(&mut *ledger),
@@ -352,11 +353,9 @@ async fn ledger_counters_do_not_invert_pool_capacity_lock_order() {
     capacity.rollback().await.unwrap();
     // Budget edits must still invoke the guard; counters bypass only that guard.
     assert!(
-        sqlx::query(
-            "UPDATE allocations SET capacity=20000 WHERE pool_id='pool' AND root_id IS NULL"
-        )
-        .execute(&db)
-        .await
-        .is_err()
+        db::query("UPDATE allocations SET capacity=20000 WHERE pool_id='pool' AND root_id IS NULL")
+            .execute(&db)
+            .await
+            .is_err()
     );
 }

@@ -3,9 +3,10 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
     let (w, a, db) = setup().await;
@@ -27,7 +28,7 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
     };
     let body = canonical(&file).unwrap();
     let shared = digest(&body);
-    sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,'file',0,0,$3)")
+    db::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,'file',0,0,$3)")
         .bind(r.id.as_str()).bind(&shared).bind(&body).execute(&db).await.unwrap();
     for i in 0..100 {
         let page = canonical(&DirectoryPage::DirectoryEntries {
@@ -58,25 +59,23 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
             (&page_id, "directory_page", &page),
             (&manifest, "directory", &directory),
         ] {
-            sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,$3,0,0,$4)")
+            db::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,$3,0,0,$4)")
                 .bind(r.id.as_str()).bind(id).bind(kind).bind(bytes).execute(&db).await.unwrap();
         }
         for (parent, child) in [(&manifest, &page_id), (&page_id, &shared)] {
-            sqlx::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES($1,$2,0,$3,0,0)")
+            db::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES($1,$2,0,$3,0,0)")
                 .bind(r.id.as_str()).bind(parent).bind(child).execute(&db).await.unwrap();
         }
-        sqlx::query(
-            "INSERT INTO graph_pins(root_id,id,kind,manifest) VALUES($1,$2,'checkpoint',$3)",
-        )
-        .bind(r.id.as_str())
-        .bind(format!("pin-{i:03}"))
-        .bind(manifest)
-        .execute(&db)
-        .await
-        .unwrap();
+        db::query("INSERT INTO graph_pins(root_id,id,kind,manifest) VALUES($1,$2,'checkpoint',$3)")
+            .bind(r.id.as_str())
+            .bind(format!("pin-{i:03}"))
+            .bind(manifest)
+            .execute(&db)
+            .await
+            .unwrap();
     }
     let orphan = digest(b"orphan");
-    sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length) VALUES($1,$2,'chunk',6)")
+    db::query("INSERT INTO content_objects(root_id,digest,kind,length) VALUES($1,$2,'chunk',6)")
         .bind(r.id.as_str())
         .bind(&orphan)
         .execute(&db)
@@ -105,11 +104,11 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
     )
     .await
     .unwrap();
-    sqlx::query("INSERT INTO transfer_sessions(id,root_id,operation_id,principal_id,key,request,manifest,state) VALUES('gc-session',$1,$2,$3,'gc','{}',$4,'aborted')")
+    db::query("INSERT INTO transfer_sessions(id,root_id,operation_id,principal_id,key,request,manifest,state) VALUES('gc-session',$1,$2,$3,'gc','{}',$4,'aborted')")
         .bind(r.id.as_str()).bind(fence.id().as_str()).bind(a.principal_id()).bind(&shared).execute(&db).await.unwrap();
     e.tick().await.unwrap();
     assert_eq!(
-        sqlx::query_scalar::<_, String>("SELECT phase FROM graph_scans WHERE root_id=$1")
+        db::query_scalar::<_, String>("SELECT phase FROM graph_scans WHERE root_id=$1")
             .bind(r.id.as_str())
             .fetch_one(&db)
             .await
@@ -117,7 +116,7 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
         "seeds"
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM object_copies WHERE state='available'")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM object_copies WHERE state='available'")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -130,7 +129,7 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
         e.tick().await.unwrap();
     }
     assert_eq!(
-        sqlx::query_scalar::<_, String>("SELECT state FROM object_copies WHERE digest=$1")
+        db::query_scalar::<_, String>("SELECT state FROM object_copies WHERE digest=$1")
             .bind(&orphan)
             .fetch_one(&db)
             .await
@@ -138,7 +137,7 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
         "deleted"
     );
     assert_eq!(
-        sqlx::query_scalar::<_, String>("SELECT state FROM object_copies WHERE digest=$1")
+        db::query_scalar::<_, String>("SELECT state FROM object_copies WHERE digest=$1")
             .bind(&shared)
             .fetch_one(&db)
             .await
@@ -146,13 +145,13 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
         "available"
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&db)
             .await
             .unwrap(),
         body.len() as i64
     );
-    sqlx::query("DELETE FROM graph_pins WHERE id<>'pin-099'")
+    db::query("DELETE FROM graph_pins WHERE id<>'pin-099'")
         .execute(&db)
         .await
         .unwrap();
@@ -160,14 +159,14 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
         e.tick().await.unwrap();
     }
     assert_eq!(
-        sqlx::query_scalar::<_, String>("SELECT state FROM object_copies WHERE digest=$1")
+        db::query_scalar::<_, String>("SELECT state FROM object_copies WHERE digest=$1")
             .bind(&shared)
             .fetch_one(&db)
             .await
             .unwrap(),
         "available"
     );
-    sqlx::query("DELETE FROM graph_pins")
+    db::query("DELETE FROM graph_pins")
         .execute(&db)
         .await
         .unwrap();
@@ -175,14 +174,14 @@ async fn graph_frontier_resumes_and_shared_tree_roots_protect_copies() {
         e.tick().await.unwrap();
     }
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&db)
             .await
             .unwrap(),
         0
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM object_copies WHERE state<>'deleted'")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM object_copies WHERE state<>'deleted'")
             .fetch_one(&db)
             .await
             .unwrap(),

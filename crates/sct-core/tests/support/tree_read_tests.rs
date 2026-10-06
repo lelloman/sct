@@ -7,18 +7,19 @@ use sct_core::{
     payload::{Fault, MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn snapshot_browse_and_pinned_descendant_range_reads_use_immutable_paths() {
     let (w, a, db) = setup().await;
     let r = root(&w, &a, "/tree-read", 4000).await;
-    sqlx::query("UPDATE pools SET capacity=220000")
+    db::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE allocations SET capacity=100000")
+    db::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();

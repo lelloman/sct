@@ -1,9 +1,10 @@
+use simple_server::database::postgres as db;
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
 use sct_core::backend::Registry;
 use sct_protocol::*;
 use serde_json::json;
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires PostgreSQL"]
 async fn browser_archives_require_csrf_keep_account_isolation_and_forbid_source_mutation() {
     let (catalog, _) = support::database().await;
@@ -31,11 +32,11 @@ async fn browser_archives_require_csrf_keep_account_isolation_and_forbid_source_
         secure_cookies: false,
         transfer: None,
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -192,7 +193,7 @@ async fn browser_archives_require_csrf_keep_account_isolation_and_forbid_source_
     writer.release().await.unwrap();
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires PostgreSQL and xorriso"]
 async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
     use sct_core::{archive_export::ArchiveExportConfig, transfer_io::TransferEngine};
@@ -253,27 +254,27 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
     let artifact = uuid::Uuid::new_v4().simple().to_string();
     std::fs::write(export_dir.join(format!("cache/{artifact}.iso")), body).unwrap();
     let mut tx = db.begin().await.unwrap();
-    sqlx::query("INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision) VALUES('source',$1,'source','/','r','enabled','{}',4000,'{}','source','r')").bind(owner).execute(&mut *tx).await.unwrap();
-    sqlx::query("INSERT INTO archive_accounts(principal_id,cache_bytes) VALUES($1,$2)")
+    db::query("INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision) VALUES('source',$1,'source','/','r','enabled','{}',4000,'{}','source','r')").bind(owner).execute(&mut *tx).await.unwrap();
+    db::query("INSERT INTO archive_accounts(principal_id,cache_bytes) VALUES($1,$2)")
         .bind(owner)
         .bind(body.len() as i64)
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::query("UPDATE archive_storage SET cache_bytes=$1")
+    db::query("UPDATE archive_storage SET cache_bytes=$1")
         .bind(body.len() as i64)
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO archive_collections(id,owner_id,label,revision,media_capacity,next_disc,next_set) VALUES('collection',$1,'collection','r',1000000,2,2)").bind(owner).execute(&mut *tx).await.unwrap();
+    db::query("INSERT INTO archive_collections(id,owner_id,label,revision,media_capacity,next_disc,next_set) VALUES('collection',$1,'collection','r',1000000,2,2)").bind(owner).execute(&mut *tx).await.unwrap();
     let plan = json!({"source_files":0,"source_bytes":0,"new_payload_bytes":0,"reused_payload_bytes":0,"new_disc_count":1,"required_earlier_disc_count":0,"index_bytes_per_disc":1,"bundle_bytes_per_disc":1,"filesystem_reserve_per_disc":1,"total_iso_budget_bytes":1000000,"bundle_sha256":hash});
-    sqlx::query("INSERT INTO archive_sets(id,collection_id,sequence,revision,state,principal_id,credential_id,selections,media_capacity,plan,first_disc,last_disc,frozen_at,published_at) VALUES('set','collection',1,'r','ready',$1,$2,$3,1000000,$4,1,1,clock_timestamp(),clock_timestamp())").bind(owner).bind(&token.id).bind(json!([{"root_id":"source","version_id":"version","path":"/"}])).bind(plan).execute(&mut *tx).await.unwrap();
-    sqlx::query("SET LOCAL sct.archive_import='on'")
+    db::query("INSERT INTO archive_sets(id,collection_id,sequence,revision,state,principal_id,credential_id,selections,media_capacity,plan,first_disc,last_disc,frozen_at,published_at) VALUES('set','collection',1,'r','ready',$1,$2,$3,1000000,$4,1,1,clock_timestamp(),clock_timestamp())").bind(owner).bind(&token.id).bind(json!([{"root_id":"source","version_id":"version","path":"/"}])).bind(plan).execute(&mut *tx).await.unwrap();
+    db::query("SET LOCAL sct.archive_import='on'")
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO archive_discs(id,collection_id,set_id,number,index_sha256,bundle_sha256,inventory_sha256,payload_bytes,object_count,planned_iso_bytes) VALUES('disc','collection','set',1,$1,$1,$1,0,0,1000000)").bind(&hash).execute(&mut *tx).await.unwrap();
-    sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,sha256,length,relative_path,expires_at) VALUES($1,'disc','available',$2,$3,$4,clock_timestamp()+interval '1 hour')").bind(&artifact).bind(&digest).bind(body.len() as i64).bind(format!("cache/{artifact}.iso")).execute(&mut *tx).await.unwrap();
+    db::query("INSERT INTO archive_discs(id,collection_id,set_id,number,index_sha256,bundle_sha256,inventory_sha256,payload_bytes,object_count,planned_iso_bytes) VALUES('disc','collection','set',1,$1,$1,$1,0,0,1000000)").bind(&hash).execute(&mut *tx).await.unwrap();
+    db::query("INSERT INTO archive_artifacts(id,disc_id,state,sha256,length,relative_path,expires_at) VALUES($1,'disc','available',$2,$3,$4,clock_timestamp()+interval '1 hour')").bind(&artifact).bind(&digest).bind(body.len() as i64).bind(format!("cache/{artifact}.iso")).execute(&mut *tx).await.unwrap();
     tx.commit().await.unwrap();
     let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -285,11 +286,11 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
         secure_cookies: false,
         transfer: Some(engine.clone()),
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -307,7 +308,7 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
     assert_eq!(head.headers()["etag"], etag);
     assert_eq!(head.headers()["content-length"], body.len().to_string());
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT download_count FROM archive_artifacts")
+        db::query_scalar::<_, i64>("SELECT download_count FROM archive_artifacts")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -380,7 +381,7 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
         .await
         .unwrap();
     assert_eq!(partial.into_inner(), body);
-    sqlx::query("UPDATE archive_artifacts SET expires_at=clock_timestamp()-interval '1 second'")
+    db::query("UPDATE archive_artifacts SET expires_at=clock_timestamp()-interval '1 second'")
         .execute(&db)
         .await
         .unwrap();
@@ -395,7 +396,7 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
     );
     engine.cleanup_archive_cache().await.unwrap();
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_discs")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM archive_discs")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -486,4 +487,16 @@ async fn iso_http_ranges_resume_headers_and_expiry_are_consistent() {
     server.abort();
     let _ = server.await;
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

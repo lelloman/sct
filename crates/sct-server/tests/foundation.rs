@@ -147,7 +147,7 @@ async fn oidc_login(
         .unwrap();
     (response, callback, browser)
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn oidc_http_authentication_csrf_and_foundation_api() {
     let (catalog, _pool) = support::database().await;
@@ -172,7 +172,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         ),
         codes: Arc::new(Mutex::new(HashMap::new())),
     };
-    let provider_task = tokio::spawn(async move {
+    let provider_task = sct_spawn(async move {
         sct_server::web::serve(
             provider_listener,
             Router::new()
@@ -181,7 +181,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
                 .route("/authorize", get(authorize))
                 .route("/token", post(token))
                 .with_state(provider),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -218,11 +218,11 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         public_url: origin.clone(),
         secure_cookies: false,
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, PathBuf::from("nonexistent")),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -496,4 +496,16 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
     );
     server.abort();
     provider_task.abort();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

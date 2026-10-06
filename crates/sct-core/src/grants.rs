@@ -5,8 +5,9 @@ use crate::{
     lease::Writer,
     roots::{json, parse, revision},
 };
+use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use sqlx::{PgConnection, Row, postgres::PgRow};
+use simple_server::database::postgres as db;
 fn inspect(row: &PgRow) -> Result<GrantInspection> {
     Ok(GrantInspection {
         id: row.get::<String, _>("id").parse()?,
@@ -17,7 +18,7 @@ fn inspect(row: &PgRow) -> Result<GrantInspection> {
     })
 }
 async fn grant_row(db: &mut PgConnection, grant: &GrantId) -> Result<PgRow> {
-    sqlx::query("SELECT * FROM grants WHERE id=$1")
+    db::query("SELECT * FROM grants WHERE id=$1")
         .bind(grant.as_str())
         .fetch_optional(db)
         .await?
@@ -65,7 +66,7 @@ impl Writer {
             &request.capabilities,
         )
         .await?;
-        let row = sqlx::query("INSERT INTO grants VALUES($1,$2,$3,$4,$5) RETURNING *")
+        let row = db::query("INSERT INTO grants VALUES($1,$2,$3,$4,$5) RETURNING *")
             .bind(id())
             .bind(request.root_id.as_str())
             .bind(request.principal_id.as_str())
@@ -111,7 +112,7 @@ impl Writer {
         let row = grant_row(&mut tx, grant).await?;
         revision(&row, &request.expected_revision)?;
         let row =
-            sqlx::query("UPDATE grants SET revision=$2,capabilities=$3 WHERE id=$1 RETURNING *")
+            db::query("UPDATE grants SET revision=$2,capabilities=$3 WHERE id=$1 RETURNING *")
                 .bind(grant.as_str())
                 .bind(id())
                 .bind(json(&request.capabilities)?)
@@ -141,7 +142,7 @@ impl Writer {
         lock_root(&mut tx, &root).await?;
         authorize(&mut tx, actor, &root, Capability::ManageGrants).await?;
         revision(&grant_row(&mut tx, grant).await?, expected)?;
-        sqlx::query("DELETE FROM grants WHERE id=$1")
+        db::query("DELETE FROM grants WHERE id=$1")
             .bind(grant.as_str())
             .execute(&mut *tx)
             .await?;
@@ -172,7 +173,7 @@ impl Writer {
             String::new()
         };
         let rows =
-            sqlx::query("SELECT * FROM grants WHERE root_id=$1 AND id>$2 ORDER BY id LIMIT $3")
+            db::query("SELECT * FROM grants WHERE root_id=$1 AND id>$2 ORDER BY id LIMIT $3")
                 .bind(root.as_str())
                 .bind(after)
                 .bind(request.limit.get() as i64 + 1)

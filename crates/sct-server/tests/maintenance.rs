@@ -8,7 +8,7 @@ use sct_core::{
 use sct_protocol::*;
 use serde_json::json;
 use std::sync::Arc;
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status() {
     let (catalog, _) = support::database().await;
@@ -68,11 +68,11 @@ async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status(
         secure_cookies: false,
         transfer: Some(engine.clone()),
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -296,4 +296,16 @@ async fn maintenance_http_queues_admin_scan_and_exposes_scoped_read_only_status(
     tokio::fs::remove_dir_all(checkpoint_directory)
         .await
         .unwrap();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

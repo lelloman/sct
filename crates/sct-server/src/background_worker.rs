@@ -1,5 +1,5 @@
 //! Own the fixed workers while retaining their existing abort/join order.
-use simple_server::tasks::{ShutdownBehavior, TaskId, TaskSet};
+use simple_server::engine_tasks::{ShutdownBehavior, TaskId, TaskSet};
 use std::{convert::Infallible, future::Future, num::NonZeroUsize};
 
 pub(super) struct BackgroundWorker {
@@ -40,7 +40,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[simple_server::test(host_runtime = true)]
     async fn stop_joins_cancelled_worker_before_releasing_resources() {
         let released = Arc::new(AtomicBool::new(false));
         let guard = Released(released.clone());
@@ -58,7 +58,7 @@ mod tests {
         worker.stop().await;
     }
 
-    #[tokio::test]
+    #[simple_server::test(host_runtime = true)]
     async fn completed_or_panicked_workers_do_not_block_cleanup() {
         for panic in [false, true] {
             let (started, ready) = tokio::sync::oneshot::channel();

@@ -11,9 +11,8 @@ rust-version = "1.96"
 sct-protocol = { path = "crates/sct-protocol", version = "0.1.0" }
 sct-client = { path = "crates/sct-client", version = "0.1.0" }
 sct-core = { path = "crates/sct-core", version = "0.1.0" }
-simple-server = { package = "lelloman-simple-server", path = "../simple-server", default-features = false, features = ["lifecycle", "health", "tasks", "auth"] }
+simple-server = { package = "lelloman-simple-server", path = "../simple-server", default-features = false, features = ["health", "auth"] }
 reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls"] }
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate"] }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 
 serde = { version = "1", features = ["derive"] }

@@ -1,5 +1,5 @@
 //! Exercise the production fallback, including its separation from API routes.
-use simple_server::lifecycle::Shutdown;
+use simple_server::engine_lifecycle::Shutdown;
 use std::{path::PathBuf, time::Duration};
 
 struct Files(PathBuf);
@@ -20,13 +20,13 @@ impl Drop for Files {
     }
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 async fn production_static_fallback_preserves_http_and_api_boundaries() {
     let files = Files::new();
     let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let shutdown = Shutdown::new();
-    let server = tokio::spawn(sct_server::web::serve(
+    let server = sct_spawn(sct_server::web::serve(
         listener,
         sct_server::router(None, files.0.clone()),
         shutdown.clone(),
@@ -142,4 +142,16 @@ async fn production_static_fallback_preserves_http_and_api_boundaries() {
         .unwrap()
         .unwrap()
         .unwrap();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

@@ -7,8 +7,9 @@ use crate::{
     paging,
     roots::{json, remember, replay},
 };
+use db::PgConnection;
 use sct_protocol::*;
-use sqlx::{PgConnection, Row};
+use simple_server::database::postgres as db;
 
 pub(crate) async fn source_access(
     db: &mut PgConnection,
@@ -19,14 +20,14 @@ pub(crate) async fn source_access(
         selections.iter().map(|s| s.root_id.as_str()).collect();
     let admin = auth::administrator(db, actor).await?;
     let roots: Vec<_> = roots.into_iter().collect();
-    let rows = sqlx::query("SELECT id,owner_id FROM roots WHERE id=ANY($1) ORDER BY id FOR SHARE")
+    let rows = db::query("SELECT id,owner_id FROM roots WHERE id=ANY($1) ORDER BY id FOR SHARE")
         .bind(&roots)
         .fetch_all(&mut *db)
         .await?;
     require(rows.len() == roots.len(), ErrorCode::NotFound)?;
     // Read grants in a fresh statement after root locks. A joined lookup could
     // retain a pre-revocation MVCC snapshot while waiting for a revoker's lock.
-    let grants = sqlx::query(
+    let grants = db::query(
         "SELECT root_id,capabilities FROM grants WHERE root_id=ANY($1) AND principal_id=$2",
     )
     .bind(&roots)
@@ -71,7 +72,7 @@ pub(crate) async fn disc_access(
 ) -> Result<ArchiveSet> {
     collection_access(db, actor, collection, false).await?;
     let set: String =
-        sqlx::query_scalar("SELECT set_id FROM archive_discs WHERE collection_id=$1 AND id=$2")
+        db::query_scalar("SELECT set_id FROM archive_discs WHERE collection_id=$1 AND id=$2")
             .bind(collection.as_str())
             .bind(disc.as_str())
             .fetch_optional(&mut *db)
@@ -138,7 +139,7 @@ impl Writer {
             old.revision == request.expected_revision,
             ErrorCode::RevisionConflict,
         )?;
-        sqlx::query(
+        db::query(
             "UPDATE archive_collections SET label=$2,media_capacity=$3,revision=$4 WHERE id=$1",
         )
         .bind(collection.as_str())
@@ -168,7 +169,7 @@ impl Writer {
         let admin = auth::administrator(&mut tx, actor).await?;
         let scope = format!("archive-collections:{admin}");
         let after = after(&mut tx, actor, &scope, request).await?;
-        let rows = sqlx::query(&format!(
+        let rows = db::query(&format!(
             "{COLLECTION_SELECT} WHERE c.id>$1 AND ($2 OR c.owner_id=$3) ORDER BY c.id LIMIT $4"
         ))
         .bind(after)
@@ -217,7 +218,7 @@ impl Writer {
         collection_access(&mut tx, actor, collection, false).await?;
         let scope = format!("archive-sets:{}", collection.as_str());
         let after = after(&mut tx, actor, &scope, request).await?;
-        let rows = sqlx::query(&format!(
+        let rows = db::query(&format!(
             "{SET_SELECT} WHERE collection_id=$1 AND id>$2 ORDER BY id LIMIT $3"
         ))
         .bind(collection.as_str())
@@ -261,7 +262,7 @@ impl Writer {
             disc.as_str()
         );
         let after = after(&mut tx, actor, &scope, request).await?;
-        let rows = sqlx::query(&format!("{SET_SELECT} WHERE s.collection_id=$1 AND s.id>$3 AND (EXISTS(SELECT 1 FROM archive_discs d WHERE d.set_id=s.id AND d.id=$2) OR EXISTS(SELECT 1 FROM archive_placements p WHERE p.set_id=s.id AND p.disc_id=$2)) ORDER BY s.id LIMIT $4"))
+        let rows = db::query(&format!("{SET_SELECT} WHERE s.collection_id=$1 AND s.id>$3 AND (EXISTS(SELECT 1 FROM archive_discs d WHERE d.set_id=s.id AND d.id=$2) OR EXISTS(SELECT 1 FROM archive_placements p WHERE p.set_id=s.id AND p.disc_id=$2)) ORDER BY s.id LIMIT $4"))
             .bind(collection.as_str()).bind(disc.as_str()).bind(after)
             .bind(request.limit.get() as i64 + 1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
@@ -286,8 +287,8 @@ impl Writer {
     pub async fn archive_usage(&self, actor: &Actor) -> Result<ArchiveUsage> {
         let mut tx = self.transaction().await?;
         auth::administrator(&mut tx, actor).await?;
-        let row=sqlx::query("SELECT quota_bytes,cache_bytes,reserved_bytes FROM archive_accounts WHERE principal_id=$1").bind(actor.principal_id()).fetch_optional(&mut *tx).await?;
-        let active:i64=sqlx::query_scalar("SELECT count(*) FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE c.owner_id=$1 AND s.state IN ('capturing','planning','awaiting_confirmation','building')").bind(actor.principal_id()).fetch_one(&mut *tx).await?;
+        let row=db::query("SELECT quota_bytes,cache_bytes,reserved_bytes FROM archive_accounts WHERE principal_id=$1").bind(actor.principal_id()).fetch_optional(&mut *tx).await?;
+        let active:i64=db::query_scalar("SELECT count(*) FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE c.owner_id=$1 AND s.state IN ('capturing','planning','awaiting_confirmation','building')").bind(actor.principal_id()).fetch_one(&mut *tx).await?;
         Ok(ArchiveUsage {
             quota_bytes: row
                 .as_ref()
@@ -355,10 +356,10 @@ impl Writer {
                 ErrorCode::RevisionConflict,
             )?;
             crate::archive_planning::validate_reuse(&mut tx, actor, set).await?;
-            let updated=sqlx::query("UPDATE archive_sets SET state='building',frozen_at=clock_timestamp(),revision=$2 WHERE id=$1 AND expires_at>clock_timestamp()").bind(set.as_str()).bind(id()).execute(&mut *tx).await?.rows_affected();
+            let updated=db::query("UPDATE archive_sets SET state='building',frozen_at=clock_timestamp(),revision=$2 WHERE id=$1 AND expires_at>clock_timestamp()").bind(set.as_str()).bind(id()).execute(&mut *tx).await?.rows_affected();
             require(updated == 1, ErrorCode::ArchiveExpired)?;
         } else {
-            sqlx::query("UPDATE archive_sets SET state='cancelled',revision=$2 WHERE id=$1")
+            db::query("UPDATE archive_sets SET state='cancelled',revision=$2 WHERE id=$1")
                 .bind(set.as_str())
                 .bind(id())
                 .execute(&mut *tx)
@@ -385,7 +386,7 @@ impl Writer {
     /// reading more source data. Offline media already obtained cannot be revoked.
     pub async fn authorize_archive_work(&self, set: &ArchiveSetId) -> Result<bool> {
         let mut tx = self.transaction().await?;
-        let row = sqlx::query(
+        let row = db::query(
             "SELECT collection_id,principal_id,credential_id,state FROM archive_sets WHERE id=$1",
         )
         .bind(set.as_str())
@@ -409,7 +410,7 @@ impl Writer {
                     ErrorCode::Unauthorized | ErrorCode::Forbidden | ErrorCode::NotFound
                 ) =>
             {
-                sqlx::query("UPDATE archive_sets SET state='revoked',failure='forbidden',revision=$2 WHERE id=$1 AND state IN ('capturing','planning','awaiting_confirmation','building')").bind(set.as_str()).bind(id()).execute(&mut *tx).await?;
+                db::query("UPDATE archive_sets SET state='revoked',failure='forbidden',revision=$2 WHERE id=$1 AND state IN ('capturing','planning','awaiting_confirmation','building')").bind(set.as_str()).bind(id()).execute(&mut *tx).await?;
                 crate::management::audit(
                     &mut tx,
                     &actor,
@@ -453,7 +454,7 @@ impl Writer {
             snapshot.revision.as_str()
         );
         let after = after(&mut tx, actor, &scope, request).await?;
-        let rows=sqlx::query("SELECT d.*,a.id AS artifact_id,CASE WHEN a.state='available' AND (a.cleanup_pending OR a.expires_at<=clock_timestamp()) THEN 'expired' ELSE a.state END AS artifact_state,a.sha256 AS artifact_sha256,a.length AS artifact_length,(extract(epoch FROM a.expires_at)*1000)::bigint AS artifact_expires,a.download_count FROM archive_discs d LEFT JOIN archive_artifacts a ON a.disc_id=d.id WHERE d.collection_id=$1 AND d.id>$3 AND (d.set_id=$2 OR EXISTS(SELECT 1 FROM archive_placements p WHERE p.set_id=$2 AND p.disc_id=d.id)) ORDER BY d.id LIMIT $4")
+        let rows=db::query("SELECT d.*,a.id AS artifact_id,CASE WHEN a.state='available' AND (a.cleanup_pending OR a.expires_at<=clock_timestamp()) THEN 'expired' ELSE a.state END AS artifact_state,a.sha256 AS artifact_sha256,a.length AS artifact_length,(extract(epoch FROM a.expires_at)*1000)::bigint AS artifact_expires,a.download_count FROM archive_discs d LEFT JOIN archive_artifacts a ON a.disc_id=d.id WHERE d.collection_id=$1 AND d.id>$3 AND (d.set_id=$2 OR EXISTS(SELECT 1 FROM archive_placements p WHERE p.set_id=$2 AND p.disc_id=d.id)) ORDER BY d.id LIMIT $4")
             .bind(collection.as_str()).bind(set.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let mut discs = Vec::new();
@@ -519,7 +520,7 @@ impl Writer {
             snapshot.revision.as_str()
         );
         let after = after(&mut tx, actor, &scope, request).await?;
-        let rows=sqlx::query("SELECT path,kind,root_id,version_id,length FROM archive_entries WHERE set_id=$1 AND path>$2 ORDER BY path LIMIT $3").bind(set.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=db::query("SELECT path,kind,root_id,version_id,length FROM archive_entries WHERE set_id=$1 AND path>$2 ORDER BY path LIMIT $3").bind(set.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let entries = rows
             .iter()
@@ -575,7 +576,7 @@ impl Writer {
             }
             None => (String::new(), String::new()),
         };
-        let rows=sqlx::query("SELECT root_id,digest,length FROM archive_placements WHERE set_id=$1 AND disc_id=$2 AND (root_id,digest)>($3,$4) ORDER BY root_id,digest LIMIT $5").bind(snapshot.id.as_str()).bind(disc.as_str()).bind(root).bind(digest).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=db::query("SELECT root_id,digest,length FROM archive_placements WHERE set_id=$1 AND disc_id=$2 AND (root_id,digest)>($3,$4) ORDER BY root_id,digest LIMIT $5").bind(snapshot.id.as_str()).bind(disc.as_str()).bind(root).bind(digest).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let objects = rows
             .iter()

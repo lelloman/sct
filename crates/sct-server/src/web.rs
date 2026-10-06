@@ -1,16 +1,11 @@
 //! ScT's static route declarations over the shared engine.
 //!
 //! Invalid declarations fail during setup. HTTP execution and filesystem serving
-//! remain in the prebuilt engine; application database/client work retains Tokio.
+//! remain in the prebuilt engine; application work uses the same engine runtime.
 pub use engine::{Json, http, middleware, response, tracing};
 use simple_server::engine_web as engine;
-fn runtime() -> &'static simple_server::runtime::Runtime {
-    static RUNTIME: std::sync::OnceLock<simple_server::runtime::Runtime> =
-        std::sync::OnceLock::new();
-    RUNTIME.get_or_init(|| simple_server::runtime::Runtime::new().expect("HTTP engine runtime"))
-}
 fn construct<R>(function: impl FnOnce() -> R) -> R {
-    runtime().with_current(function)
+    function()
 }
 
 pub mod extract {
@@ -130,27 +125,13 @@ impl TcpListener {
     }
 }
 pub async fn bind(address: impl ToString) -> std::io::Result<TcpListener> {
-    runtime()
-        .scope(engine::bind(address.to_string()))
-        .await
-        .map(TcpListener)
+    engine::bind(address.to_string()).await.map(TcpListener)
 }
+
 pub async fn serve(
     listener: TcpListener,
     router: Router,
-    shutdown: simple_server::lifecycle::Shutdown,
+    shutdown: simple_server::engine_lifecycle::Shutdown,
 ) -> std::io::Result<()> {
-    struct Stop(engine::Shutdown);
-    impl Drop for Stop {
-        fn drop(&mut self) {
-            self.0.request();
-        }
-    }
-    let stop = Stop(engine::Shutdown::new());
-    let serving = runtime().scope(engine::serve(listener.0, router.0, stop.0.clone()));
-    tokio::pin!(serving);
-    tokio::select! {
-        result = &mut serving => result,
-        _ = shutdown.requested() => { stop.0.request(); serving.await }
-    }
+    engine::serve(listener.0, router.0, shutdown).await
 }

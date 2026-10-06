@@ -4,6 +4,7 @@ use sct_core::{
     payload::{Fault, MemoryStore, ObjectKey, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
 async fn job(w: &Writer, a: &Actor, root: &RootId, kind: MaintenanceKind) -> MaintenanceJob {
@@ -79,7 +80,7 @@ async fn scenario(fault: Fault, healthy_source: bool, replay_progress: bool, no_
     engine.commit_upload(&a, &r.id, &upload).await.unwrap();
     engine.tick().await.unwrap();
     let before = w.root_usage(&a, &r.id).await.unwrap();
-    let old: String = sqlx::query_scalar("SELECT generation FROM object_copies WHERE root_id=$1 AND backend_id='two' AND digest=$2 AND state='available'").bind(r.id.as_str()).bind(digest(b"abc")).fetch_one(&db).await.unwrap();
+    let old: String = db::query_scalar("SELECT generation FROM object_copies WHERE root_id=$1 AND backend_id='two' AND digest=$2 AND state='available'").bind(r.id.as_str()).bind(digest(b"abc")).fetch_one(&db).await.unwrap();
     target
         .delete(&ObjectKey {
             root: r.id.clone(),
@@ -91,7 +92,7 @@ async fn scenario(fault: Fault, healthy_source: bool, replay_progress: bool, no_
     let scan = job(&w, &a, &r.id, MaintenanceKind::IntegrityScan).await;
     complete(&w, &engine, &a, &scan.id).await;
     target.fault(fault).await;
-    let staging: String = sqlx::query_scalar("SELECT id FROM allocations WHERE root_id IS NULL")
+    let staging: String = db::query_scalar("SELECT id FROM allocations WHERE root_id IS NULL")
         .fetch_one(&db)
         .await
         .unwrap();
@@ -134,7 +135,7 @@ async fn scenario(fault: Fault, healthy_source: bool, replay_progress: bool, no_
         );
         assert_eq!(w.root_usage(&a, &r.id).await.unwrap(), before);
         let old_state: String =
-            sqlx::query_scalar("SELECT state FROM object_copies WHERE generation=$1")
+            db::query_scalar("SELECT state FROM object_copies WHERE generation=$1")
                 .bind(&old)
                 .fetch_one(&db)
                 .await
@@ -156,12 +157,11 @@ async fn scenario(fault: Fault, healthy_source: bool, replay_progress: bool, no_
             )
             .await
             .unwrap();
-            let retained: String =
-                sqlx::query_scalar("SELECT id FROM allocations WHERE root_id=$1")
-                    .bind(r.id.as_str())
-                    .fetch_one(&db)
-                    .await
-                    .unwrap();
+            let retained: String = db::query_scalar("SELECT id FROM allocations WHERE root_id=$1")
+                .bind(r.id.as_str())
+                .fetch_one(&db)
+                .await
+                .unwrap();
             let allocation = w
                 .allocation_management(&a, &retained.parse().unwrap())
                 .await
@@ -183,19 +183,18 @@ async fn scenario(fault: Fault, healthy_source: bool, replay_progress: bool, no_
             .unwrap();
     }
     target.fault(Fault::None).await;
-    sqlx::query("UPDATE maintenance_jobs SET next_attempt_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(repair.id.as_str()).execute(&db).await.unwrap();
+    db::query("UPDATE maintenance_jobs SET next_attempt_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(repair.id.as_str()).execute(&db).await.unwrap();
     w.release().await.unwrap();
     let resumed = w.catalog().acquire_writer().await.unwrap();
     let engine = TransferEngine::new(resumed.clone(), stores, 2, 3600).unwrap();
     let done = complete(&resumed, &engine, &a, &repair.id).await;
     assert_eq!(done.processed.get(), 1);
     assert_eq!(resumed.root_usage(&a, &r.id).await.unwrap(), before);
-    let old_state: String =
-        sqlx::query_scalar("SELECT state FROM object_copies WHERE generation=$1")
-            .bind(&old)
-            .fetch_one(&db)
-            .await
-            .unwrap();
+    let old_state: String = db::query_scalar("SELECT state FROM object_copies WHERE generation=$1")
+        .bind(&old)
+        .fetch_one(&db)
+        .await
+        .unwrap();
     assert_eq!(old_state, "deleted");
     let findings = resumed
         .list_integrity_findings(
@@ -229,27 +228,27 @@ async fn scenario(fault: Fault, healthy_source: bool, replay_progress: bool, no_
         1
     );
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn mirror_repair_replays_completed_work_without_double_charging() {
     scenario(Fault::None, true, true, false).await;
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn mirror_repair_recovers_lost_write_acknowledgement() {
     scenario(Fault::LostWriteResponse, true, false, false).await;
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn mirror_repair_retains_uncertain_delete_charges() {
     scenario(Fault::UnknownDelete, true, false, false).await;
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn mirror_repair_requires_a_verified_alternate() {
     scenario(Fault::None, false, false, false).await;
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn mirror_repair_blocks_before_deletion_until_capacity_is_available() {
     scenario(Fault::None, true, false, true).await;

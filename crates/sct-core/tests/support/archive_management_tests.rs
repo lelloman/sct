@@ -4,6 +4,7 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 async fn user(w: &Writer, admin: &Actor, name: &str) -> (Actor, sct_core::auth::IssuedCredential) {
     let identity = name.parse().unwrap();
@@ -30,7 +31,7 @@ async fn collection(w: &Writer, a: &Actor, key: &str) -> ArchiveCollection {
     .await
     .unwrap()
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires PostgreSQL"]
 async fn archive_management_isolates_accounts_and_rechecks_every_source() {
     let (w, admin, db) = setup().await;
@@ -175,7 +176,7 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
         .len(),
         1
     );
-    sqlx::query("UPDATE archive_sets SET state='planning' WHERE id=$1")
+    db::query("UPDATE archive_sets SET state='planning' WHERE id=$1")
         .bind(set.id.as_str())
         .execute(&db)
         .await
@@ -185,7 +186,7 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    sqlx::query("INSERT INTO archive_discs VALUES('disc',$1,$2,1,repeat('a',64),repeat('b',64),repeat('c',64),0,0,100000000)").bind(col.id.as_str()).bind(set.id.as_str()).execute(&db).await.unwrap();
+    db::query("INSERT INTO archive_discs VALUES('disc',$1,$2,1,repeat('a',64),repeat('b',64),repeat('c',64),0,0,100000000)").bind(col.id.as_str()).bind(set.id.as_str()).execute(&db).await.unwrap();
     let disc = "disc".parse().unwrap();
     assert!(
         w.authorize_archive_disc(&owner, &col.id, &disc)
@@ -200,21 +201,21 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
     // Match revoke_grant's root-lock/delete boundary, and force an archive
     // authorization query to wait across its commit. It must see the deletion.
     let mut revoke = db.begin().await.unwrap();
-    sqlx::query("SELECT id FROM roots WHERE id=$1 FOR UPDATE")
+    db::query("SELECT id FROM roots WHERE id=$1 FOR UPDATE")
         .bind(b.id.as_str())
         .fetch_one(&mut *revoke)
         .await
         .unwrap();
-    let blocker: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+    let blocker: i32 = db::query_scalar("SELECT pg_backend_pid()")
         .fetch_one(&mut *revoke)
         .await
         .unwrap();
-    sqlx::query("DELETE FROM grants WHERE id=$1")
+    db::query("DELETE FROM grants WHERE id=$1")
         .bind(grants[1].id.as_str())
         .execute(&mut *revoke)
         .await
         .unwrap();
-    let waiting = tokio::spawn({
+    let waiting = sct_spawn({
         let w = w.clone();
         let owner = owner.clone();
         let collection = col.id.clone();
@@ -223,7 +224,7 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
     });
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
-            let blocked: bool = sqlx::query_scalar(
+            let blocked: bool = db::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))",
             )
             .bind(blocker)
@@ -261,7 +262,7 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
     );
     assert!(!w.authorize_archive_work(&set.id).await.unwrap());
     assert!(w.cleanup_archive_capture(&set.id).await.unwrap());
-    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_sources s JOIN graph_pins p ON p.root_id=s.root_id AND p.id=s.pin_id WHERE s.set_id=$1").bind(set.id.as_str()).fetch_one(&db).await.unwrap(), 0);
+    assert_eq!(db::query_scalar::<_, i64>("SELECT count(*) FROM archive_sources s JOIN graph_pins p ON p.root_id=s.root_id AND p.id=s.pin_id WHERE s.set_id=$1").bind(set.id.as_str()).fetch_one(&db).await.unwrap(), 0);
     assert_eq!(
         w.inspect_archive_set(&admin, &col.id, &set.id)
             .await
@@ -276,7 +277,7 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
             .is_err()
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>(
+        db::query_scalar::<_, i64>(
             "SELECT count(*) FROM management_audit WHERE event='archive.authority.revoked'"
         )
         .fetch_one(&db)
@@ -285,7 +286,7 @@ async fn archive_management_isolates_accounts_and_rechecks_every_source() {
         1
     );
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires PostgreSQL"]
 async fn archive_management_revisions_cancel_replay_and_credential_revocation() {
     let (w, admin, db) = setup().await;
@@ -378,18 +379,30 @@ async fn archive_management_revisions_cancel_replay_and_credential_revocation() 
     assert!(w.cleanup_archive_capture(&set.id).await.unwrap());
     assert!(w.cleanup_archive_capture(&cancelled.id).await.unwrap());
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
             .fetch_one(&db)
             .await
             .unwrap(),
         0
     );
     assert_eq!(
-        sqlx::query_scalar::<_, String>("SELECT state FROM archive_sets WHERE id=$1")
+        db::query_scalar::<_, String>("SELECT state FROM archive_sets WHERE id=$1")
             .bind(set.id.as_str())
             .fetch_one(&db)
             .await
             .unwrap(),
         "revoked"
     );
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

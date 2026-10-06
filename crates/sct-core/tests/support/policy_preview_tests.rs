@@ -7,6 +7,7 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
 pub(super) async fn complete_preview(
@@ -34,7 +35,7 @@ pub(super) async fn complete_preview(
     }
     panic!("preview did not finish");
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn policy_previews_page_hidden_history_respect_overrides_and_expire() {
     let (w, a, db) = setup().await;
@@ -55,11 +56,11 @@ async fn policy_previews_page_hidden_history_respect_overrides_and_expire() {
         )
         .await
         .unwrap();
-    sqlx::query("UPDATE pools SET capacity=220000")
+    db::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE allocations SET capacity=100000")
+    db::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -118,9 +119,9 @@ async fn policy_previews_page_hidden_history_respect_overrides_and_expire() {
         .unwrap();
     // Repeated identical commits are valid retained history and force a second
     // preview batch without creating redundant payload copies for this fixture.
-    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) SELECT 'history-'||n,v.root_id,v.entry_id,v.manifest,v.length FROM file_versions v CROSS JOIN generate_series(1,62) n WHERE v.id=$1")
+    db::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) SELECT 'history-'||n,v.root_id,v.entry_id,v.manifest,v.length FROM file_versions v CROSS JOIN generate_series(1,62) n WHERE v.id=$1")
         .bind(file.current_version_id.as_ref().unwrap().as_str()).execute(&db).await.unwrap();
-    sqlx::query("UPDATE entries SET current_version_id=(SELECT id FROM file_versions WHERE entry_id=$1 ORDER BY sequence DESC LIMIT 1) WHERE id=$1").bind(file.id.as_str()).execute(&db).await.unwrap();
+    db::query("UPDATE entries SET current_version_id=(SELECT id FROM file_versions WHERE entry_id=$1 ORDER BY sequence DESC LIMIT 1) WHERE id=$1").bind(file.id.as_str()).execute(&db).await.unwrap();
     let draft = stage_files(&e, &w, &a, &r.id, &atomic.id, &[b"tree".to_vec()], 0).await;
     admitted(&e, &a, &r.id, &draft).await;
     e.upload_chunk(
@@ -236,14 +237,14 @@ async fn policy_previews_page_hidden_history_respect_overrides_and_expire() {
     .await;
     assert_eq!(inherit.versions_to_retire.get(), 0);
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM file_versions WHERE NOT retired")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM file_versions WHERE NOT retired")
             .fetch_one(&db)
             .await
             .unwrap(),
         70,
         "preview is nondestructive"
     );
-    sqlx::query(
+    db::query(
         "UPDATE change_previews SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
     )
     .bind(inherit.id.as_str())

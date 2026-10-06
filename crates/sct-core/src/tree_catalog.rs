@@ -5,9 +5,10 @@ use crate::{
     error::{Error, Result, require},
     lease::Writer,
 };
+use db::PgConnection;
 use sct_protocol::*;
 use serde::{Serialize, de::DeserializeOwned};
-use sqlx::PgConnection;
+use simple_server::database::postgres as db;
 
 pub(crate) fn path_parts(path: &RootPath) -> Result<Vec<EntryName>> {
     if path.as_str() == "/" {
@@ -42,7 +43,7 @@ pub(crate) async fn version_manifest(
     root: &str,
     version: &str,
 ) -> Result<String> {
-    sqlx::query_scalar("SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND kind='directory' AND NOT retired AND NOT entry_purged(entry_id)")
+    db::query_scalar("SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND kind='directory' AND NOT retired AND NOT entry_purged(entry_id)")
         .bind(root).bind(version).fetch_optional(db).await?.ok_or(Error(ErrorCode::NotFound))
 }
 
@@ -52,7 +53,7 @@ pub(crate) async fn metadata<T: Serialize + DeserializeOwned>(
     manifest: &str,
     kind: &str,
 ) -> Result<T> {
-    let body: Option<Vec<u8>> = sqlx::query_scalar(
+    let body: Option<Vec<u8>> = db::query_scalar(
         "SELECT body FROM content_objects WHERE root_id=$1 AND digest=$2 AND kind=$3",
     )
     .bind(root)
@@ -115,10 +116,10 @@ impl Writer {
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
-        let version:Option<String>=sqlx::query_scalar("SELECT current_version_id FROM entries WHERE root_id=$1 AND id=$2 AND kind='directory' AND versioning='atomic_directory' AND NOT hidden")
+        let version:Option<String>=db::query_scalar("SELECT current_version_id FROM entries WHERE root_id=$1 AND id=$2 AND kind='directory' AND versioning='atomic_directory' AND NOT hidden")
             .bind(root.as_str()).bind(directory.as_str()).fetch_optional(&mut *tx).await?.flatten();
         let version = version.ok_or(Error(ErrorCode::NotFound))?;
-        let hidden:bool=sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,hidden FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.hidden FROM entries e JOIN a ON e.id=a.parent_id) SELECT bool_or(hidden) FROM a")
+        let hidden:bool=db::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,hidden FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.hidden FROM entries e JOIN a ON e.id=a.parent_id) SELECT bool_or(hidden) FROM a")
             .bind(directory.as_str()).fetch_one(&mut *tx).await?;
         require(!hidden, ErrorCode::NotFound)?;
         Ok(version.parse()?)
@@ -237,7 +238,7 @@ impl Writer {
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
-        let mut manifest: String = sqlx::query_scalar(
+        let mut manifest: String = db::query_scalar(
             "SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND kind='directory' AND NOT retired AND NOT entry_purged(entry_id)",
         ).bind(root.as_str()).bind(version.as_str()).fetch_optional(&mut *tx).await?
             .ok_or(Error(ErrorCode::NotFound))?;

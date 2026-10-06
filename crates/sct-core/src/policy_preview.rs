@@ -7,8 +7,9 @@ use crate::{
     policy::{effective, protected, scope_parts},
     roots::{json, root_row},
 };
+use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use sqlx::{PgConnection, Row, postgres::PgRow};
+use simple_server::database::postgres as db;
 
 pub(crate) async fn authority(
     db: &mut PgConnection,
@@ -17,7 +18,7 @@ pub(crate) async fn authority(
 ) -> Result<serde_json::Value> {
     let capabilities = crate::auth::capabilities(db, actor, root).await?;
     let grant: Option<String> =
-        sqlx::query_scalar("SELECT revision FROM grants WHERE root_id=$1 AND principal_id=$2")
+        db::query_scalar("SELECT revision FROM grants WHERE root_id=$1 AND principal_id=$2")
             .bind(root)
             .bind(&actor.principal)
             .fetch_optional(db)
@@ -51,7 +52,7 @@ pub(crate) async fn validate_change(
     let old = effective(db, root, entry.map(EntryId::as_str)).await?;
     require(&old.revision == revision, ErrorCode::RevisionConflict)?;
     let policy = if let Some(entry) = entry {
-        let row = sqlx::query("SELECT parent_id,policy FROM entries WHERE root_id=$1 AND id=$2")
+        let row = db::query("SELECT parent_id,policy FROM entries WHERE root_id=$1 AND id=$2")
             .bind(root)
             .bind(entry.as_str())
             .fetch_optional(&mut *db)
@@ -115,7 +116,7 @@ pub(crate) async fn check_preview(
     Ok(request)
 }
 pub(crate) async fn load(db: &mut PgConnection, root: &str, preview: &str) -> Result<PgRow> {
-    sqlx::query("SELECT *,expires_at<=clock_timestamp() expired,(extract(epoch FROM expires_at)*1000)::bigint expires_ms FROM change_previews WHERE root_id=$1 AND id=$2")
+    db::query("SELECT *,expires_at<=clock_timestamp() expired,(extract(epoch FROM expires_at)*1000)::bigint expires_ms FROM change_previews WHERE root_id=$1 AND id=$2")
         .bind(root).bind(preview).fetch_optional(db).await?.ok_or(Error(ErrorCode::NotFound))
 }
 fn inspect(row: &PgRow) -> Result<ChangePreview> {
@@ -143,7 +144,7 @@ async fn affected(
     let scope = match change {
         PolicyChange::Set { scope, .. } | PolicyChange::Inherit { scope, .. } => scope,
         PolicyChange::Move { entry_id, .. } => {
-            let ancestors=sqlx::query("WITH RECURSIVE a AS (SELECT id,parent_id,policy,0 depth FROM entries WHERE root_id=$1 AND id=$2 UNION ALL SELECT e.id,e.parent_id,e.policy,a.depth+1 FROM entries e JOIN a ON e.id=a.parent_id WHERE e.root_id=$1 AND a.depth<4096) SELECT id,policy FROM a ORDER BY depth")
+            let ancestors=db::query("WITH RECURSIVE a AS (SELECT id,parent_id,policy,0 depth FROM entries WHERE root_id=$1 AND id=$2 UNION ALL SELECT e.id,e.parent_id,e.policy,a.depth+1 FROM entries e JOIN a ON e.id=a.parent_id WHERE e.root_id=$1 AND a.depth<4096) SELECT id,policy FROM a ORDER BY depth")
                 .bind(root).bind(entry).fetch_all(db).await?;
             for ancestor in ancestors {
                 if ancestor
@@ -162,7 +163,7 @@ async fn affected(
     match scope {
         PolicyScope::Root { .. } => Ok(matches!(old.source, PolicyScope::Root { .. })),
         PolicyScope::Entry { entry_id, .. } => {
-            let ancestors=sqlx::query("WITH RECURSIVE a AS (SELECT id,parent_id,policy,0 depth FROM entries WHERE root_id=$1 AND id=$2 UNION ALL SELECT e.id,e.parent_id,e.policy,a.depth+1 FROM entries e JOIN a ON e.id=a.parent_id WHERE e.root_id=$1 AND a.depth<4096) SELECT id,policy FROM a ORDER BY depth")
+            let ancestors=db::query("WITH RECURSIVE a AS (SELECT id,parent_id,policy,0 depth FROM entries WHERE root_id=$1 AND id=$2 UNION ALL SELECT e.id,e.parent_id,e.policy,a.depth+1 FROM entries e JOIN a ON e.id=a.parent_id WHERE e.root_id=$1 AND a.depth<4096) SELECT id,policy FROM a ORDER BY depth")
                 .bind(root).bind(entry).fetch_all(db).await?;
             for ancestor in ancestors {
                 if ancestor.get::<String, _>("id") == entry_id.as_str() {
@@ -202,7 +203,7 @@ impl Writer {
         }
         let authority = authority(&mut tx, actor, root.as_str()).await?;
         let preview = id();
-        sqlx::query("INSERT INTO change_previews(id,root_id,principal_id,request,root_revision,mutation_serial,authority) VALUES($1,$2,$3,$4,$5,$6,$7)")
+        db::query("INSERT INTO change_previews(id,root_id,principal_id,request,root_revision,mutation_serial,authority) VALUES($1,$2,$3,$4,$5,$6,$7)")
             .bind(&preview).bind(root.as_str()).bind(&actor.principal).bind(json(request)?).bind(request.expected_root_revision.as_str()).bind(row.get::<i64,_>("mutation_serial")).bind(authority).execute(&mut *tx).await?;
         crate::namespace_moves::initialize(&mut tx, root.as_str(), &preview, &request.change)
             .await?;
@@ -247,7 +248,7 @@ impl Writer {
             .map(|s| serde_json::from_str(&s))
             .transpose()?
             .unwrap_or((String::new(), 0, 0));
-        let rows=sqlx::query("SELECT id,entry_id,sequence,length FROM file_versions WHERE root_id=$1 AND NOT retired AND (entry_id,-sequence)>($2,$3) ORDER BY entry_id,-sequence LIMIT 64")
+        let rows=db::query("SELECT id,entry_id,sequence,length FROM file_versions WHERE root_id=$1 AND NOT retired AND (entry_id,-sequence)>($2,$3) ORDER BY entry_id,-sequence LIMIT 64")
             .bind(root.as_str()).bind(&last_entry).bind(last_sequence).fetch_all(&mut *tx).await?;
         let mut retire_count = 0i64;
         let mut loss_count = 0i64;
@@ -265,7 +266,7 @@ impl Writer {
             let loses =
                 !retire && protected(&old.policy, ordinal) && !protected(&proposed, ordinal);
             if retire || loses {
-                sqlx::query("INSERT INTO preview_versions(root_id,preview_id,version_id,retire,loses_protection) VALUES($1,$2,$3,$4,$5)")
+                db::query("INSERT INTO preview_versions(root_id,preview_id,version_id,retire,loses_protection) VALUES($1,$2,$3,$4,$5)")
                     .bind(root.as_str()).bind(preview.as_str()).bind(version.get::<String,_>("id")).bind(retire).bind(loses).execute(&mut *tx).await?;
                 if retire {
                     retire_count += 1;
@@ -277,7 +278,7 @@ impl Writer {
                 }
             }
         }
-        sqlx::query("UPDATE change_previews SET state=$2,cursor=$3,processed=processed+$4,retire_count=retire_count+$5,loss_count=loss_count+$6,estimated_bytes=LEAST(9007199254740991,estimated_bytes::numeric+$7::bigint)::bigint WHERE id=$1")
+        db::query("UPDATE change_previews SET state=$2,cursor=$3,processed=processed+$4,retire_count=retire_count+$5,loss_count=loss_count+$6,estimated_bytes=LEAST(9007199254740991,estimated_bytes::numeric+$7::bigint)::bigint WHERE id=$1")
             .bind(preview.as_str()).bind(if rows.len()<64 {"ready"}else{"planning"}).bind(serde_json::to_string(&(last_entry,last_sequence,ordinal))?).bind(rows.len() as i64).bind(retire_count).bind(loss_count).bind(bytes as i64).execute(&mut *tx).await?;
         let result = inspect(&load(&mut tx, root.as_str(), preview.as_str()).await?)?;
         tx.commit().await?;
@@ -304,7 +305,7 @@ impl Writer {
         } else {
             String::new()
         };
-        let rows=sqlx::query("SELECT p.*,v.entry_id FROM preview_versions p JOIN file_versions v ON v.root_id=p.root_id AND v.id=p.version_id WHERE p.root_id=$1 AND p.preview_id=$2 AND p.version_id>$3 ORDER BY p.version_id LIMIT $4")
+        let rows=db::query("SELECT p.*,v.entry_id FROM preview_versions p JOIN file_versions v ON v.root_id=p.root_id AND v.id=p.version_id WHERE p.root_id=$1 AND p.preview_id=$2 AND p.version_id>$3 ORDER BY p.version_id LIMIT $4")
             .bind(root.as_str()).bind(preview.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let versions: Vec<PreviewVersion> = rows
             .iter()

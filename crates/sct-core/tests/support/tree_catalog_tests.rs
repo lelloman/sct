@@ -1,10 +1,11 @@
 use super::*;
+use simple_server::database::postgres as db;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn migration_preserves_existing_m2_version_and_pin() {
     let (catalog, db) = support::database_through(Some(4)).await;
-    sqlx::raw_sql("INSERT INTO principals(id) VALUES('p');
+    db::raw_sql("INSERT INTO principals(id) VALUES('p');
         INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision)
         VALUES('r','p','root','/','revision','enabled','{}',1000,'{}','policy','policy-revision');
         INSERT INTO entries(id,root_id,name,kind,revision) VALUES('e','r','root','directory','rev');
@@ -16,12 +17,12 @@ async fn migration_preserves_existing_m2_version_and_pin() {
         .execute(&db).await.unwrap();
     catalog.migrate().await.unwrap();
     catalog.migrate().await.unwrap();
-    let preserved: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM file_versions v JOIN entries e ON e.current_version_id=v.id JOIN read_pins p ON p.version_id=v.id WHERE v.id='v' AND v.kind='file' AND NOT v.retired)")
+    let preserved: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM file_versions v JOIN entries e ON e.current_version_id=v.id JOIN read_pins p ON p.version_id=v.id WHERE v.id='v' AND v.kind='file' AND NOT v.retired)")
         .fetch_one(&db).await.unwrap();
     assert!(preserved);
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn snapshot_catalog_uses_immutable_roots_and_enforces_boundaries() {
     let (w, a, db) = setup().await;
@@ -68,15 +69,15 @@ async fn snapshot_catalog_uses_immutable_roots_and_enforces_boundaries() {
         (&page_id, "directory_page", &page),
         (&tree_id, "directory", &tree_body),
     ] {
-        sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,$3,0,0,$4)")
+        db::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,$3,0,0,$4)")
             .bind(r.id.as_str()).bind(id).bind(kind).bind(body).execute(&db).await.unwrap();
     }
-    let before: i64 = sqlx::query_scalar("SELECT mutation_serial FROM roots WHERE id=$1")
+    let before: i64 = db::query_scalar("SELECT mutation_serial FROM roots WHERE id=$1")
         .bind(r.id.as_str())
         .fetch_one(&db)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) VALUES('snapshot', $1,$2,$3,0,'directory')")
+    db::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) VALUES('snapshot', $1,$2,$3,0,'directory')")
         .bind(r.id.as_str()).bind(boundary.id.as_str()).bind(&tree_id).execute(&db).await.unwrap();
     let version: VersionId = "snapshot".parse().unwrap();
     assert_eq!(
@@ -92,29 +93,28 @@ async fn snapshot_catalog_uses_immutable_roots_and_enforces_boundaries() {
             .0,
         ErrorCode::NotFound
     );
-    let descendants: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM entries WHERE root_id=$1 AND parent_id IS NOT NULL",
-    )
-    .bind(r.id.as_str())
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let descendants: i64 =
+        db::query_scalar("SELECT count(*) FROM entries WHERE root_id=$1 AND parent_id IS NOT NULL")
+            .bind(r.id.as_str())
+            .fetch_one(&db)
+            .await
+            .unwrap();
     assert_eq!(
         descendants, 0,
         "snapshots require no materialized namespace descendants"
     );
-    assert!(sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES('wrong-kind',$1,$2,$3,0)")
+    assert!(db::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES('wrong-kind',$1,$2,$3,0)")
         .bind(r.id.as_str()).bind(boundary.id.as_str()).bind(&tree_id).execute(&db).await.is_err());
-    assert!(sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) VALUES('wrong-root',$1,$2,$3,0,'directory')")
+    assert!(db::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) VALUES('wrong-root',$1,$2,$3,0,'directory')")
         .bind(other.id.as_str()).bind(boundary.id.as_str()).bind(&tree_id).execute(&db).await.is_err());
-    let after: i64 = sqlx::query_scalar("SELECT mutation_serial FROM roots WHERE id=$1")
+    let after: i64 = db::query_scalar("SELECT mutation_serial FROM roots WHERE id=$1")
         .bind(r.id.as_str())
         .fetch_one(&db)
         .await
         .unwrap();
     assert_eq!(after, before + 1);
     let pin = w.pin_version(&a, &r.id, &version).await.unwrap();
-    sqlx::query("UPDATE file_versions SET retired=true WHERE id='snapshot'")
+    db::query("UPDATE file_versions SET retired=true WHERE id='snapshot'")
         .execute(&db)
         .await
         .unwrap();

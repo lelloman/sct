@@ -1,5 +1,6 @@
 use super::archive_planning_tests::{capture, collection, file, finish, publish_fixture, source};
 use super::*;
+use simple_server::database::postgres as db;
 fn page() -> ListRequest {
     ListRequest {
         limit: 100.try_into().unwrap(),
@@ -66,7 +67,7 @@ async fn current(
         .find(|v| v.id == copy.id)
         .unwrap()
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires PostgreSQL"]
 async fn copies_require_bound_read_back_and_preserve_completion_after_damage() {
     let (w, a, db) = setup().await;
@@ -333,19 +334,19 @@ async fn copies_require_bound_read_back_and_preserve_completion_after_damage() {
         ErrorCode::NotFound
     );
     assert!(
-        sqlx::query("DELETE FROM archive_copy_events")
+        db::query("DELETE FROM archive_copy_events")
             .execute(&db)
             .await
             .is_err()
     );
     assert!(
-        sqlx::query("DELETE FROM archive_reports")
+        db::query("DELETE FROM archive_reports")
             .execute(&db)
             .await
             .is_err()
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_discs")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM archive_discs")
             .fetch_one(&db)
             .await
             .unwrap(),

@@ -201,7 +201,7 @@ async fn identities(
     ))
 }
 async fn bounded_body(request: Request) -> Result<crate::web::body::Bytes, ApiError> {
-    tokio::time::timeout(
+    simple_server::time::timeout(
         std::time::Duration::from_secs(60),
         crate::web::body::to_bytes(request.into_body(), MANIFEST_BYTES),
     )

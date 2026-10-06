@@ -11,8 +11,9 @@ use crate::{
     roots::json,
     transfer_io::TransferEngine,
 };
+use db::PgRow;
 use sct_protocol::*;
-use sqlx::{Row, postgres::PgRow};
+use simple_server::database::postgres as db;
 type Edges = Vec<(String, u64, u64)>;
 pub(crate) fn shape(row: &PgRow) -> Result<Edges> {
     let kind: String = row.get("kind");
@@ -120,7 +121,7 @@ impl TransferEngine {
         let mut tx = self.writer.transaction().await?;
         lock_content_root(&mut tx, &claim.fence.root).await?;
         check_fence(&mut tx, &claim.fence, self.writer.epoch).await?;
-        sqlx::query("INSERT INTO integrity_findings(id,root_id,job_id,backend_id,digest,generation,kind) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING").bind(id()).bind(&claim.fence.root).bind(&claim.job).bind(backend).bind(digest).bind(generation).bind(json(&kind)?.as_str().unwrap()).execute(&mut *tx).await?;
+        db::query("INSERT INTO integrity_findings(id,root_id,job_id,backend_id,digest,generation,kind) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING").bind(id()).bind(&claim.fence.root).bind(&claim.job).bind(backend).bind(digest).bind(generation).bind(json(&kind)?.as_str().unwrap()).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -140,11 +141,10 @@ impl TransferEngine {
                     complete: false,
                 });
             }
-            let scan: String =
-                sqlx::query_scalar("SELECT scan_id FROM graph_scans WHERE root_id=$1")
-                    .bind(&claim.fence.root)
-                    .fetch_one(&mut *tx)
-                    .await?;
+            let scan: String = db::query_scalar("SELECT scan_id FROM graph_scans WHERE root_id=$1")
+                .bind(&claim.fence.root)
+                .fetch_one(&mut *tx)
+                .await?;
             let after = if claim.cursor.get("scan").and_then(|v| v.as_str()) == Some(&scan) {
                 claim
                     .cursor
@@ -154,8 +154,8 @@ impl TransferEngine {
             } else {
                 ""
             };
-            let rows=sqlx::query("SELECT o.* FROM graph_marks m JOIN content_objects o ON o.root_id=m.root_id AND o.digest=m.digest WHERE m.root_id=$1 AND m.scan_id=$2 AND m.digest>$3 ORDER BY m.digest LIMIT 16").bind(&claim.fence.root).bind(&scan).bind(after).fetch_all(&mut *tx).await?;
-            let backends: Vec<String> = sqlx::query_scalar(
+            let rows=db::query("SELECT o.* FROM graph_marks m JOIN content_objects o ON o.root_id=m.root_id AND o.digest=m.digest WHERE m.root_id=$1 AND m.scan_id=$2 AND m.digest>$3 ORDER BY m.digest LIMIT 16").bind(&claim.fence.root).bind(&scan).bind(after).fetch_all(&mut *tx).await?;
+            let backends: Vec<String> = db::query_scalar(
                 "SELECT backend_id FROM root_backends WHERE root_id=$1 ORDER BY backend_id",
             )
             .bind(&claim.fence.root)
@@ -173,7 +173,7 @@ impl TransferEngine {
                 let mut tx = self.writer.transaction().await?;
                 check_fence(&mut tx, &claim.fence, self.writer.epoch).await?;
                 let actual = content_catalog::children(&mut tx, &claim.fence.root, &digest).await?;
-                let ordinals:bool=sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM (SELECT ordinal,row_number() OVER(ORDER BY ordinal)-1 expected FROM content_edges WHERE root_id=$1 AND parent=$2) e WHERE ordinal<>expected)").bind(&claim.fence.root).bind(&digest).fetch_one(&mut *tx).await?;
+                let ordinals:bool=db::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM (SELECT ordinal,row_number() OVER(ORDER BY ordinal)-1 expected FROM content_edges WHERE root_id=$1 AND parent=$2) e WHERE ordinal<>expected)").bind(&claim.fence.root).bind(&digest).fetch_one(&mut *tx).await?;
                 shape(row).is_ok_and(|expected| expected == actual) && ordinals
             };
             if !catalog_valid {
@@ -196,7 +196,7 @@ impl TransferEngine {
                 let copy = {
                     let mut tx = self.writer.transaction().await?;
                     check_fence(&mut tx, &claim.fence, self.writer.epoch).await?;
-                    sqlx::query("SELECT generation,bytes FROM object_copies WHERE root_id=$1 AND digest=$2 AND backend_id=$3 AND state='available'").bind(&claim.fence.root).bind(&digest).bind(backend).fetch_optional(&mut *tx).await?
+                    db::query("SELECT generation,bytes FROM object_copies WHERE root_id=$1 AND digest=$2 AND backend_id=$3 AND state='available'").bind(&claim.fence.root).bind(&digest).bind(backend).fetch_optional(&mut *tx).await?
                 };
                 let Some(copy) = copy else {
                     self.finding(
@@ -229,17 +229,13 @@ impl TransferEngine {
                     generation: generation.parse()?,
                 };
                 let read = async {
-                    let _slot = self
-                        .slots
-                        .acquire()
-                        .await
-                        .map_err(|_| Error(ErrorCode::DestinationUnavailable))?;
+                    let _slot = self.slots.acquire().await;
                     let store = self.store(backend)?;
                     verified(store.read(&key).await?, &key, expected_bytes)
                         .await
                         .map(|_| ())
                 };
-                let result = tokio::time::timeout(std::time::Duration::from_secs(10), read)
+                let result = simple_server::time::timeout(std::time::Duration::from_secs(10), read)
                     .await
                     .unwrap_or(Err(Error(ErrorCode::DestinationUnavailable)));
                 let kind = match result {
@@ -289,7 +285,7 @@ impl Writer {
             Some(token) => paging::consume(&mut tx, actor, &scope, token, &binding).await?,
             None => String::new(),
         };
-        let rows = sqlx::query(
+        let rows = db::query(
             "SELECT * FROM integrity_findings WHERE root_id=$1 AND id>$2 ORDER BY id LIMIT $3",
         )
         .bind(root.as_str())

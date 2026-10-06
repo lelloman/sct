@@ -3,24 +3,23 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn purge_is_explicit_idempotent_shared_and_pin_safe() {
     let (w, a, db) = setup().await;
     let r = root(&w, &a, "/purge", 4000).await;
-    sqlx::query(
-        "UPDATE roots SET default_policy=jsonb_set(default_policy,'{keep_versions}','200')",
-    )
-    .execute(&db)
-    .await
-    .unwrap();
-    sqlx::query("UPDATE pools SET capacity=220000")
+    db::query("UPDATE roots SET default_policy=jsonb_set(default_policy,'{keep_versions}','200')")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE allocations SET capacity=100000")
+    db::query("UPDATE pools SET capacity=220000")
+        .execute(&db)
+        .await
+        .unwrap();
+    db::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -166,7 +165,7 @@ async fn purge_is_explicit_idempotent_shared_and_pin_safe() {
         e.purge(&a, &r.id, &request).await.unwrap().state,
         LifecycleState::Completed
     );
-    let available: i64 = sqlx::query_scalar(
+    let available: i64 = db::query_scalar(
         "SELECT count(*) FROM object_copies WHERE root_id=$1 AND state<>'deleted'",
     )
     .bind(r.id.as_str())
@@ -191,7 +190,7 @@ fn key() -> IdempotencyKey {
     uuid::Uuid::new_v4().to_string().parse().unwrap()
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn purge_subtree_resumes_with_atomic_snapshots_and_rechecks_authority() {
     use super::tree_build_tests::{admitted, stage_files};
@@ -199,11 +198,11 @@ async fn purge_subtree_resumes_with_atomic_snapshots_and_rechecks_authority() {
     use sct_core::payload::Fault;
     let (w, a, db) = setup().await;
     let r = root(&w, &a, "/purge-tree", 4000).await;
-    sqlx::query("UPDATE pools SET capacity=220000")
+    db::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE allocations SET capacity=100000")
+    db::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -264,7 +263,7 @@ async fn purge_subtree_resumes_with_atomic_snapshots_and_rechecks_authority() {
         .0,
         ErrorCode::NotFound
     );
-    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) SELECT 'purge-copy-'||n,v.root_id,v.entry_id,v.manifest,v.length,v.kind FROM file_versions v CROSS JOIN generate_series(1,130) n WHERE v.id=$1").bind(snap.version_id.as_str()).execute(&db).await.unwrap();
+    db::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) SELECT 'purge-copy-'||n,v.root_id,v.entry_id,v.manifest,v.length,v.kind FROM file_versions v CROSS JOIN generate_series(1,130) n WHERE v.id=$1").bind(snap.version_id.as_str()).execute(&db).await.unwrap();
     let folder = w.inspect_entry(&a, &folder.id).await.unwrap();
     let hidden = w
         .hide_entry(
@@ -370,7 +369,7 @@ async fn purge_subtree_resumes_with_atomic_snapshots_and_rechecks_authority() {
             .is_err()
     );
     e.resume_lifecycle_job(&a, &r.id, &job.id).await.unwrap();
-    sqlx::query("UPDATE read_pins SET expires_at=clock_timestamp()-interval '1 second'")
+    db::query("UPDATE read_pins SET expires_at=clock_timestamp()-interval '1 second'")
         .execute(&db)
         .await
         .unwrap();
@@ -382,7 +381,7 @@ async fn purge_subtree_resumes_with_atomic_snapshots_and_rechecks_authority() {
         e.lifecycle_job(&a, &r.id, &job.id).await.unwrap().state,
         LifecycleState::Completed
     );
-    let charged: i64 = sqlx::query_scalar("SELECT sum(occupied)::bigint FROM allocations")
+    let charged: i64 = db::query_scalar("SELECT sum(occupied)::bigint FROM allocations")
         .fetch_one(&db)
         .await
         .unwrap();

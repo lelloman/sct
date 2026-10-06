@@ -7,8 +7,9 @@ use crate::{
     roots::{json, lock_root},
     transfer_io::TransferEngine,
 };
+use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use sqlx::{PgConnection, Row, postgres::PgRow};
+use simple_server::database::postgres as db;
 
 pub(crate) fn inspect(row: &PgRow) -> Result<LifecycleJob> {
     Ok(LifecycleJob {
@@ -39,7 +40,7 @@ async fn authorize_job(db: &mut PgConnection, actor: &Actor, row: &PgRow) -> Res
     authorize(db, actor, &root, required(&row.get::<String, _>("kind"))).await?;
     if let Some(preview) = row.get::<Option<String>, _>("preview_id") {
         let request: serde_json::Value =
-            sqlx::query_scalar("SELECT request FROM change_previews WHERE root_id=$1 AND id=$2")
+            db::query_scalar("SELECT request FROM change_previews WHERE root_id=$1 AND id=$2")
                 .bind(&root)
                 .bind(preview)
                 .fetch_one(&mut *db)
@@ -62,7 +63,7 @@ pub(crate) async fn apply_policy(
             policy,
             ..
         } => {
-            sqlx::query("UPDATE roots SET default_policy=$2,policy_revision=$3 WHERE id=$1")
+            db::query("UPDATE roots SET default_policy=$2,policy_revision=$3 WHERE id=$1")
                 .bind(root)
                 .bind(json(policy)?)
                 .bind(id())
@@ -74,20 +75,20 @@ pub(crate) async fn apply_policy(
             policy,
             ..
         } => {
-            sqlx::query("UPDATE entries SET policy=$3,policy_id=COALESCE(policy_id,$4),policy_revision=$5,revision=$6 WHERE root_id=$1 AND id=$2")
+            db::query("UPDATE entries SET policy=$3,policy_id=COALESCE(policy_id,$4),policy_revision=$5,revision=$6 WHERE root_id=$1 AND id=$2")
                 .bind(root).bind(entry_id.as_str()).bind(json(policy)?).bind(id()).bind(id()).bind(id()).execute(&mut *db).await?;
         }
         PolicyChange::Inherit {
             scope: PolicyScope::Entry { entry_id, .. },
             ..
         } => {
-            sqlx::query("UPDATE entries SET policy=NULL,policy_id=NULL,policy_revision=NULL,revision=$3 WHERE root_id=$1 AND id=$2")
+            db::query("UPDATE entries SET policy=NULL,policy_id=NULL,policy_revision=NULL,revision=$3 WHERE root_id=$1 AND id=$2")
                 .bind(root).bind(entry_id.as_str()).bind(id()).execute(&mut *db).await?;
         }
         PolicyChange::Move { .. } => crate::namespace_moves::apply(db, root, change).await?,
         _ => return Err(Error(ErrorCode::UnsupportedOperation)),
     }
-    sqlx::query("UPDATE roots SET revision=$2 WHERE id=$1")
+    db::query("UPDATE roots SET revision=$2 WHERE id=$1")
         .bind(root)
         .bind(id())
         .execute(db)
@@ -107,7 +108,7 @@ impl TransferEngine {
         authorize(&mut tx, actor, root.as_str(), Capability::ManagePolicy).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ManagePolicy).await?;
-        if let Some(row) = sqlx::query(
+        if let Some(row) = db::query(
             "SELECT * FROM lifecycle_jobs WHERE root_id=$1 AND principal_id=$2 AND key=$3",
         )
         .bind(root.as_str())
@@ -134,18 +135,18 @@ impl TransferEngine {
             ErrorCode::RevisionConflict,
         )?;
         let operation = id();
-        sqlx::query("INSERT INTO operations(id,root_id,principal_id,kind,state,phase,server_epoch,worker_expires_at) VALUES($1,$2,$3,'policy_transition','active','retiring',$4,clock_timestamp()+interval '30 seconds')")
+        db::query("INSERT INTO operations(id,root_id,principal_id,kind,state,phase,server_epoch,worker_expires_at) VALUES($1,$2,$3,'policy_transition','active','retiring',$4,clock_timestamp()+interval '30 seconds')")
             .bind(&operation).bind(root.as_str()).bind(&actor.principal).bind(self.writer.epoch).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO lifecycle_jobs(operation_id,root_id,principal_id,run_principal_id,credential_id,key,request,preview_id,state,phase,total) VALUES($1,$2,$3,$3,$4,$5,$6,$7,'applying','retiring',$8)")
+        db::query("INSERT INTO lifecycle_jobs(operation_id,root_id,principal_id,run_principal_id,credential_id,key,request,preview_id,state,phase,total) VALUES($1,$2,$3,$3,$4,$5,$6,$7,'applying','retiring',$8)")
             .bind(&operation).bind(root.as_str()).bind(&actor.principal).bind(&actor.credential).bind(request.idempotency_key.as_str()).bind(json(request)?).bind(request.preview_id.as_str()).bind(preview.get::<i64,_>("retire_count")).execute(&mut *tx).await?;
         apply_policy(&mut tx, root.as_str(), &captured.change).await?;
-        sqlx::query("UPDATE change_previews SET state='applying' WHERE id=$1")
+        db::query("UPDATE change_previews SET state='applying' WHERE id=$1")
             .bind(request.preview_id.as_str())
             .execute(&mut *tx)
             .await?;
-        sqlx::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'policy_applied',$3)")
+        db::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'policy_applied',$3)")
             .bind(root.as_str()).bind(&operation).bind(json(&captured.change)?).execute(&mut *tx).await?;
-        let row = sqlx::query("SELECT * FROM lifecycle_jobs WHERE operation_id=$1")
+        let row = db::query("SELECT * FROM lifecycle_jobs WHERE operation_id=$1")
             .bind(operation)
             .fetch_one(&mut *tx)
             .await?;
@@ -160,7 +161,7 @@ impl TransferEngine {
         operation: &OperationId,
     ) -> Result<LifecycleJob> {
         let mut tx = self.writer.transaction().await?;
-        let row=sqlx::query("SELECT j.*,o.kind FROM lifecycle_jobs j JOIN operations o ON o.id=j.operation_id WHERE j.root_id=$1 AND j.operation_id=$2")
+        let row=db::query("SELECT j.*,o.kind FROM lifecycle_jobs j JOIN operations o ON o.id=j.operation_id WHERE j.root_id=$1 AND j.operation_id=$2")
             .bind(root.as_str()).bind(operation.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         authorize_job(&mut tx, actor, &row).await?;
         inspect(&row)
@@ -183,7 +184,7 @@ impl TransferEngine {
     ) -> Result<LifecycleJob> {
         let mut tx = self.writer.transaction().await?;
         lock_content_root(&mut tx, root.as_str()).await?;
-        let row=sqlx::query("SELECT j.*,o.kind FROM lifecycle_jobs j JOIN operations o ON o.id=j.operation_id WHERE j.root_id=$1 AND j.operation_id=$2")
+        let row=db::query("SELECT j.*,o.kind FROM lifecycle_jobs j JOIN operations o ON o.id=j.operation_id WHERE j.root_id=$1 AND j.operation_id=$2")
             .bind(root.as_str()).bind(operation.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         authorize_job(&mut tx, actor, &row).await?;
         require(
@@ -191,9 +192,9 @@ impl TransferEngine {
             ErrorCode::InvalidRequest,
         )?;
         authorize_job(&mut tx, actor, &row).await?;
-        sqlx::query("UPDATE lifecycle_jobs SET run_principal_id=$2,credential_id=$3,failure=NULL,state=CASE WHEN phase='cleanup' THEN 'cleaning_up' ELSE 'applying' END WHERE operation_id=$1")
+        db::query("UPDATE lifecycle_jobs SET run_principal_id=$2,credential_id=$3,failure=NULL,state=CASE WHEN phase='cleanup' THEN 'cleaning_up' ELSE 'applying' END WHERE operation_id=$1")
             .bind(operation.as_str()).bind(&actor.principal).bind(&actor.credential).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'job_resumed',$3)")
+        db::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'job_resumed',$3)")
             .bind(root.as_str()).bind(operation.as_str()).bind(serde_json::json!({"principal_id":actor.principal})).execute(&mut *tx).await?;
         tx.commit().await?;
         self.lifecycle_job(actor, root, operation).await
@@ -203,7 +204,7 @@ impl TransferEngine {
         let mut tx = self.writer.transaction().await?;
         lock_content_root(&mut tx, &fence.root).await?;
         check_fence(&mut tx, fence, self.writer.epoch).await?;
-        let row=sqlx::query("SELECT j.*,o.kind FROM lifecycle_jobs j JOIN operations o ON o.id=j.operation_id WHERE j.operation_id=$1")
+        let row=db::query("SELECT j.*,o.kind FROM lifecycle_jobs j JOIN operations o ON o.id=j.operation_id WHERE j.operation_id=$1")
             .bind(&fence.id).fetch_optional(&mut *tx).await?;
         let Some(row) = row else {
             return Ok(());
@@ -229,10 +230,10 @@ impl TransferEngine {
             .get::<Option<String>, _>("preview_id")
             .ok_or(Error(ErrorCode::InvalidRequest))?;
         let after = row.get::<Option<String>, _>("cursor").unwrap_or_default();
-        let versions:Vec<String>=sqlx::query_scalar("SELECT version_id FROM preview_versions WHERE root_id=$1 AND preview_id=$2 AND retire AND version_id>$3 ORDER BY version_id LIMIT 64")
+        let versions:Vec<String>=db::query_scalar("SELECT version_id FROM preview_versions WHERE root_id=$1 AND preview_id=$2 AND retire AND version_id>$3 ORDER BY version_id LIMIT 64")
             .bind(&fence.root).bind(preview).bind(after).fetch_all(&mut *tx).await?;
         for version in &versions {
-            let current: bool = sqlx::query_scalar(
+            let current: bool = db::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM entries WHERE root_id=$1 AND current_version_id=$2)",
             )
             .bind(&fence.root)
@@ -240,7 +241,7 @@ impl TransferEngine {
             .fetch_one(&mut *tx)
             .await?;
             require(!current, ErrorCode::RevisionConflict)?;
-            sqlx::query(
+            db::query(
                 "UPDATE file_versions SET retired=true WHERE root_id=$1 AND id=$2 AND NOT retired",
             )
             .bind(&fence.root)
@@ -249,14 +250,14 @@ impl TransferEngine {
             .await?;
         }
         let done = versions.len() < 64;
-        sqlx::query("UPDATE lifecycle_jobs SET processed=processed+$2,cursor=$3,state=$4,phase=$5 WHERE operation_id=$1")
+        db::query("UPDATE lifecycle_jobs SET processed=processed+$2,cursor=$3,state=$4,phase=$5 WHERE operation_id=$1")
             .bind(&fence.id).bind(versions.len() as i64).bind(versions.last()).bind(if done {"cleaning_up"}else{"applying"}).bind(if done {"cleanup"}else{"retiring"}).execute(&mut *tx).await?;
-        sqlx::query("UPDATE operations SET phase=$2 WHERE id=$1")
+        db::query("UPDATE operations SET phase=$2 WHERE id=$1")
             .bind(&fence.id)
             .bind(if done { "cleanup" } else { "retiring" })
             .execute(&mut *tx)
             .await?;
-        sqlx::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'policy_retirement_batch',$3)")
+        db::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'policy_retirement_batch',$3)")
             .bind(&fence.root).bind(&fence.id).bind(serde_json::json!({"versions":versions})).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
@@ -271,7 +272,7 @@ impl TransferEngine {
         check_fence(&mut tx, fence, self.writer.epoch).await?;
         // Physical cleanup can retry automatically. An authorization-blocked
         // logical phase is only resumed by an explicit authorized request.
-        sqlx::query("UPDATE lifecycle_jobs SET state='blocked',failure=$2 WHERE operation_id=$1 AND (phase='cleanup' OR ($3 AND state='applying'))")
+        db::query("UPDATE lifecycle_jobs SET state='blocked',failure=$2 WHERE operation_id=$1 AND (phase='cleanup' OR ($3 AND state='applying'))")
             .bind(&fence.id).bind(json(code)?.as_str().unwrap()).bind(logical).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
@@ -281,17 +282,17 @@ impl TransferEngine {
         lock_content_root(&mut tx, &fence.root).await?;
         check_fence(&mut tx, fence, self.writer.epoch).await?;
         let job: bool =
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM lifecycle_jobs WHERE operation_id=$1)")
+            db::query_scalar("SELECT EXISTS(SELECT 1 FROM lifecycle_jobs WHERE operation_id=$1)")
                 .bind(&fence.id)
                 .fetch_one(&mut *tx)
                 .await?;
         if !job {
             return Ok(false);
         }
-        let pending:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE id=$1 AND uncertain_io) OR EXISTS(SELECT 1 FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE c.operation_id=$1 AND c.state<>'deleted' AND (a.root_id IS NULL OR c.state IN ('writing','deleting'))) OR EXISTS(SELECT 1 FROM reservations WHERE operation_id=$1) OR EXISTS(SELECT 1 FROM read_pins p JOIN file_versions v ON v.root_id=p.root_id AND v.id=p.version_id WHERE p.root_id=$2 AND v.retired AND p.expires_at>clock_timestamp())")
+        let pending:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE id=$1 AND uncertain_io) OR EXISTS(SELECT 1 FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE c.operation_id=$1 AND c.state<>'deleted' AND (a.root_id IS NULL OR c.state IN ('writing','deleting'))) OR EXISTS(SELECT 1 FROM reservations WHERE operation_id=$1) OR EXISTS(SELECT 1 FROM read_pins p JOIN file_versions v ON v.root_id=p.root_id AND v.id=p.version_id WHERE p.root_id=$2 AND v.retired AND p.expires_at>clock_timestamp())")
             .bind(&fence.id).bind(&fence.root).fetch_one(&mut *tx).await?;
         if pending {
-            sqlx::query(
+            db::query(
                 "UPDATE lifecycle_jobs SET state='cleaning_up',failure=NULL WHERE operation_id=$1",
             )
             .bind(&fence.id)
@@ -300,16 +301,16 @@ impl TransferEngine {
             tx.commit().await?;
             return Ok(true);
         }
-        sqlx::query("UPDATE lifecycle_jobs SET state='completed',phase='completed',failure=NULL WHERE operation_id=$1").bind(&fence.id).execute(&mut *tx).await?;
-        sqlx::query("UPDATE change_previews SET state='completed' WHERE id=(SELECT preview_id FROM lifecycle_jobs WHERE operation_id=$1)").bind(&fence.id).execute(&mut *tx).await?;
-        sqlx::query("UPDATE operations SET state='completed',phase='completed',worker_expires_at=NULL WHERE id=$1").bind(&fence.id).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'job_completed','{}')").bind(&fence.root).bind(&fence.id).execute(&mut *tx).await?;
+        db::query("UPDATE lifecycle_jobs SET state='completed',phase='completed',failure=NULL WHERE operation_id=$1").bind(&fence.id).execute(&mut *tx).await?;
+        db::query("UPDATE change_previews SET state='completed' WHERE id=(SELECT preview_id FROM lifecycle_jobs WHERE operation_id=$1)").bind(&fence.id).execute(&mut *tx).await?;
+        db::query("UPDATE operations SET state='completed',phase='completed',worker_expires_at=NULL WHERE id=$1").bind(&fence.id).execute(&mut *tx).await?;
+        db::query("INSERT INTO transfer_audit(root_id,operation_id,event,details) VALUES($1,$2,'job_completed','{}')").bind(&fence.root).bind(&fence.id).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(true)
     }
 }
 async fn block(db: &mut PgConnection, operation: &str, code: &ErrorCode) -> Result<()> {
-    sqlx::query("UPDATE lifecycle_jobs SET state='blocked',failure=$2 WHERE operation_id=$1")
+    db::query("UPDATE lifecycle_jobs SET state='blocked',failure=$2 WHERE operation_id=$1")
         .bind(operation)
         .bind(json(code)?.as_str().unwrap())
         .execute(db)

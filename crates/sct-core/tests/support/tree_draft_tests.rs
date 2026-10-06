@@ -1,5 +1,6 @@
 use super::*;
 use sct_core::{payload::Stores, transfer_io::TransferEngine};
+use simple_server::database::postgres as db;
 
 pub(super) async fn draft_request(
     w: &Writer,
@@ -55,7 +56,7 @@ pub(super) async fn import_base(e: &TransferEngine, a: &Actor, r: &RootId, d: &U
     }
     panic!("base import did not finish");
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn drafts_identity_validation_restart_abort_and_expiry() {
     let (w, a, db) = setup().await;
@@ -186,7 +187,7 @@ async fn drafts_identity_validation_restart_abort_and_expiry() {
         .0,
         ErrorCode::InvalidRequest
     );
-    sqlx::query(
+    db::query(
         "UPDATE tree_drafts SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
     )
     .bind(fresh.id.as_str())
@@ -202,7 +203,7 @@ async fn drafts_identity_validation_restart_abort_and_expiry() {
         SessionState::Expired
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>(
+        db::query_scalar::<_, i64>(
             "SELECT count(*) FROM operations WHERE state IN ('active','recovering','cleaning_up')"
         )
         .fetch_one(&db)
@@ -212,7 +213,7 @@ async fn drafts_identity_validation_restart_abort_and_expiry() {
     );
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn patch_preserves_omission_complete_replacement_requires_delete() {
     let (w, a, db) = setup().await;
@@ -267,10 +268,10 @@ async fn patch_preserves_omission_complete_replacement_requires_delete() {
         (&page_id, "directory_page", &page),
         (&manifest_id, "directory", &manifest),
     ] {
-        sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,$3,0,0,$4)").bind(r.id.as_str()).bind(id).bind(kind).bind(bytes).execute(&db).await.unwrap();
+        db::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,$3,0,0,$4)").bind(r.id.as_str()).bind(id).bind(kind).bind(bytes).execute(&db).await.unwrap();
     }
-    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) VALUES('base-version',$1,$2,$3,0,'directory')").bind(r.id.as_str()).bind(d.id.as_str()).bind(&manifest_id).execute(&db).await.unwrap();
-    sqlx::query("UPDATE entries SET current_version_id='base-version' WHERE id=$1")
+    db::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length,kind) VALUES('base-version',$1,$2,$3,0,'directory')").bind(r.id.as_str()).bind(d.id.as_str()).bind(&manifest_id).execute(&db).await.unwrap();
+    db::query("UPDATE entries SET current_version_id='base-version' WHERE id=$1")
         .bind(d.id.as_str())
         .execute(&db)
         .await
@@ -304,7 +305,7 @@ async fn patch_preserves_omission_complete_replacement_requires_delete() {
     let patch = e.create_tree_draft(&actor, &r.id, &request).await.unwrap();
     import_base(&e, &actor, &r.id, &patch.id).await;
     assert!(
-        !sqlx::query_scalar::<_, bool>(
+        !db::query_scalar::<_, bool>(
             "SELECT removed FROM draft_entries WHERE draft_id=$1 AND id='base-child'"
         )
         .bind(patch.id.as_str())
@@ -352,7 +353,7 @@ async fn patch_preserves_omission_complete_replacement_requires_delete() {
         .unwrap();
     import_base(&e, &actor, &r.id, &complete.id).await;
     assert!(
-        sqlx::query_scalar::<_, bool>(
+        db::query_scalar::<_, bool>(
             "SELECT removed FROM draft_entries WHERE draft_id=$1 AND id='base-child'"
         )
         .bind(complete.id.as_str())

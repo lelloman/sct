@@ -4,9 +4,10 @@ use sct_core::{
     payload::{Fault, MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn policy_jobs_resume_forward_recheck_authority_and_wait_for_pinned_cleanup() {
     let (w, a, db) = setup().await;
@@ -27,11 +28,11 @@ async fn policy_jobs_resume_forward_recheck_authority_and_wait_for_pinned_cleanu
         )
         .await
         .unwrap();
-    sqlx::query("UPDATE pools SET capacity=220000")
+    db::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE allocations SET capacity=100000")
+    db::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -46,9 +47,9 @@ async fn policy_jobs_resume_forward_recheck_authority_and_wait_for_pinned_cleanu
         .resolve_path(&a, &r.id, &"/file".parse().unwrap())
         .await
         .unwrap();
-    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) SELECT 'copy-'||n,v.root_id,v.entry_id,v.manifest,v.length FROM file_versions v CROSS JOIN generate_series(1,129) n WHERE v.id=$1")
+    db::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) SELECT 'copy-'||n,v.root_id,v.entry_id,v.manifest,v.length FROM file_versions v CROSS JOIN generate_series(1,129) n WHERE v.id=$1")
         .bind(old.version_id.as_str()).execute(&db).await.unwrap();
-    sqlx::query("UPDATE entries SET current_version_id=(SELECT id FROM file_versions WHERE entry_id=$1 ORDER BY sequence DESC LIMIT 1) WHERE id=$1").bind(file.id.as_str()).execute(&db).await.unwrap();
+    db::query("UPDATE entries SET current_version_id=(SELECT id FROM file_versions WHERE entry_id=$1 ORDER BY sequence DESC LIMIT 1) WHERE id=$1").bind(file.id.as_str()).execute(&db).await.unwrap();
     let upload = ready_bytes(&e, &w, &a, &r.id, "file", b"new")
         .await
         .unwrap();
@@ -192,7 +193,7 @@ async fn policy_jobs_resume_forward_recheck_authority_and_wait_for_pinned_cleanu
     assert_eq!(cleaning.state, LifecycleState::CleaningUp);
     assert_eq!(cleaning.processed.get(), 130);
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM file_versions WHERE NOT retired")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM file_versions WHERE NOT retired")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -207,14 +208,14 @@ async fn policy_jobs_resume_forward_recheck_authority_and_wait_for_pinned_cleanu
     );
     w.renew_read_pin(&a, &r.id, &pin).await.unwrap();
     w.release_read_pin(&a, &pin).await.unwrap();
-    let before: i64 = sqlx::query_scalar("SELECT sum(occupied)::bigint FROM allocations")
+    let before: i64 = db::query_scalar("SELECT sum(occupied)::bigint FROM allocations")
         .fetch_one(&db)
         .await
         .unwrap();
     memory.fault(Fault::UnknownDelete).await;
     e.tick().await.unwrap();
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT sum(occupied)::bigint FROM allocations")
+        db::query_scalar::<_, i64>("SELECT sum(occupied)::bigint FROM allocations")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -237,7 +238,7 @@ async fn policy_jobs_resume_forward_recheck_authority_and_wait_for_pinned_cleanu
     );
     assert!(!w.effective_policy(&a, &scope).await.unwrap().transitioning);
     assert!(
-        sqlx::query_scalar::<_, i64>("SELECT sum(occupied)::bigint FROM allocations")
+        db::query_scalar::<_, i64>("SELECT sum(occupied)::bigint FROM allocations")
             .fetch_one(&db)
             .await
             .unwrap()
@@ -283,7 +284,7 @@ async fn policy_jobs_resume_forward_recheck_authority_and_wait_for_pinned_cleanu
         5
     );
     assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM file_versions WHERE NOT retired")
+        db::query_scalar::<_, i64>("SELECT count(*) FROM file_versions WHERE NOT retired")
             .fetch_one(&db)
             .await
             .unwrap(),

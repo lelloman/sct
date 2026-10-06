@@ -11,7 +11,7 @@ use sct_core::{
 };
 use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn sdk_tree_and_lifecycle_workflow() {
     let (catalog, _) = support::database().await;
@@ -52,11 +52,11 @@ async fn sdk_tree_and_lifecycle_workflow() {
         secure_cookies: false,
         transfer: Some(engine),
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -88,4 +88,16 @@ async fn sdk_tree_and_lifecycle_workflow() {
     tree_workflow::run(&client, &root.id, &directory).await;
     std::fs::remove_dir_all(directory).unwrap();
     server.abort();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

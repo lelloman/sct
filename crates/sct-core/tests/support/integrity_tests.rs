@@ -4,6 +4,7 @@ use sct_core::{
     payload::{Fault, MemoryStore, ObjectKey, ObjectStore},
     transfer_io::TransferEngine,
 };
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 async fn finish(w: &Writer, e: &TransferEngine, a: &Actor, job: &OperationId) -> MaintenanceJob {
     for _ in 0..100 {
@@ -44,7 +45,7 @@ async fn kinds(w: &Writer, a: &Actor, r: &RootId, job: &OperationId) -> Vec<Inte
     .map(|f| f.kind)
     .collect()
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn integrity_scan_classifies_missing_corrupt_inaccessible_and_catalog_findings() {
     let (w, a, db) = setup().await;
@@ -65,7 +66,7 @@ async fn integrity_scan_classifies_missing_corrupt_inaccessible_and_catalog_find
     let healthy = start(&w, &a, &r.id, "healthy").await;
     finish(&w, &engine, &a, &healthy.id).await;
     assert!(kinds(&w, &a, &r.id, &healthy.id).await.is_empty());
-    let generation: String = sqlx::query_scalar(
+    let generation: String = db::query_scalar(
         "SELECT generation FROM object_copies WHERE root_id=$1 AND digest=$2 AND state='available'",
     )
     .bind(r.id.as_str())
@@ -115,7 +116,7 @@ async fn integrity_scan_classifies_missing_corrupt_inaccessible_and_catalog_find
             .all(|k| *k == IntegrityFindingKind::Inaccessible)
     );
     memory.fault(Fault::None).await;
-    sqlx::query("DELETE FROM content_edges WHERE root_id=$1")
+    db::query("DELETE FROM content_edges WHERE root_id=$1")
         .bind(r.id.as_str())
         .execute(&db)
         .await
@@ -128,16 +129,16 @@ async fn integrity_scan_classifies_missing_corrupt_inaccessible_and_catalog_find
             .contains(&IntegrityFindingKind::CatalogInconsistent)
     );
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn integrity_cursor_survives_writer_replacement_and_bounds_pages() {
     let (w, a, db) = setup().await;
     let r = root(&w, &a, "/scan-progress", 4000).await;
-    sqlx::query("UPDATE pools SET capacity=200000")
+    db::query("UPDATE pools SET capacity=200000")
         .execute(&db)
         .await
         .unwrap();
-    sqlx::query("UPDATE allocations SET capacity=90000")
+    db::query("UPDATE allocations SET capacity=90000")
         .execute(&db)
         .await
         .unwrap();
@@ -168,7 +169,7 @@ async fn integrity_cursor_survives_writer_replacement_and_bounds_pages() {
     let replacement = w.catalog().acquire_writer().await.unwrap();
     let resumed = TransferEngine::new(replacement.clone(), stores, 2, 3600).unwrap();
     let complete = finish(&replacement, &resumed, &a, &job.id).await;
-    let objects: i64 = sqlx::query_scalar("SELECT count(*) FROM content_objects WHERE root_id=$1")
+    let objects: i64 = db::query_scalar("SELECT count(*) FROM content_objects WHERE root_id=$1")
         .bind(r.id.as_str())
         .fetch_one(&db)
         .await

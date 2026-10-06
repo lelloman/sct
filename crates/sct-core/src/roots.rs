@@ -4,9 +4,10 @@ use crate::{
     error::{Error, Result, id, require},
     lease::Writer,
 };
+use db::{PgConnection, PgRow};
 use sct_protocol::*;
 use serde_json::{Value, json};
-use sqlx::{PgConnection, Row, postgres::PgRow};
+use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
 pub struct PoolSetup {
@@ -26,19 +27,19 @@ pub(crate) fn parse<T: serde::de::DeserializeOwned>(row: &PgRow, column: &str) -
     Ok(serde_json::from_value(row.get(column))?)
 }
 pub(crate) async fn root_row(db: &mut PgConnection, root: &str) -> Result<PgRow> {
-    sqlx::query("SELECT * FROM roots WHERE id=$1")
+    db::query("SELECT * FROM roots WHERE id=$1")
         .bind(root)
         .fetch_optional(db)
         .await?
         .ok_or(Error(ErrorCode::NotFound))
 }
 pub(crate) async fn lock_root(db: &mut PgConnection, root: &str) -> Result<()> {
-    let exists = sqlx::query("SELECT id FROM roots WHERE id=$1 FOR UPDATE")
+    let exists = db::query("SELECT id FROM roots WHERE id=$1 FOR UPDATE")
         .bind(root)
         .fetch_optional(&mut *db)
         .await?;
     require(exists.is_some(), ErrorCode::NotFound)?;
-    let busy:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND state IN ('active','recovering','cleaning_up'))").bind(root).fetch_one(db).await?;
+    let busy:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND state IN ('active','recovering','cleaning_up'))").bind(root).fetch_one(db).await?;
     require(!busy, ErrorCode::RootBusy)
 }
 pub(crate) fn revision(row: &PgRow, expected: &Revision) -> Result<()> {
@@ -60,7 +61,7 @@ async fn placement_pools(
     placement.validate()?;
     let mut pools = BTreeMap::new();
     for backend in members(placement) {
-        let pool: String = sqlx::query_scalar("SELECT pool_id FROM backends WHERE id=$1")
+        let pool: String = db::query_scalar("SELECT pool_id FROM backends WHERE id=$1")
             .bind(backend.as_str())
             .fetch_optional(&mut *db)
             .await?
@@ -94,11 +95,11 @@ pub(crate) async fn replay<T: serde::de::DeserializeOwned>(
     request: &Value,
 ) -> Result<Option<T>> {
     // Serializes retries even when the result (e.g. a new root) has no row yet.
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+    db::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
         .bind(format!("{}:{scope}:{}", actor.principal, key.as_str()))
         .execute(&mut *db)
         .await?;
-    if let Some(row) = sqlx::query(
+    if let Some(row) = db::query(
         "SELECT request,response FROM idempotency WHERE principal_id=$1 AND scope=$2 AND key=$3",
     )
     .bind(&actor.principal)
@@ -123,7 +124,7 @@ pub(crate) async fn remember(
     request: Value,
     response: Value,
 ) -> Result<()> {
-    sqlx::query("INSERT INTO idempotency VALUES($1,$2,$3,$4,$5)")
+    db::query("INSERT INTO idempotency VALUES($1,$2,$3,$4,$5)")
         .bind(&actor.principal)
         .bind(scope)
         .bind(key.as_str())
@@ -142,10 +143,10 @@ impl Writer {
         backends: &[BackendSetup],
     ) -> Result<()> {
         let mut tx = self.transaction().await?;
-        sqlx::query("SELECT pg_advisory_xact_lock(73628492)")
+        db::query("SELECT pg_advisory_xact_lock(73628492)")
             .execute(&mut *tx)
             .await?;
-        let imported: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM configuration_state)")
+        let imported: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM configuration_state)")
             .fetch_one(&mut *tx)
             .await?;
         if imported {
@@ -155,7 +156,7 @@ impl Writer {
             .iter()
             .map(|b| b.inspection.id.as_str().to_owned())
             .collect();
-        let missing: bool = sqlx::query_scalar(
+        let missing: bool = db::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM root_backends WHERE NOT backend_id=ANY($1))",
         )
         .bind(&configured)
@@ -166,15 +167,15 @@ impl Writer {
         let mut sorted: Vec<_> = pools.iter().collect();
         sorted.sort_by_key(|p| p.id.as_str());
         for pool in sorted {
-            sqlx::query("INSERT INTO pools VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET capacity=EXCLUDED.capacity,revision=EXCLUDED.revision")
+            db::query("INSERT INTO pools VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET capacity=EXCLUDED.capacity,revision=EXCLUDED.revision")
               .bind(pool.id.as_str()).bind(id()).bind(pool.capacity.get() as i64).execute(&mut *tx).await?;
-            sqlx::query("INSERT INTO allocations(id,pool_id,capacity) VALUES($1,$2,$3) ON CONFLICT(pool_id,root_id) DO UPDATE SET capacity=EXCLUDED.capacity")
+            db::query("INSERT INTO allocations(id,pool_id,capacity) VALUES($1,$2,$3) ON CONFLICT(pool_id,root_id) DO UPDATE SET capacity=EXCLUDED.capacity")
               .bind(id()).bind(pool.id.as_str()).bind(pool.staging.get() as i64).execute(&mut *tx).await?;
         }
         for backend in backends {
             let identity = registry.validate(&backend.inspection, &backend.settings)?;
             let existing =
-                sqlx::query("SELECT destination_identity,kind,pool_id FROM backends WHERE id=$1")
+                db::query("SELECT destination_identity,kind,pool_id FROM backends WHERE id=$1")
                     .bind(backend.inspection.id.as_str())
                     .fetch_optional(&mut *tx)
                     .await?;
@@ -192,11 +193,11 @@ impl Writer {
                 .get(&inspection.adapter_kind)?
                 .probe(&backend.settings);
             inspection.last_observed_at_ms = None;
-            sqlx::query("INSERT INTO backends VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET inspection=EXCLUDED.inspection")
+            db::query("INSERT INTO backends VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET inspection=EXCLUDED.inspection")
               .bind(inspection.id.as_str()).bind(backend.pool_id.as_str()).bind(&inspection.adapter_kind).bind(identity).bind(json(&inspection)?).execute(&mut *tx).await?;
         }
         for backend in backends {
-            sqlx::query(
+            db::query(
                 "INSERT INTO backend_configurations(backend_id,revision,settings) VALUES($1,$2,$3)",
             )
             .bind(backend.inspection.id.as_str())
@@ -205,10 +206,10 @@ impl Writer {
             .execute(&mut *tx)
             .await?;
         }
-        sqlx::query("INSERT INTO configuration_state(singleton) VALUES(true)")
+        db::query("INSERT INTO configuration_state(singleton) VALUES(true)")
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM backends WHERE NOT id=ANY($1)")
+        db::query("DELETE FROM backends WHERE NOT id=ANY($1)")
             .bind(&configured)
             .execute(&mut *tx)
             .await?;
@@ -235,14 +236,13 @@ impl Writer {
             return Ok(result);
         }
         // Owner lock serializes overlapping mount checks, including concurrent creates.
-        let owner =
-            sqlx::query("SELECT id FROM principals WHERE id=$1 AND NOT disabled FOR UPDATE")
-                .bind(request.owner_id.as_str())
-                .fetch_optional(&mut *tx)
-                .await?;
+        let owner = db::query("SELECT id FROM principals WHERE id=$1 AND NOT disabled FOR UPDATE")
+            .bind(request.owner_id.as_str())
+            .fetch_optional(&mut *tx)
+            .await?;
         require(owner.is_some(), ErrorCode::InvalidRequest)?;
         let mounts: Vec<String> =
-            sqlx::query_scalar("SELECT mount_path FROM roots WHERE owner_id=$1")
+            db::query_scalar("SELECT mount_path FROM roots WHERE owner_id=$1")
                 .bind(request.owner_id.as_str())
                 .fetch_all(&mut *tx)
                 .await?;
@@ -271,10 +271,10 @@ impl Writer {
         }
         let root = id();
         let policy = id();
-        sqlx::query("INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision) VALUES($1,$2,$3,$4,$5,'disabled',$6,$7,$8,$9,$10)")
+        db::query("INSERT INTO roots(id,owner_id,display_name,mount_path,revision,state,placement,quota,default_policy,policy_id,policy_revision) VALUES($1,$2,$3,$4,$5,'disabled',$6,$7,$8,$9,$10)")
           .bind(&root).bind(request.owner_id.as_str()).bind(request.display_name.as_str()).bind(mount).bind(id()).bind(json(&request.placement)?).bind(request.quota_bytes.get() as i64).bind(json(&request.default_policy)?).bind(policy).bind(id()).execute(&mut *tx).await?;
         for backend in members(&request.placement) {
-            sqlx::query("INSERT INTO root_backends VALUES($1,$2) ON CONFLICT DO NOTHING")
+            db::query("INSERT INTO root_backends VALUES($1,$2) ON CONFLICT DO NOTHING")
                 .bind(&root)
                 .bind(backend.as_str())
                 .execute(&mut *tx)
@@ -283,7 +283,7 @@ impl Writer {
         let mut allocations: Vec<_> = request.allocations.iter().collect();
         allocations.sort_by_key(|a| a.pool_id.as_str());
         for a in allocations {
-            sqlx::query("INSERT INTO allocations(id,pool_id,root_id,capacity) VALUES($1,$2,$3,$4)")
+            db::query("INSERT INTO allocations(id,pool_id,root_id,capacity) VALUES($1,$2,$3,$4)")
                 .bind(id())
                 .bind(a.pool_id.as_str())
                 .bind(&root)
@@ -291,7 +291,7 @@ impl Writer {
                 .execute(&mut *tx)
                 .await?;
         }
-        sqlx::query(
+        db::query(
             "INSERT INTO entries(id,root_id,name,kind,revision) VALUES($1,$2,$3,'directory',$4)",
         )
         .bind(id())
@@ -326,7 +326,7 @@ impl Writer {
         } else {
             String::new()
         };
-        let rows:Vec<String>=sqlx::query_scalar("SELECT r.id FROM roots r WHERE r.id>$1 AND ($2 OR r.owner_id=$3 OR EXISTS(SELECT 1 FROM grants g WHERE g.root_id=r.id AND g.principal_id=$3 AND g.capabilities<>'[]'::jsonb)) ORDER BY r.id LIMIT $4")
+        let rows:Vec<String>=db::query_scalar("SELECT r.id FROM roots r WHERE r.id>$1 AND ($2 OR r.owner_id=$3 OR EXISTS(SELECT 1 FROM grants g WHERE g.root_id=r.id AND g.principal_id=$3 AND g.capabilities<>'[]'::jsonb)) ORDER BY r.id LIMIT $4")
           .bind(after).bind(is_admin).bind(&actor.principal).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let mut items = Vec::new();
@@ -374,7 +374,7 @@ impl Writer {
         }
         let pools = placement_pools(&mut tx, &request.placement).await?;
         for (pool, copies) in &pools {
-            let capacity: Option<i64> = sqlx::query_scalar(
+            let capacity: Option<i64> = db::query_scalar(
                 "SELECT capacity FROM allocations WHERE root_id=$1 AND pool_id=$2",
             )
             .bind(root.as_str())
@@ -392,19 +392,19 @@ impl Writer {
                 ErrorCode::QuotaExhausted,
             )?;
         }
-        sqlx::query("UPDATE roots SET display_name=$2,state=$3,placement=$4,quota=$5,quota_ceiling=GREATEST(quota_ceiling,$5),revision=$6 WHERE id=$1")
+        db::query("UPDATE roots SET display_name=$2,state=$3,placement=$4,quota=$5,quota_ceiling=GREATEST(quota_ceiling,$5),revision=$6 WHERE id=$1")
           .bind(root.as_str()).bind(request.display_name.as_str()).bind(json(&request.state)?.as_str().unwrap()).bind(json(&request.placement)?).bind(request.quota_bytes.get() as i64).bind(id()).execute(&mut *tx).await?;
         let target_members: Vec<_> = members(&request.placement)
             .iter()
             .map(|b| b.as_str())
             .collect();
-        sqlx::query("DELETE FROM root_backends WHERE root_id=$1 AND NOT backend_id=ANY($2)")
+        db::query("DELETE FROM root_backends WHERE root_id=$1 AND NOT backend_id=ANY($2)")
             .bind(root.as_str())
             .bind(&target_members)
             .execute(&mut *tx)
             .await?;
         for backend in members(&request.placement) {
-            sqlx::query("INSERT INTO root_backends VALUES($1,$2) ON CONFLICT DO NOTHING")
+            db::query("INSERT INTO root_backends VALUES($1,$2) ON CONFLICT DO NOTHING")
                 .bind(root.as_str())
                 .bind(backend.as_str())
                 .execute(&mut *tx)
@@ -418,7 +418,7 @@ impl Writer {
     pub async fn inspect_pool(&self, actor: &Actor, pool: &PoolId) -> Result<PoolInspection> {
         let mut tx = self.transaction().await?;
         admin(&mut tx, actor).await?;
-        let row=sqlx::query("SELECT p.*,COALESCE((SELECT sum(capacity)::bigint FROM allocations WHERE pool_id=p.id),0) allocated FROM pools p WHERE id=$1").bind(pool.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+        let row=db::query("SELECT p.*,COALESCE((SELECT sum(capacity)::bigint FROM allocations WHERE pool_id=p.id),0) allocated FROM pools p WHERE id=$1").bind(pool.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         Ok(PoolInspection {
             id: pool.clone(),
             revision: row.get::<String, _>("revision").parse()?,
@@ -434,7 +434,7 @@ impl Writer {
     ) -> Result<AllocationInspection> {
         let mut tx = self.transaction().await?;
         admin(&mut tx, actor).await?;
-        let row = sqlx::query("SELECT * FROM allocations WHERE id=$1")
+        let row = db::query("SELECT * FROM allocations WHERE id=$1")
             .bind(allocation.as_str())
             .fetch_optional(&mut *tx)
             .await?
@@ -461,7 +461,7 @@ impl Writer {
     ) -> Result<BackendInspection> {
         let mut tx = self.transaction().await?;
         admin(&mut tx, actor).await?;
-        let value: Value = sqlx::query_scalar("SELECT inspection FROM backends WHERE id=$1")
+        let value: Value = db::query_scalar("SELECT inspection FROM backends WHERE id=$1")
             .bind(backend.as_str())
             .fetch_optional(&mut *tx)
             .await?
@@ -496,7 +496,7 @@ impl Writer {
             String::new()
         };
         let rows: Vec<String> =
-            sqlx::query_scalar("SELECT id FROM allocations WHERE id>$1 ORDER BY id LIMIT $2")
+            db::query_scalar("SELECT id FROM allocations WHERE id>$1 ORDER BY id LIMIT $2")
                 .bind(after)
                 .bind(request.limit.get() as i64 + 1)
                 .fetch_all(&mut *tx)

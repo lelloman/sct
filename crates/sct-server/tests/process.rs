@@ -1,3 +1,4 @@
+use simple_server::database::postgres as db;
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
 use std::{
@@ -26,11 +27,11 @@ async fn ready(origin: &str, process: &mut Process) {
     }
     panic!("server did not become ready");
 }
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn server_process_exclusion_shutdown_crash_and_local_recovery() {
     let (_catalog, pool) = support::database().await;
-    let schema: String = sqlx::query_scalar("SHOW search_path")
+    let schema: String = db::query_scalar("SHOW search_path")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -77,7 +78,7 @@ async fn server_process_exclusion_shutdown_crash_and_local_recovery() {
     restarted.0.kill().unwrap();
     restarted.0.wait().unwrap();
     assert!(!command().output().unwrap().status.success());
-    sqlx::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
+    db::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
         .execute(&pool)
         .await
         .unwrap();
@@ -99,7 +100,7 @@ async fn server_process_exclusion_shutdown_crash_and_local_recovery() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn transfer_job_survives_server_process_crash() {
     use sct_client::{Client, UploadJob, protocol::*};
@@ -112,7 +113,7 @@ async fn transfer_job_survives_server_process_crash() {
         .unwrap();
     let owner = actor.principal_id().to_owned();
     writer.release().await.unwrap();
-    let schema: String = sqlx::query_scalar("SHOW search_path")
+    let schema: String = db::query_scalar("SHOW search_path")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -218,7 +219,7 @@ async fn transfer_job_survives_server_process_crash() {
     process.0.kill().unwrap();
     process.0.wait().unwrap();
     drop(job);
-    sqlx::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
+    db::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
         .execute(&pool)
         .await
         .unwrap();

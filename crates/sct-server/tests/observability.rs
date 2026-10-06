@@ -1,9 +1,10 @@
+use simple_server::database::postgres as db;
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
 use sct_core::backend::Registry;
 use sct_protocol::ErrorResponse;
 
-#[tokio::test]
+#[simple_server::test(host_runtime = true)]
 #[ignore = "requires isolated PostgreSQL"]
 async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
     let (catalog, db) = support::database().await;
@@ -31,11 +32,11 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
         secure_cookies: false,
         transfer: None,
     };
-    let server = tokio::spawn(async move {
+    let server = sct_spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap();
@@ -112,7 +113,7 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
             .status(),
         204
     );
-    sqlx::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
+    db::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
         .execute(&db)
         .await
         .unwrap();
@@ -133,4 +134,16 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
         200
     );
     server.abort();
+}
+
+fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio::spawn(
+        simple_server::runtime::Runtime::try_current()
+            .expect("test engine")
+            .scope(future),
+    )
 }

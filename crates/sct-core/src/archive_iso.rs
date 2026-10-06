@@ -2,24 +2,24 @@
 use crate::error::{Error, Result, require};
 use sct_protocol::*;
 use sha2::{Digest, Sha256};
+use simple_server::io::{AsyncReadExt, AsyncWriteExt};
 use std::{
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn io(_: std::io::Error) -> Error {
     Error(ErrorCode::DestinationUnavailable)
 }
 pub(crate) async fn private_directory(path: &Path) -> Result<()> {
-    tokio::fs::create_dir(path).await.map_err(io)?;
-    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+    simple_server::fs::create_dir(path).await.map_err(io)?;
+    simple_server::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
         .await
         .map_err(io)
 }
-pub(crate) fn regular(path: &Path) -> Result<tokio::fs::File> {
+pub(crate) fn regular(path: &Path) -> Result<simple_server::fs::File> {
     let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(
@@ -31,10 +31,10 @@ pub(crate) fn regular(path: &Path) -> Result<tokio::fs::File> {
         file.metadata().map_err(io)?.is_file(),
         ErrorCode::IntegrityFailure,
     )?;
-    Ok(tokio::fs::File::from_std(file))
+    Ok(simple_server::fs::File::from_std(file))
 }
-pub(crate) async fn new_file(path: &Path) -> Result<tokio::fs::File> {
-    tokio::fs::OpenOptions::new()
+pub(crate) async fn new_file(path: &Path) -> Result<simple_server::fs::File> {
+    simple_server::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
@@ -70,7 +70,9 @@ pub struct InstalledArchiveBundle {
 }
 impl InstalledArchiveBundle {
     pub async fn open(directory: &Path) -> Result<Self> {
-        let directory = tokio::fs::canonicalize(directory).await.map_err(io)?;
+        let directory = simple_server::fs::canonicalize(directory)
+            .await
+            .map_err(io)?;
         let mut input = regular(&directory.join("recovery/bundle.json"))?;
         let mut bytes = Vec::new();
         (&mut input)
@@ -120,7 +122,9 @@ impl InstalledArchiveBundle {
                 return Err(Error(ErrorCode::InvalidPath));
             };
             current.push(component);
-            let metadata = tokio::fs::symlink_metadata(&current).await.map_err(io)?;
+            let metadata = simple_server::fs::symlink_metadata(&current)
+                .await
+                .map_err(io)?;
             require(
                 !metadata.file_type().is_symlink(),
                 ErrorCode::IntegrityFailure,
@@ -139,7 +143,9 @@ impl InstalledArchiveBundle {
             let path = self.checked_path(&expected.path).await?;
             let output = destination.join(&expected.path);
             if let Some(parent) = output.parent() {
-                tokio::fs::create_dir_all(parent).await.map_err(io)?;
+                simple_server::fs::create_dir_all(parent)
+                    .await
+                    .map_err(io)?;
             }
             let mut source = regular(&path)?;
             let mut target = new_file(&output).await?;
@@ -194,7 +200,7 @@ impl Default for IsoWriter {
 impl IsoWriter {
     /// Read at most 8 KiB of version output; no unbounded child output is buffered.
     pub async fn version(&self) -> Result<String> {
-        let mut child = tokio::process::Command::new(&self.executable)
+        let mut child = simple_server::process::ManagedCommand::new(&self.executable)
             .arg("-version")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -204,7 +210,7 @@ impl IsoWriter {
             .map_err(io)?;
         let mut output = Vec::new();
         let mut stdout = child.stdout.take().ok_or(Error(ErrorCode::InternalError))?;
-        tokio::time::timeout(Duration::from_secs(10), async {
+        simple_server::time::timeout(Duration::from_secs(10), async {
             (&mut stdout)
                 .take(8193)
                 .read_to_end(&mut output)
@@ -225,7 +231,7 @@ impl IsoWriter {
             Some(file) => Stdio::from(file.try_clone().map_err(io)?),
             None => Stdio::null(),
         };
-        let mut child = tokio::process::Command::new(&self.parent_guard)
+        let mut child = simple_server::process::ManagedCommand::new(&self.parent_guard)
             .args(["--pdeathsig", "KILL", "--"])
             .arg(&self.prlimit)
             .arg(format!("--fsize={limit}:{limit}"))
@@ -238,7 +244,7 @@ impl IsoWriter {
             .kill_on_drop(true)
             .spawn()
             .map_err(io)?;
-        let status = tokio::time::timeout(self.timeout, child.wait())
+        let status = simple_server::time::timeout(self.timeout, child.wait())
             .await
             .map_err(|_| Error(ErrorCode::DestinationUnavailable))?
             .map_err(io)?;
@@ -268,7 +274,7 @@ impl IsoWriter {
             tree.as_os_str().to_owned(),
         ];
         self.run(&args, capacity).await?;
-        let file = regular(output)?;
+        let mut file = regular(output)?;
         require(
             file.metadata().await.map_err(io)?.len() <= capacity,
             ErrorCode::ArchiveMetadataTooLarge,

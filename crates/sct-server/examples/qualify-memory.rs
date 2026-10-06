@@ -13,6 +13,10 @@ use serde_json::json;
 use std::{collections::BTreeMap, io::Write, sync::Arc};
 #[tokio::main(worker_threads = 2)]
 async fn main() {
+    let runtime = simple_server::runtime::Runtime::new().unwrap();
+    runtime.scope(run()).await;
+}
+async fn run() {
     let size: u64 = std::env::args()
         .nth(1)
         .expect("MiB argument required")
@@ -61,9 +65,9 @@ async fn main() {
     .unwrap();
     let w = writer.clone();
     let e = engine.clone();
-    let heartbeat = tokio::spawn(async move {
+    let heartbeat = simple_server::runtime::spawn(async move {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            simple_server::time::sleep(std::time::Duration::from_secs(5)).await;
             w.renew().await.unwrap();
             e.heartbeat().await.unwrap();
         }
@@ -78,11 +82,11 @@ async fn main() {
         secure_cookies: false,
         transfer: Some(engine),
     };
-    let server = tokio::spawn(async move {
+    let server = simple_server::runtime::spawn(async move {
         sct_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::lifecycle::Shutdown::new(),
+            simple_server::engine_lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()

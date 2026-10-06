@@ -22,7 +22,7 @@ type Client = CoreClient<
 #[derive(Clone)]
 pub struct Oidc {
     client: Client,
-    http: reqwest::Client,
+    http: OidcHttp,
     issuer: String,
 }
 fn denied<T>(_: T) -> Error {
@@ -33,12 +33,13 @@ impl Oidc {
         config: &Config,
         oidc: &OidcConfig,
     ) -> std::result::Result<Self, &'static str> {
-        let http = reqwest::Client::builder()
+        let http = simple_server::client::Client::builder()
             .https_only(!config.development)
-            .redirect(reqwest::redirect::Policy::none())
+            .no_redirect()
             .timeout(std::time::Duration::from_secs(10))
             .build()
             .map_err(|_| "cannot initialize OIDC HTTP client")?;
+        let http = OidcHttp(http);
         let issuer = IssuerUrl::new(oidc.issuer.clone()).map_err(|_| "invalid OIDC issuer")?;
         let metadata = CoreProviderMetadata::discover_async(issuer, &http)
             .await
@@ -139,3 +140,35 @@ impl Oidc {
             .await
     }
 }
+
+#[derive(Clone)]
+struct OidcHttp(simple_server::client::Client);
+impl<'a> openidconnect::AsyncHttpClient<'a> for OidcHttp {
+    type Error = std::io::Error;
+    type Future = std::pin::Pin<Box<dyn std::future::Future<Output = ResultHttp> + Send + 'a>>;
+    fn call(&'a self, request: openidconnect::HttpRequest) -> Self::Future {
+        Box::pin(async move {
+            let (parts, body) = request.into_parts();
+            let response = self
+                .0
+                .request(parts.method, parts.uri.to_string())
+                .headers(parts.headers)
+                .body(body)
+                .send()
+                .await
+                .map_err(std::io::Error::other)?;
+            let status = response.status();
+            let headers = response.headers().clone();
+            let body = response
+                .bytes()
+                .await
+                .map_err(std::io::Error::other)?
+                .to_vec();
+            let mut result = openidconnect::HttpResponse::new(body);
+            *result.status_mut() = status;
+            *result.headers_mut() = headers;
+            Ok(result)
+        })
+    }
+}
+type ResultHttp = std::result::Result<openidconnect::HttpResponse, std::io::Error>;

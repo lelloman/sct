@@ -10,18 +10,20 @@ publish = false
 sct-core.workspace = true
 sct-protocol.workspace = true
 uuid = { version = "1.26.0", features = ["v4"] }
-simple-server = { workspace = true, features = ["response-headers", "task-scheduling", "engine-tokio", "engine-tracing", "correlation-core"] }
+simple-server = { workspace = true, features = ["response-headers", "task-drivers", "engine-web", "engine-tracing", "correlation-core"] }
 tracing = "0.1"
-tokio.workspace = true
 serde.workspace = true
 futures-util = "0.3"
 serde_json.workspace = true
 toml = "0.9"
-openidconnect = { version = "4.0.1", default-features = false, features = ["reqwest", "rustls-tls"] }
-reqwest = { workspace = true, features = ["json"] }
+openidconnect = { version = "4.0.1", default-features = false, features = [] }
+
+url = "2"
 
 [dev-dependencies]
-sqlx.workspace = true
+reqwest = { workspace = true, features = ["json", "stream"] }
+tokio = { workspace = true, features = ["fs", "io-util", "time", "sync", "process"] }
+tokio-util = { version = "0.7", features = ["compat"] }
 sha2.workspace = true
 chrono = "0.4"
 base64 = "0.22"

@@ -4,8 +4,9 @@ use crate::{
     lease::Writer,
     roots::{json, lock_root, parse, root_row},
 };
+use db::PgConnection;
 use sct_protocol::*;
-use sqlx::{PgConnection, Row};
+use simple_server::database::postgres as db;
 
 pub(crate) async fn effective(
     db: &mut PgConnection,
@@ -25,7 +26,7 @@ pub(crate) async fn effective(
         transitioning: false,
     };
     if let Some(entry) = entry {
-        let rows=sqlx::query("WITH RECURSIVE ancestors AS (SELECT e.*,0 depth FROM entries e WHERE id=$1 AND root_id=$2 UNION ALL SELECT p.*,a.depth+1 FROM entries p JOIN ancestors a ON p.id=a.parent_id AND p.root_id=a.root_id WHERE a.depth<4096) SELECT * FROM ancestors ORDER BY depth")
+        let rows=db::query("WITH RECURSIVE ancestors AS (SELECT e.*,0 depth FROM entries e WHERE id=$1 AND root_id=$2 UNION ALL SELECT p.*,a.depth+1 FROM entries p JOIN ancestors a ON p.id=a.parent_id AND p.root_id=a.root_id WHERE a.depth<4096) SELECT * FROM ancestors ORDER BY depth")
           .bind(entry).bind(root).fetch_all(&mut *db).await?;
         require(!rows.is_empty(), ErrorCode::NotFound)?;
         if let Some(row) = rows
@@ -49,7 +50,7 @@ pub(crate) async fn effective(
             result.versioning = VersioningMode::AtomicDirectory;
         }
     }
-    result.transitioning=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND kind='policy_transition' AND state IN ('active','recovering','cleaning_up'))").bind(root).fetch_one(db).await?;
+    result.transitioning=db::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND kind='policy_transition' AND state IN ('active','recovering','cleaning_up'))").bind(root).fetch_one(db).await?;
     Ok(result)
 }
 pub(crate) fn scope_parts(scope: &PolicyScope) -> (&RootId, Option<&EntryId>) {
@@ -103,7 +104,7 @@ impl Writer {
             ErrorCode::Forbidden,
         )?;
         if let Some(entry) = entry {
-            let row = sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND id=$2")
+            let row = db::query("SELECT * FROM entries WHERE root_id=$1 AND id=$2")
                 .bind(root.as_str())
                 .bind(entry.as_str())
                 .fetch_one(&mut *tx)
@@ -129,10 +130,10 @@ impl Writer {
             let changing_mode =
                 (row.get::<String, _>("versioning") == "atomic_directory") != atomic;
             if changing_mode {
-                let populated:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM entries WHERE parent_id=$1) OR EXISTS(SELECT 1 FROM entries WHERE id=$1 AND current_version_id IS NOT NULL)").bind(entry.as_str()).fetch_one(&mut *tx).await?;
+                let populated:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM entries WHERE parent_id=$1) OR EXISTS(SELECT 1 FROM entries WHERE id=$1 AND current_version_id IS NOT NULL)").bind(entry.as_str()).fetch_one(&mut *tx).await?;
                 require(!populated, ErrorCode::InvalidRequest)?;
             }
-            sqlx::query("UPDATE entries SET policy_id=COALESCE(policy_id,$2),policy_revision=$3,policy=$4,versioning=$5,revision=$6 WHERE id=$1")
+            db::query("UPDATE entries SET policy_id=COALESCE(policy_id,$2),policy_revision=$3,policy=$4,versioning=$5,revision=$6 WHERE id=$1")
               .bind(entry.as_str()).bind(id()).bind(id()).bind(json(&request.policy)?).bind(json(&request.versioning)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?;
         } else {
             require(
@@ -143,7 +144,7 @@ impl Writer {
                 root_data.get::<String, _>("revision") == request.expected_scope_revision.as_str(),
                 ErrorCode::RevisionConflict,
             )?;
-            sqlx::query(
+            db::query(
                 "UPDATE roots SET default_policy=$2,policy_revision=$3,revision=$4 WHERE id=$1",
             )
             .bind(root.as_str())
@@ -172,12 +173,11 @@ impl Writer {
         lock_root(&mut tx, root.as_str()).await?;
         let row = root_row(&mut tx, root.as_str()).await?;
         crate::roots::revision(&row, expected)?;
-        let mut policies: Vec<serde_json::Value> = sqlx::query_scalar(
-            "SELECT policy FROM entries WHERE root_id=$1 AND policy IS NOT NULL",
-        )
-        .bind(root.as_str())
-        .fetch_all(&mut *tx)
-        .await?;
+        let mut policies: Vec<serde_json::Value> =
+            db::query_scalar("SELECT policy FROM entries WHERE root_id=$1 AND policy IS NOT NULL")
+                .bind(root.as_str())
+                .fetch_all(&mut *tx)
+                .await?;
         policies.push(row.get("default_policy"));
         for value in policies {
             let p: RetentionPolicy = serde_json::from_value(value)?;
@@ -188,7 +188,7 @@ impl Writer {
                 ErrorCode::InvalidRequest,
             )?;
         }
-        sqlx::query("UPDATE roots SET min_versions=$2,max_versions=$3,allow_relaxed=$4,revision=$5 WHERE id=$1").bind(root.as_str()).bind(min.get() as i64).bind(max.get() as i64).bind(allow_relaxed).bind(id()).execute(&mut *tx).await?;
+        db::query("UPDATE roots SET min_versions=$2,max_versions=$3,allow_relaxed=$4,revision=$5 WHERE id=$1").bind(root.as_str()).bind(min.get() as i64).bind(max.get() as i64).bind(allow_relaxed).bind(id()).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }

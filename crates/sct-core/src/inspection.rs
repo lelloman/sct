@@ -6,8 +6,9 @@ use crate::{
     paging,
     roots::{json, parse},
 };
+use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use sqlx::{PgConnection, Row, postgres::PgRow};
+use simple_server::database::postgres as db;
 
 async fn scope(db: &mut PgConnection, actor: &Actor, root: Option<&RootId>) -> Result<()> {
     match root {
@@ -61,7 +62,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         scope(&mut tx, actor, Some(root)).await?;
         // One SQL snapshot, graph set-union in PostgreSQL, aggregate-only results.
-        let r=sqlx::query("WITH RECURSIVE retained(digest) AS (SELECT manifest FROM file_versions WHERE root_id=$1 AND NOT retired UNION SELECT e.child FROM retained r JOIN content_edges e ON e.root_id=$1 AND e.parent=r.digest) SELECT (SELECT COALESCE(sum(length),0)::bigint FROM file_versions WHERE root_id=$1 AND NOT retired) AS logical, (SELECT COALESCE(sum(o.length),0)::bigint FROM retained r JOIN content_objects o ON o.root_id=$1 AND o.digest=r.digest WHERE o.kind='chunk') AS unique_bytes, (SELECT COALESCE(sum(c.bytes),0)::bigint FROM object_copies c WHERE c.root_id=$1 AND c.state<>'deleted') AS physical, (SELECT COALESCE(sum(c.bytes),0)::bigint FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE c.root_id=$1 AND c.state<>'deleted' AND a.root_id IS NULL) AS staging, (SELECT COALESCE(sum(r.bytes),0)::bigint FROM reservations r JOIN operations o ON o.id=r.operation_id WHERE o.root_id=$1) AS reserved, (SELECT COALESCE(sum(c.bytes),0)::bigint FROM object_copies c WHERE c.root_id=$1 AND c.state<>'deleted' AND c.pending_charge) AS pending").bind(root.as_str()).fetch_one(&mut *tx).await?;
+        let r=db::query("WITH RECURSIVE retained(digest) AS (SELECT manifest FROM file_versions WHERE root_id=$1 AND NOT retired UNION SELECT e.child FROM retained r JOIN content_edges e ON e.root_id=$1 AND e.parent=r.digest) SELECT (SELECT COALESCE(sum(length),0)::bigint FROM file_versions WHERE root_id=$1 AND NOT retired) AS logical, (SELECT COALESCE(sum(o.length),0)::bigint FROM retained r JOIN content_objects o ON o.root_id=$1 AND o.digest=r.digest WHERE o.kind='chunk') AS unique_bytes, (SELECT COALESCE(sum(c.bytes),0)::bigint FROM object_copies c WHERE c.root_id=$1 AND c.state<>'deleted') AS physical, (SELECT COALESCE(sum(c.bytes),0)::bigint FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE c.root_id=$1 AND c.state<>'deleted' AND a.root_id IS NULL) AS staging, (SELECT COALESCE(sum(r.bytes),0)::bigint FROM reservations r JOIN operations o ON o.id=r.operation_id WHERE o.root_id=$1) AS reserved, (SELECT COALESCE(sum(c.bytes),0)::bigint FROM object_copies c WHERE c.root_id=$1 AND c.state<>'deleted' AND c.pending_charge) AS pending").bind(root.as_str()).fetch_one(&mut *tx).await?;
         Ok(RootCapacityUsage {
             root_id: root.clone(),
             logical_retained_bytes: (r.get::<i64, _>("logical") as u64).try_into()?,
@@ -82,7 +83,7 @@ impl Writer {
         scope(&mut tx, actor, Some(root)).await?;
         let name = format!("activity:{}", root.as_str());
         let after = after(&mut tx, actor, &name, request).await?;
-        let rows=sqlx::query("WITH sessions AS (SELECT s.id,s.root_id,s.principal_id,CASE WHEN d.id IS NULL THEN 'file' ELSE 'directory' END AS kind,s.state,o.phase,s.admission,s.expires_at,s.failure FROM transfer_sessions s JOIN operations o ON o.id=s.operation_id LEFT JOIN tree_drafts d ON d.id=s.id WHERE s.root_id=$1 UNION ALL SELECT d.id,d.root_id,d.principal_id,'directory',d.state,d.phase,NULL,d.expires_at,NULL FROM tree_drafts d WHERE d.root_id=$1 AND NOT EXISTS(SELECT 1 FROM transfer_sessions s WHERE s.id=d.id)) SELECT *, (extract(epoch FROM expires_at)*1000)::bigint AS expires_ms FROM sessions WHERE id>$2 ORDER BY id LIMIT $3").bind(root.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=db::query("WITH sessions AS (SELECT s.id,s.root_id,s.principal_id,CASE WHEN d.id IS NULL THEN 'file' ELSE 'directory' END AS kind,s.state,o.phase,s.admission,s.expires_at,s.failure FROM transfer_sessions s JOIN operations o ON o.id=s.operation_id LEFT JOIN tree_drafts d ON d.id=s.id WHERE s.root_id=$1 UNION ALL SELECT d.id,d.root_id,d.principal_id,'directory',d.state,d.phase,NULL,d.expires_at,NULL FROM tree_drafts d WHERE d.root_id=$1 AND NOT EXISTS(SELECT 1 FROM transfer_sessions s WHERE s.id=d.id)) SELECT *, (extract(epoch FROM expires_at)*1000)::bigint AS expires_ms FROM sessions WHERE id>$2 ORDER BY id LIMIT $3").bind(root.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let next_cursor = next(&mut tx, actor, &name, request, &rows).await?;
         let sessions = rows
             .iter()
@@ -120,7 +121,7 @@ impl Writer {
         scope(&mut tx, actor, root).await?;
         let name = format!("jobs:{}", root.map_or("*", RootId::as_str));
         let after = after(&mut tx, actor, &name, request).await?;
-        let rows=sqlx::query("SELECT o.*,j.operation_id AS lifecycle_id,j.processed,j.total,j.failure,j.state AS lifecycle_state,j.phase AS lifecycle_phase,(SELECT id FROM transfer_sessions WHERE operation_id=o.id) AS upload_id FROM operations o LEFT JOIN lifecycle_jobs j ON j.operation_id=o.id WHERE ($1::text IS NULL OR o.root_id=$1) AND o.id>$2 ORDER BY o.id LIMIT $3").bind(root.map(RootId::as_str)).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=db::query("SELECT o.*,j.operation_id AS lifecycle_id,j.processed,j.total,j.failure,j.state AS lifecycle_state,j.phase AS lifecycle_phase,(SELECT id FROM transfer_sessions WHERE operation_id=o.id) AS upload_id FROM operations o LEFT JOIN lifecycle_jobs j ON j.operation_id=o.id WHERE ($1::text IS NULL OR o.root_id=$1) AND o.id>$2 ORDER BY o.id LIMIT $3").bind(root.map(RootId::as_str)).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let next_cursor = next(&mut tx, actor, &name, request, &rows).await?;
         let mut jobs = Vec::new();
         for r in rows.iter().take(request.limit.get() as usize) {
@@ -188,7 +189,7 @@ impl Writer {
             }
             None => None,
         };
-        let rows=sqlx::query("WITH events AS (SELECT 'management' AS source,sequence,root_id,principal_id,event,details,(extract(epoch FROM created_at)*1000000)::bigint AS created_us FROM management_audit WHERE $1::text IS NULL OR root_id=$1 UNION ALL SELECT 'transfer',a.sequence,a.root_id,o.principal_id,a.event,a.details,(extract(epoch FROM a.created_at)*1000000)::bigint FROM transfer_audit a JOIN operations o ON o.id=a.operation_id WHERE $1::text IS NULL OR a.root_id=$1) SELECT * FROM events WHERE $2::bigint IS NULL OR (created_us,source,sequence)<($2,$3,$4) ORDER BY created_us DESC,source DESC,sequence DESC LIMIT $5").bind(root.map(RootId::as_str)).bind(before.as_ref().map(|b|b.0)).bind(before.as_ref().map(|b|&b.1)).bind(before.as_ref().map(|b|b.2)).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=db::query("WITH events AS (SELECT 'management' AS source,sequence,root_id,principal_id,event,details,(extract(epoch FROM created_at)*1000000)::bigint AS created_us FROM management_audit WHERE $1::text IS NULL OR root_id=$1 UNION ALL SELECT 'transfer',a.sequence,a.root_id,o.principal_id,a.event,a.details,(extract(epoch FROM a.created_at)*1000000)::bigint FROM transfer_audit a JOIN operations o ON o.id=a.operation_id WHERE $1::text IS NULL OR a.root_id=$1) SELECT * FROM events WHERE $2::bigint IS NULL OR (created_us,source,sequence)<($2,$3,$4) ORDER BY created_us DESC,source DESC,sequence DESC LIMIT $5").bind(root.map(RootId::as_str)).bind(before.as_ref().map(|b|b.0)).bind(before.as_ref().map(|b|&b.1)).bind(before.as_ref().map(|b|b.2)).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let next_cursor = if rows.len() > request.limit.get() as usize {
             let r = &rows[request.limit.get() as usize - 1];
             Some(
