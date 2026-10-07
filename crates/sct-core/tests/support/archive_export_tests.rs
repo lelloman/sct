@@ -6,7 +6,7 @@ use sct_core::{
     transfer_io::TransferEngine,
 };
 use sha2::{Digest, Sha256};
-use simple_server::database::postgres as db;
+use sqlx::Row;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -125,11 +125,11 @@ async fn prepared(
         tree_build_tests::{admitted, stage_files},
         tree_publication_tests::seal,
     };
-    db::query("UPDATE pools SET capacity=1073741824")
+    sqlx::query("UPDATE pools SET capacity=1073741824")
         .execute(db)
         .await
         .unwrap();
-    db::query("UPDATE allocations SET capacity=536870912 WHERE root_id IS NULL")
+    sqlx::query("UPDATE allocations SET capacity=536870912 WHERE root_id IS NULL")
         .execute(db)
         .await
         .unwrap();
@@ -218,7 +218,7 @@ async fn prepared(
         .unwrap();
     (c, s, chunks)
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL, xorriso and recovery binary"]
 async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recovery() {
     let scratch = Scratch::new();
@@ -235,13 +235,13 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
     store
         .fault(Fault::Delay(std::time::Duration::from_secs(60)))
         .await;
-    let running = sct_spawn({
+    let running = tokio::spawn({
         let e = e.clone();
         async move { e.archive_tick().await }
     });
     let mut staged = false;
     for _ in 0..300 {
-        if db::query_scalar::<_, i64>("SELECT count(*) FROM archive_builds")
+        if sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_builds")
             .fetch_one(&db)
             .await
             .unwrap()
@@ -258,7 +258,7 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
     store.fault(Fault::None).await;
     w.release().await.unwrap();
     let w = w.catalog().acquire_writer().await.unwrap();
-    let _heartbeat = LeaseHeartbeat(sct_spawn({
+    let _heartbeat = LeaseHeartbeat(tokio::spawn({
         let w = w.clone();
         async move {
             loop {
@@ -282,14 +282,14 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
         ArchiveJobState::Ready
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT reserved_bytes FROM archive_accounts")
+        sqlx::query_scalar::<_, i64>("SELECT reserved_bytes FROM archive_accounts")
             .fetch_one(&db)
             .await
             .unwrap(),
         0
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -301,7 +301,7 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
             .count(),
         0
     );
-    let images=db::query("SELECT a.*,d.planned_iso_bytes,d.inventory_sha256,d.object_count,d.payload_bytes FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE d.set_id=$1 ORDER BY d.number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
+    let images=sqlx::query("SELECT a.*,d.planned_iso_bytes,d.inventory_sha256,d.object_count,d.payload_bytes FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE d.set_id=$1 ORDER BY d.number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
     assert_eq!(images.len(), 2);
     let cache = scratch.0.join("restore-cache");
     std::fs::create_dir(&cache).unwrap();
@@ -405,7 +405,7 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
         readers.push(reader);
     }
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT cache_bytes FROM archive_accounts")
+        sqlx::query_scalar::<_, i64>("SELECT cache_bytes FROM archive_accounts")
             .fetch_one(&db)
             .await
             .unwrap() as u64,
@@ -432,7 +432,7 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
         .map(|r| r.get::<String, _>("sha256"))
         .collect();
     e.archive_tick().await.unwrap();
-    let again:Vec<String>=db::query_scalar("SELECT a.sha256 FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE d.set_id=$1 ORDER BY d.number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
+    let again:Vec<String>=sqlx::query_scalar("SELECT a.sha256 FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id WHERE d.set_id=$1 ORDER BY d.number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
     assert_eq!(hashes, again);
     assert!(
         w.inspect_archive_set(&a, &c.id, &s.id)
@@ -443,7 +443,7 @@ async fn archive_iso_restart_builds_real_images_and_every_disc_bootstraps_recove
     );
     download_and_expiry_checks(&e, &w, &a, &db, &c, &s, &config, &images).await;
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL, xorriso and recovery binary"]
 async fn archive_iso_corrupt_source_and_quota_failure_release_pins_and_reservations() {
     for quota_failure in [false, true] {
@@ -459,7 +459,7 @@ async fn archive_iso_corrupt_source_and_quota_failure_release_pins_and_reservati
         let e = engine(&w, &store, &config).await;
         let (c, s, _) = prepared(&w, &a, &db, &e, size + 6_200_000).await;
         if quota_failure {
-            db::query("UPDATE archive_accounts SET quota_bytes=1")
+            sqlx::query("UPDATE archive_accounts SET quota_bytes=1")
                 .execute(&db)
                 .await
                 .unwrap();
@@ -478,7 +478,7 @@ async fn archive_iso_corrupt_source_and_quota_failure_release_pins_and_reservati
             })
         );
         assert_eq!(
-            db::query_scalar::<_, i64>(
+            sqlx::query_scalar::<_, i64>(
                 "SELECT reserved_bytes+cache_bytes+pinned_bytes FROM archive_accounts"
             )
             .fetch_one(&db)
@@ -487,14 +487,14 @@ async fn archive_iso_corrupt_source_and_quota_failure_release_pins_and_reservati
             0
         );
         assert_eq!(
-            db::query_scalar::<_, i64>("SELECT reserved_bytes+cache_bytes FROM archive_storage")
+            sqlx::query_scalar::<_, i64>("SELECT reserved_bytes+cache_bytes FROM archive_storage")
                 .fetch_one(&db)
                 .await
                 .unwrap(),
             0
         );
         assert_eq!(
-            db::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
+            sqlx::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
                 .fetch_one(&db)
                 .await
                 .unwrap(),
@@ -508,7 +508,7 @@ async fn archive_iso_corrupt_source_and_quota_failure_release_pins_and_reservati
         );
     }
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires xorriso"]
 async fn archive_iso_writer_enforces_process_size_limit_and_never_overwrites() {
     let scratch = Scratch::new();
@@ -537,7 +537,7 @@ impl Drop for LeaseHeartbeat {
     }
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL, xorriso and recovery binary"]
 async fn archive_iso_cancellation_fences_live_staging_before_releasing_reservations() {
     let scratch = Scratch::new();
@@ -554,13 +554,13 @@ async fn archive_iso_cancellation_fences_live_staging_before_releasing_reservati
     store
         .fault(Fault::Delay(std::time::Duration::from_secs(60)))
         .await;
-    let running = sct_spawn({
+    let running = tokio::spawn({
         let e = e.clone();
         async move { e.archive_tick().await }
     });
     let mut started = false;
     for _ in 0..300 {
-        if db::query_scalar::<_, i64>("SELECT count(*) FROM archive_builds")
+        if sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_builds")
             .fetch_one(&db)
             .await
             .unwrap()
@@ -590,7 +590,7 @@ async fn archive_iso_cancellation_fences_live_staging_before_releasing_reservati
         ArchiveJobState::Cancelled
     );
     assert_eq!(
-        db::query_scalar::<_, i64>(
+        sqlx::query_scalar::<_, i64>(
             "SELECT reserved_bytes+cache_bytes+pinned_bytes FROM archive_accounts"
         )
         .fetch_one(&db)
@@ -599,7 +599,7 @@ async fn archive_iso_cancellation_fences_live_staging_before_releasing_reservati
         0
     );
     assert_eq!(
-        db::query_scalar::<_, i64>(
+        sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM archive_artifacts WHERE state='available'"
         )
         .fetch_one(&db)
@@ -624,10 +624,10 @@ async fn download_and_expiry_checks(
     collection: &ArchiveCollection,
     set: &ArchiveSet,
     config: &ArchiveExportConfig,
-    images: &[db::PgRow],
+    images: &[sqlx::postgres::PgRow],
 ) {
     let disc: ArchiveDiscId = images[0].get::<String, _>("disc_id").parse().unwrap();
-    assert_eq!(db::query_scalar::<_,i64>("SELECT count(*) FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE a.expires_at=s.published_at+interval '7 days'").fetch_one(db).await.unwrap(), 2);
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE a.expires_at=s.published_at+interval '7 days'").fetch_one(db).await.unwrap(), 2);
     let artifact = e
         .archive_image_info(actor, &collection.id, &disc)
         .await
@@ -647,7 +647,7 @@ async fn download_and_expiry_checks(
         artifact.sha256.unwrap().as_str()
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM archive_downloads")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_downloads")
             .fetch_one(db)
             .await
             .unwrap(),
@@ -713,7 +713,7 @@ async fn download_and_expiry_checks(
         .download_archive_iso(actor, &collection.id, &disc, None)
         .await
         .unwrap();
-    db::query("UPDATE archive_artifacts SET expires_at=clock_timestamp()-interval '1 second'")
+    sqlx::query("UPDATE archive_artifacts SET expires_at=clock_timestamp()-interval '1 second'")
         .execute(db)
         .await
         .unwrap();
@@ -728,7 +728,7 @@ async fn download_and_expiry_checks(
     ));
     live.release().await.unwrap();
     // Simulate crash after durable cleanup intent and unlink, before accounting.
-    db::query("UPDATE archive_artifacts SET cleanup_pending=true WHERE disc_id=$1")
+    sqlx::query("UPDATE archive_artifacts SET cleanup_pending=true WHERE disc_id=$1")
         .bind(disc.as_str())
         .execute(db)
         .await
@@ -737,21 +737,21 @@ async fn download_and_expiry_checks(
     e.cleanup_archive_cache().await.unwrap();
     e.cleanup_archive_cache().await.unwrap();
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT cache_bytes+reserved_bytes FROM archive_accounts")
+        sqlx::query_scalar::<_, i64>("SELECT cache_bytes+reserved_bytes FROM archive_accounts")
             .fetch_one(db)
             .await
             .unwrap(),
         0
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT cache_bytes+reserved_bytes FROM archive_storage")
+        sqlx::query_scalar::<_, i64>("SELECT cache_bytes+reserved_bytes FROM archive_storage")
             .fetch_one(db)
             .await
             .unwrap(),
         0
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM archive_discs")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_discs")
             .fetch_one(db)
             .await
             .unwrap(),
@@ -764,7 +764,7 @@ async fn download_and_expiry_checks(
             .state,
         ArchiveJobState::Ready
     );
-    let hashes: Vec<String> = db::query_scalar("SELECT a.sha256 FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id ORDER BY d.number").fetch_all(db).await.unwrap();
+    let hashes: Vec<String> = sqlx::query_scalar("SELECT a.sha256 FROM archive_artifacts a JOIN archive_discs d ON d.id=a.disc_id ORDER BY d.number").fetch_all(db).await.unwrap();
     assert_eq!(
         hashes,
         images
@@ -772,16 +772,4 @@ async fn download_and_expiry_checks(
             .map(|r| r.get::<String, _>("sha256"))
             .collect::<Vec<_>>()
     );
-}
-
-fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(
-        simple_server::runtime::Runtime::try_current()
-            .expect("test engine")
-            .scope(future),
-    )
 }

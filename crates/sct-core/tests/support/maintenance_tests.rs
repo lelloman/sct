@@ -3,7 +3,6 @@ use sct_core::{
     error::{Error, Result},
     maintenance::{MaintenanceClaim, MaintenanceExecutor, MaintenanceProgress},
 };
-use simple_server::database::postgres as db;
 struct Steps;
 impl MaintenanceExecutor for Steps {
     async fn advance(&self, claim: &MaintenanceClaim) -> Result<MaintenanceProgress> {
@@ -34,7 +33,7 @@ fn done() -> Result<MaintenanceProgress> {
         complete: true,
     })
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn maintenance_queue_progress_restart_and_stale_worker_fencing() {
     let (w, a, db) = setup().await;
@@ -76,7 +75,7 @@ async fn maintenance_queue_progress_restart_and_stale_worker_fencing() {
     );
     let stale = w.claim_maintenance(&job.id).await.unwrap().unwrap();
     assert!(w.claim_maintenance(&job.id).await.unwrap().is_none());
-    db::query("UPDATE maintenance_jobs SET worker_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(job.id.as_str()).execute(&db).await.unwrap();
+    sqlx::query("UPDATE maintenance_jobs SET worker_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(job.id.as_str()).execute(&db).await.unwrap();
     let current = w.claim_maintenance(&job.id).await.unwrap().unwrap();
     assert_eq!(
         w.finish_maintenance_batch(&stale, done())
@@ -106,7 +105,7 @@ async fn maintenance_queue_progress_restart_and_stale_worker_fencing() {
     assert_eq!(completed.processed.get(), 3);
     assert!(replacement.inspect_operation(&a, &r.id).await.is_err());
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn maintenance_retries_authorization_resume_and_capacity_obligations() {
     let (w, a, db) = setup().await;
@@ -118,7 +117,7 @@ async fn maintenance_retries_authorization_resume_and_capacity_obligations() {
     for attempt in 1..=5 {
         let claim = w.claim_maintenance(&job.id).await.unwrap().unwrap();
         let before: i64 =
-            db::query_scalar("SELECT (extract(epoch FROM clock_timestamp())*1000)::bigint")
+            sqlx::query_scalar("SELECT (extract(epoch FROM clock_timestamp())*1000)::bigint")
                 .fetch_one(&db)
                 .await
                 .unwrap();
@@ -128,7 +127,7 @@ async fn maintenance_retries_authorization_resume_and_capacity_obligations() {
         let status = w.maintenance_job(&a, &job.id).await.unwrap();
         assert_eq!(status.attempts, attempt);
         let after: i64 =
-            db::query_scalar("SELECT (extract(epoch FROM clock_timestamp())*1000)::bigint")
+            sqlx::query_scalar("SELECT (extract(epoch FROM clock_timestamp())*1000)::bigint")
                 .fetch_one(&db)
                 .await
                 .unwrap();
@@ -148,7 +147,7 @@ async fn maintenance_retries_authorization_resume_and_capacity_obligations() {
             }
         );
         assert!(w.claim_maintenance(&job.id).await.unwrap().is_none());
-        db::query("UPDATE maintenance_jobs SET next_attempt_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(job.id.as_str()).execute(&db).await.unwrap();
+        sqlx::query("UPDATE maintenance_jobs SET next_attempt_at=clock_timestamp()-interval '1 second' WHERE id=$1").bind(job.id.as_str()).execute(&db).await.unwrap();
     }
     assert_eq!(
         w.begin_operation(&a, &r.id, OperationKind::Upload)
@@ -187,7 +186,7 @@ async fn maintenance_retries_authorization_resume_and_capacity_obligations() {
     .unwrap();
     let token = w.issue_token(&a, &p.id).await.unwrap();
     let rescuer = w.authenticate(&token.secret, false, None).await.unwrap();
-    let old: String = db::query_scalar(
+    let old: String = sqlx::query_scalar(
         "SELECT id FROM credentials WHERE principal_id='local_admin' AND NOT revoked",
     )
     .fetch_one(&db)
@@ -224,7 +223,7 @@ async fn maintenance_retries_authorization_resume_and_capacity_obligations() {
         .unwrap();
     w.finish_maintenance_batch(&claim, done()).await.unwrap();
     let identities: (String, String) =
-        db::query_as("SELECT principal_id,run_principal_id FROM maintenance_jobs WHERE id=$1")
+        sqlx::query_as("SELECT principal_id,run_principal_id FROM maintenance_jobs WHERE id=$1")
             .bind(job.id.as_str())
             .fetch_one(&db)
             .await

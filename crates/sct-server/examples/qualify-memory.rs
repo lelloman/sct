@@ -13,10 +13,6 @@ use serde_json::json;
 use std::{collections::BTreeMap, io::Write, sync::Arc};
 #[tokio::main(worker_threads = 2)]
 async fn main() {
-    let runtime = simple_server::runtime::Runtime::new().unwrap();
-    runtime.scope(run()).await;
-}
-async fn run() {
     let size: u64 = std::env::args()
         .nth(1)
         .expect("MiB argument required")
@@ -65,14 +61,14 @@ async fn run() {
     .unwrap();
     let w = writer.clone();
     let e = engine.clone();
-    let heartbeat = simple_server::runtime::spawn(async move {
+    let heartbeat = tokio::spawn(async move {
         loop {
-            simple_server::time::sleep(std::time::Duration::from_secs(5)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             w.renew().await.unwrap();
             e.heartbeat().await.unwrap();
         }
     });
-    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -82,11 +78,11 @@ async fn run() {
         secure_cookies: false,
         transfer: Some(engine),
     };
-    let server = simple_server::runtime::spawn(async move {
-        sct_server::web::serve(
+    let server = tokio::spawn(async move {
+        simple_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::engine_lifecycle::Shutdown::new(),
+            simple_server::lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()

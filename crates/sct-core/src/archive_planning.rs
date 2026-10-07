@@ -7,11 +7,10 @@ use crate::{
     lease::Writer,
     roots::json,
 };
-use db::PgConnection;
 use sct_protocol::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use simple_server::database::postgres as db;
+use sqlx::{PgConnection, Row};
 
 const BATCH: i64 = 128;
 const ISO_BASE: u64 = 2 * 1024 * 1024;
@@ -32,7 +31,7 @@ fn bytes(record: &ArchiveRecord) -> Result<Vec<u8>> {
     line.push(b'\n');
     Ok(line)
 }
-fn object(row: &db::PgRow) -> Result<ArchiveObject> {
+fn object(row: &sqlx::postgres::PgRow) -> Result<ArchiveObject> {
     Ok(ArchiveObject {
         root_id: row.get::<String, _>("root_id").parse()?,
         digest: row.get::<String, _>("digest").parse()?,
@@ -50,7 +49,7 @@ async fn record(
 ) -> Result<u64> {
     let line = bytes(value)?;
     let length = line.len() as u64;
-    let inserted=db::query("INSERT INTO archive_index_records(set_id,phase,key1,key2,position,line) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
+    let inserted=sqlx::query("INSERT INTO archive_index_records(set_id,phase,key1,key2,position,line) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING")
         .bind(set).bind(phase).bind(key1).bind(key2).bind(position).bind(line).execute(db).await?.rows_affected();
     Ok(length * inserted)
 }
@@ -136,7 +135,7 @@ async fn reusable(
     obj: &ArchiveObject,
 ) -> Result<Option<(String, u64, u64)>> {
     let admin = auth::administrator(db, actor).await?;
-    let row=db::query("SELECT d.id,d.number,s.sequence,s.selections FROM archive_discs d JOIN archive_sets s ON s.id=d.set_id JOIN archive_placements p ON p.disc_id=d.id AND p.set_id=d.set_id WHERE d.collection_id=$1 AND s.sequence<$2 AND s.verified_complete_at IS NOT NULL AND p.root_id=$3 AND p.digest=$4 AND p.length=$5 AND EXISTS(SELECT 1 FROM archive_copies c WHERE c.disc_id=d.id AND c.health='read_back_verified') AND NOT EXISTS(SELECT 1 FROM archive_sources src LEFT JOIN roots r ON r.id=src.root_id WHERE src.set_id=s.id AND (r.id IS NULL OR NOT ($6 OR r.owner_id=$7 OR EXISTS(SELECT 1 FROM grants g WHERE g.root_id=r.id AND g.principal_id=$7 AND g.capabilities @> '[\"list_read\"]'::jsonb)))) ORDER BY d.number LIMIT 1")
+    let row=sqlx::query("SELECT d.id,d.number,s.sequence,s.selections FROM archive_discs d JOIN archive_sets s ON s.id=d.set_id JOIN archive_placements p ON p.disc_id=d.id AND p.set_id=d.set_id WHERE d.collection_id=$1 AND s.sequence<$2 AND s.verified_complete_at IS NOT NULL AND p.root_id=$3 AND p.digest=$4 AND p.length=$5 AND EXISTS(SELECT 1 FROM archive_copies c WHERE c.disc_id=d.id AND c.health='read_back_verified') AND NOT EXISTS(SELECT 1 FROM archive_sources src LEFT JOIN roots r ON r.id=src.root_id WHERE src.set_id=s.id AND (r.id IS NULL OR NOT ($6 OR r.owner_id=$7 OR EXISTS(SELECT 1 FROM grants g WHERE g.root_id=r.id AND g.principal_id=$7 AND g.capabilities @> '[\"list_read\"]'::jsonb)))) ORDER BY d.number LIMIT 1")
         .bind(set.collection_id.as_str()).bind(set.sequence.get() as i64).bind(obj.root_id.as_str()).bind(obj.digest.as_str()).bind(obj.length.get() as i64).bind(admin).bind(actor.principal_id()).fetch_optional(&mut *db).await?;
     if let Some(row) = row {
         let sources: Vec<ArchiveSelection> = serde_json::from_value(row.get("selections"))?;
@@ -163,8 +162,8 @@ impl Writer {
             return Ok(false);
         }
         let mut tx = self.transaction().await?;
-        let col:String=db::query_scalar("SELECT c.id FROM archive_collections c JOIN archive_sets s ON s.collection_id=c.id WHERE s.id=$1 FOR UPDATE OF c").bind(identity.as_str()).fetch_one(&mut *tx).await?;
-        let row=db::query("SELECT principal_id,credential_id,state,expires_at>clock_timestamp() AS live FROM archive_sets WHERE id=$1 FOR UPDATE").bind(identity.as_str()).fetch_one(&mut *tx).await?;
+        let col:String=sqlx::query_scalar("SELECT c.id FROM archive_collections c JOIN archive_sets s ON s.collection_id=c.id WHERE s.id=$1 FOR UPDATE OF c").bind(identity.as_str()).fetch_one(&mut *tx).await?;
+        let row=sqlx::query("SELECT principal_id,credential_id,state,expires_at>clock_timestamp() AS live FROM archive_sets WHERE id=$1 FOR UPDATE").bind(identity.as_str()).fetch_one(&mut *tx).await?;
         if row.get::<String, _>("state") != "planning" {
             return Ok(false);
         }
@@ -175,8 +174,8 @@ impl Writer {
         };
         let set = load_set(&mut tx, &col.parse()?, identity).await?;
         source_access(&mut tx, &actor, &set.selections).await?;
-        db::query("INSERT INTO archive_plan_state(set_id,bundle,cursor) VALUES($1,$2,$3) ON CONFLICT DO NOTHING").bind(identity.as_str()).bind(json(bundle)?).bind(json(&Plan::default())?).execute(&mut *tx).await?;
-        let stored = db::query("SELECT bundle,cursor FROM archive_plan_state WHERE set_id=$1")
+        sqlx::query("INSERT INTO archive_plan_state(set_id,bundle,cursor) VALUES($1,$2,$3) ON CONFLICT DO NOTHING").bind(identity.as_str()).bind(json(bundle)?).bind(json(&Plan::default())?).execute(&mut *tx).await?;
+        let stored = sqlx::query("SELECT bundle,cursor FROM archive_plan_state WHERE set_id=$1")
             .bind(identity.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -188,7 +187,7 @@ impl Writer {
         let sid = identity.as_str();
         match p.phase {
             0 => {
-                let rows=db::query("SELECT * FROM archive_entries WHERE set_id=$1 AND path COLLATE \"C\">$2 COLLATE \"C\" ORDER BY path COLLATE \"C\" LIMIT $3").bind(sid).bind(&p.path).bind(BATCH).fetch_all(&mut *tx).await?;
+                let rows=sqlx::query("SELECT * FROM archive_entries WHERE set_id=$1 AND path COLLATE \"C\">$2 COLLATE \"C\" ORDER BY path COLLATE \"C\" LIMIT $3").bind(sid).bind(&p.path).bind(BATCH).fetch_all(&mut *tx).await?;
                 for row in &rows {
                     let path: String = row.get("path");
                     let value = if row.get::<String, _>("kind") == "directory" {
@@ -214,7 +213,7 @@ impl Writer {
                 }
             }
             1 => {
-                let rows=db::query("SELECT * FROM archive_extents WHERE set_id=$1 AND (path COLLATE \"C\",offset_bytes)>($2 COLLATE \"C\",$3) ORDER BY path COLLATE \"C\",offset_bytes LIMIT $4").bind(sid).bind(&p.path).bind(p.offset).bind(BATCH).fetch_all(&mut *tx).await?;
+                let rows=sqlx::query("SELECT * FROM archive_extents WHERE set_id=$1 AND (path COLLATE \"C\",offset_bytes)>($2 COLLATE \"C\",$3) ORDER BY path COLLATE \"C\",offset_bytes LIMIT $4").bind(sid).bind(&p.path).bind(p.offset).bind(BATCH).fetch_all(&mut *tx).await?;
                 for row in &rows {
                     let path: String = row.get("path");
                     let offset: i64 = row.get("offset_bytes");
@@ -233,7 +232,7 @@ impl Writer {
                         },
                     )
                     .await?;
-                    p.object_count+=db::query("INSERT INTO archive_plan_objects(set_id,root_id,digest,length,ordinal) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING").bind(sid).bind(obj.root_id.as_str()).bind(obj.digest.as_str()).bind(obj.length.get() as i64).bind(p.ordinal).execute(&mut *tx).await?.rows_affected();
+                    p.object_count+=sqlx::query("INSERT INTO archive_plan_objects(set_id,root_id,digest,length,ordinal) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING").bind(sid).bind(obj.root_id.as_str()).bind(obj.digest.as_str()).bind(obj.length.get() as i64).bind(p.ordinal).execute(&mut *tx).await?.rows_affected();
                     p.ordinal += 1;
                     p.path = path;
                     p.offset = offset;
@@ -244,13 +243,13 @@ impl Writer {
                 }
             }
             2 => {
-                let rows=db::query("SELECT * FROM archive_plan_objects WHERE set_id=$1 AND ordinal>$2 ORDER BY ordinal LIMIT $3").bind(sid).bind(p.ordinal).bind(BATCH).fetch_all(&mut *tx).await?;
+                let rows=sqlx::query("SELECT * FROM archive_plan_objects WHERE set_id=$1 AND ordinal>$2 ORDER BY ordinal LIMIT $3").bind(sid).bind(p.ordinal).bind(BATCH).fetch_all(&mut *tx).await?;
                 for row in &rows {
                     let obj = object(row)?;
                     let placement = if let Some((disc, number, sequence)) =
                         reusable(&mut tx, &actor, &set, &obj).await?
                     {
-                        db::query("UPDATE archive_plan_objects SET old_disc=$4 WHERE set_id=$1 AND root_id=$2 AND digest=$3").bind(sid).bind(obj.root_id.as_str()).bind(obj.digest.as_str()).bind(&disc).execute(&mut *tx).await?;
+                        sqlx::query("UPDATE archive_plan_objects SET old_disc=$4 WHERE set_id=$1 AND root_id=$2 AND digest=$3").bind(sid).bind(obj.root_id.as_str()).bind(obj.digest.as_str()).bind(&disc).execute(&mut *tx).await?;
                         let added = record(
                             &mut tx,
                             sid,
@@ -296,7 +295,7 @@ impl Writer {
                     ErrorCode::ArchiveMetadataTooLarge,
                 )?;
                 let capacity = set.media_capacity_bytes.get() - p.metadata_budget;
-                let rows=db::query("SELECT * FROM archive_plan_objects WHERE set_id=$1 AND ordinal>$2 AND old_disc IS NULL ORDER BY ordinal LIMIT $3").bind(sid).bind(p.ordinal).bind(BATCH).fetch_all(&mut *tx).await?;
+                let rows=sqlx::query("SELECT * FROM archive_plan_objects WHERE set_id=$1 AND ordinal>$2 AND old_disc IS NULL ORDER BY ordinal LIMIT $3").bind(sid).bind(p.ordinal).bind(BATCH).fetch_all(&mut *tx).await?;
                 for row in &rows {
                     let obj = object(row)?;
                     let cost = object_cost(obj.length.get());
@@ -309,7 +308,7 @@ impl Writer {
                         p.packing_disc <= ARCHIVE_MAX_DISCS,
                         ErrorCode::ArchiveMetadataTooLarge,
                     )?;
-                    db::query("UPDATE archive_plan_objects SET new_disc=$3 WHERE set_id=$1 AND ordinal=$2").bind(sid).bind(row.get::<i64,_>("ordinal")).bind(p.packing_disc as i64).execute(&mut *tx).await?;
+                    sqlx::query("UPDATE archive_plan_objects SET new_disc=$3 WHERE set_id=$1 AND ordinal=$2").bind(sid).bind(row.get::<i64,_>("ordinal")).bind(p.packing_disc as i64).execute(&mut *tx).await?;
                     p.packing_bytes += cost;
                     p.ordinal = row.get("ordinal");
                 }
@@ -341,12 +340,12 @@ impl Writer {
                 for local in p.disc_cursor + 1..=end {
                     let number = p.first + local - 1;
                     let disc = disc_id(sid, number);
-                    db::query("INSERT INTO archive_plan_discs(set_id,number) VALUES($1,$2)")
+                    sqlx::query("INSERT INTO archive_plan_discs(set_id,number) VALUES($1,$2)")
                         .bind(sid)
                         .bind(local as i64)
                         .execute(&mut *tx)
                         .await?;
-                    db::query("INSERT INTO archive_discs(id,collection_id,set_id,number,index_sha256,bundle_sha256,inventory_sha256,payload_bytes,object_count,planned_iso_bytes) VALUES($1,$2,$3,$4,$5,$6,$5,0,0,$7)").bind(&disc).bind(set.collection_id.as_str()).bind(sid).bind(number as i64).bind("0".repeat(64)).bind(digest(&canonical(bundle)?)).bind(p.metadata_budget as i64).execute(&mut *tx).await?;
+                    sqlx::query("INSERT INTO archive_discs(id,collection_id,set_id,number,index_sha256,bundle_sha256,inventory_sha256,payload_bytes,object_count,planned_iso_bytes) VALUES($1,$2,$3,$4,$5,$6,$5,0,0,$7)").bind(&disc).bind(set.collection_id.as_str()).bind(sid).bind(number as i64).bind("0".repeat(64)).bind(digest(&canonical(bundle)?)).bind(p.metadata_budget as i64).execute(&mut *tx).await?;
                     record(
                         &mut tx,
                         sid,
@@ -369,17 +368,17 @@ impl Writer {
                 }
             }
             5 => {
-                let rows=db::query("SELECT * FROM archive_plan_objects WHERE set_id=$1 AND ordinal>$2 ORDER BY ordinal LIMIT $3").bind(sid).bind(p.ordinal).bind(BATCH).fetch_all(&mut *tx).await?;
+                let rows=sqlx::query("SELECT * FROM archive_plan_objects WHERE set_id=$1 AND ordinal>$2 ORDER BY ordinal LIMIT $3").bind(sid).bind(p.ordinal).bind(BATCH).fetch_all(&mut *tx).await?;
                 for row in &rows {
                     let obj = object(row)?;
                     let disc = if let Some(old) = row.get::<Option<String>, _>("old_disc") {
                         old
                     } else {
                         let local = row.get::<i64, _>("new_disc");
-                        db::query("UPDATE archive_plan_discs SET payload_bytes=payload_bytes+$3,object_count=object_count+1,occupied_bytes=occupied_bytes+$4 WHERE set_id=$1 AND number=$2").bind(sid).bind(local).bind(obj.length.get() as i64).bind(object_cost(obj.length.get()) as i64).execute(&mut *tx).await?;
+                        sqlx::query("UPDATE archive_plan_discs SET payload_bytes=payload_bytes+$3,object_count=object_count+1,occupied_bytes=occupied_bytes+$4 WHERE set_id=$1 AND number=$2").bind(sid).bind(local).bind(obj.length.get() as i64).bind(object_cost(obj.length.get()) as i64).execute(&mut *tx).await?;
                         disc_id(sid, p.first + local as u64 - 1)
                     };
-                    db::query("INSERT INTO archive_placements(set_id,collection_id,root_id,digest,length,disc_id) VALUES($1,$2,$3,$4,$5,$6)").bind(sid).bind(set.collection_id.as_str()).bind(obj.root_id.as_str()).bind(obj.digest.as_str()).bind(obj.length.get() as i64).bind(&disc).execute(&mut *tx).await?;
+                    sqlx::query("INSERT INTO archive_placements(set_id,collection_id,root_id,digest,length,disc_id) VALUES($1,$2,$3,$4,$5,$6)").bind(sid).bind(set.collection_id.as_str()).bind(obj.root_id.as_str()).bind(obj.digest.as_str()).bind(obj.length.get() as i64).bind(&disc).execute(&mut *tx).await?;
                     record(
                         &mut tx,
                         sid,
@@ -411,7 +410,7 @@ impl Writer {
                 p.index_records = count;
                 p.phase = 7;
                 p.disc_cursor = 0;
-                db::query("UPDATE archive_plan_state SET cursor=$2 WHERE set_id=$1")
+                sqlx::query("UPDATE archive_plan_state SET cursor=$2 WHERE set_id=$1")
                     .bind(sid)
                     .bind(json(&p)?)
                     .execute(&mut *tx)
@@ -431,21 +430,22 @@ impl Writer {
                         .await?;
                     let mut tx = self.transaction().await?;
                     check_resume(&mut tx, identity, &p).await?;
-                    let row =
-                        db::query("SELECT * FROM archive_plan_discs WHERE set_id=$1 AND number=$2")
-                            .bind(sid)
-                            .bind(local as i64)
-                            .fetch_one(&mut *tx)
-                            .await?;
+                    let row = sqlx::query(
+                        "SELECT * FROM archive_plan_discs WHERE set_id=$1 AND number=$2",
+                    )
+                    .bind(sid)
+                    .bind(local as i64)
+                    .fetch_one(&mut *tx)
+                    .await?;
                     let planned = p.metadata_budget + row.get::<i64, _>("occupied_bytes") as u64;
                     require(
                         planned <= set.media_capacity_bytes.get(),
                         ErrorCode::ArchiveMetadataTooLarge,
                     )?;
-                    db::query("UPDATE archive_discs SET index_sha256=$2,inventory_sha256=$3,payload_bytes=$4,object_count=$5,planned_iso_bytes=$6 WHERE id=$1").bind(&disc).bind(p.index_hash.as_ref().ok_or(Error(ErrorCode::InternalError))?.as_str()).bind(hash.as_str()).bind(row.get::<i64,_>("payload_bytes")).bind(row.get::<i64,_>("object_count")).bind(planned as i64).execute(&mut *tx).await?;
+                    sqlx::query("UPDATE archive_discs SET index_sha256=$2,inventory_sha256=$3,payload_bytes=$4,object_count=$5,planned_iso_bytes=$6 WHERE id=$1").bind(&disc).bind(p.index_hash.as_ref().ok_or(Error(ErrorCode::InternalError))?.as_str()).bind(hash.as_str()).bind(row.get::<i64,_>("payload_bytes")).bind(row.get::<i64,_>("object_count")).bind(planned as i64).execute(&mut *tx).await?;
                     p.disc_cursor = local;
                     p.total_budget += planned;
-                    db::query("UPDATE archive_plan_state SET cursor=$2 WHERE set_id=$1")
+                    sqlx::query("UPDATE archive_plan_state SET cursor=$2 WHERE set_id=$1")
                         .bind(sid)
                         .bind(json(&p)?)
                         .execute(&mut *tx)
@@ -470,12 +470,12 @@ impl Writer {
                     total_iso_budget_bytes: p.total_budget.try_into()?,
                     bundle_sha256: digest(&canonical(bundle)?).parse()?,
                 };
-                db::query("UPDATE archive_sets SET state='awaiting_confirmation',plan=$2,revision=$3 WHERE id=$1").bind(sid).bind(json(&summary)?).bind(id()).execute(&mut *tx).await?;
+                sqlx::query("UPDATE archive_sets SET state='awaiting_confirmation',plan=$2,revision=$3 WHERE id=$1").bind(sid).bind(json(&summary)?).bind(id()).execute(&mut *tx).await?;
                 p.phase = 8;
             }
             _ => return Ok(false),
         }
-        db::query("UPDATE archive_plan_state SET cursor=$2 WHERE set_id=$1")
+        sqlx::query("UPDATE archive_plan_state SET cursor=$2 WHERE set_id=$1")
             .bind(sid)
             .bind(json(&p)?)
             .execute(&mut *tx)
@@ -515,9 +515,9 @@ impl Writer {
             ErrorCode::ArchiveExpired,
         )?;
         let mut tx = self.transaction().await?;
-        let live:bool=db::query_scalar("SELECT state IN ('planning','awaiting_confirmation','building') AND expires_at>clock_timestamp() FROM archive_sets WHERE id=$1").bind(set.as_str()).fetch_one(&mut *tx).await?;
+        let live:bool=sqlx::query_scalar("SELECT state IN ('planning','awaiting_confirmation','building') AND expires_at>clock_timestamp() FROM archive_sets WHERE id=$1").bind(set.as_str()).fetch_one(&mut *tx).await?;
         require(live, ErrorCode::ArchiveExpired)?;
-        let rows=db::query("SELECT phase,key1,key2,position,line FROM archive_index_records WHERE set_id=$1 AND (phase,key1,key2,position)>($2,$3 COLLATE \"C\",$4 COLLATE \"C\",$5) ORDER BY phase,key1,key2,position LIMIT $6").bind(set.as_str()).bind(cursor.phase).bind(&cursor.key1).bind(&cursor.key2).bind(cursor.position).bind(BATCH).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT phase,key1,key2,position,line FROM archive_index_records WHERE set_id=$1 AND (phase,key1,key2,position)>($2,$3 COLLATE \"C\",$4 COLLATE \"C\",$5) ORDER BY phase,key1,key2,position LIMIT $6").bind(set.as_str()).bind(cursor.phase).bind(&cursor.key1).bind(&cursor.key2).bind(cursor.position).bind(BATCH).fetch_all(&mut *tx).await?;
         Ok(rows
             .into_iter()
             .map(|r| {
@@ -570,7 +570,7 @@ impl Writer {
                 ErrorCode::ArchiveExpired,
             )?;
             let mut tx = self.transaction().await?;
-            let rows=db::query("SELECT root_id,digest,length FROM archive_placements WHERE set_id=$1 AND disc_id=$2 AND (root_id COLLATE \"C\",digest COLLATE \"C\")>($3 COLLATE \"C\",$4 COLLATE \"C\") ORDER BY root_id COLLATE \"C\",digest COLLATE \"C\" LIMIT $5").bind(set.as_str()).bind(disc.as_str()).bind(&root).bind(&digest_cursor).bind(BATCH).fetch_all(&mut *tx).await?;
+            let rows=sqlx::query("SELECT root_id,digest,length FROM archive_placements WHERE set_id=$1 AND disc_id=$2 AND (root_id COLLATE \"C\",digest COLLATE \"C\")>($3 COLLATE \"C\",$4 COLLATE \"C\") ORDER BY root_id COLLATE \"C\",digest COLLATE \"C\" LIMIT $5").bind(set.as_str()).bind(disc.as_str()).bind(&root).bind(&digest_cursor).bind(BATCH).fetch_all(&mut *tx).await?;
             drop(tx);
             if rows.is_empty() {
                 break;
@@ -595,7 +595,7 @@ impl Writer {
             ErrorCode::ArchiveExpired,
         )?;
         let mut tx = self.transaction().await?;
-        let row=db::query("SELECT d.*,s.sequence,s.first_disc,s.last_disc,p.cursor FROM archive_discs d JOIN archive_sets s ON s.id=d.set_id JOIN archive_plan_state p ON p.set_id=s.id WHERE d.id=$1 AND d.set_id=$2").bind(disc.as_str()).bind(set.as_str()).fetch_one(&mut *tx).await?;
+        let row=sqlx::query("SELECT d.*,s.sequence,s.first_disc,s.last_disc,p.cursor FROM archive_discs d JOIN archive_sets s ON s.id=d.set_id JOIN archive_plan_state p ON p.set_id=s.id WHERE d.id=$1 AND d.set_id=$2").bind(disc.as_str()).bind(set.as_str()).fetch_one(&mut *tx).await?;
         let plan: Plan = serde_json::from_value(row.get("cursor"))?;
         require(plan.phase >= 8, ErrorCode::RevisionConflict)?;
         let descriptor = ArchiveDiscDescriptor {
@@ -618,8 +618,8 @@ impl Writer {
 }
 
 async fn check_resume(db: &mut PgConnection, set: &ArchiveSetId, expected: &Plan) -> Result<()> {
-    db::query("SELECT c.id FROM archive_collections c JOIN archive_sets s ON s.collection_id=c.id WHERE s.id=$1 FOR UPDATE OF c").bind(set.as_str()).fetch_one(&mut *db).await?;
-    let row=db::query("SELECT state,principal_id,credential_id,selections,expires_at>clock_timestamp() AS live FROM archive_sets WHERE id=$1 FOR UPDATE").bind(set.as_str()).fetch_one(&mut *db).await?;
+    sqlx::query("SELECT c.id FROM archive_collections c JOIN archive_sets s ON s.collection_id=c.id WHERE s.id=$1 FOR UPDATE OF c").bind(set.as_str()).fetch_one(&mut *db).await?;
+    let row=sqlx::query("SELECT state,principal_id,credential_id,selections,expires_at>clock_timestamp() AS live FROM archive_sets WHERE id=$1 FOR UPDATE").bind(set.as_str()).fetch_one(&mut *db).await?;
     require(
         row.get::<String, _>("state") == "planning" && row.get::<bool, _>("live"),
         ErrorCode::ArchiveExpired,
@@ -635,7 +635,7 @@ async fn check_resume(db: &mut PgConnection, set: &ArchiveSetId, expected: &Plan
     )
     .await?;
     let current: serde_json::Value =
-        db::query_scalar("SELECT cursor FROM archive_plan_state WHERE set_id=$1")
+        sqlx::query_scalar("SELECT cursor FROM archive_plan_state WHERE set_id=$1")
             .bind(set.as_str())
             .fetch_one(db)
             .await?;
@@ -650,8 +650,8 @@ pub(crate) async fn validate_reuse(
     set: &ArchiveSetId,
 ) -> Result<()> {
     let admin = auth::administrator(db, actor).await?;
-    let available:bool=db::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM archive_placements p JOIN archive_discs d ON d.id=p.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE p.set_id=$1 AND d.set_id<>$1 AND (s.verified_complete_at IS NULL OR NOT EXISTS(SELECT 1 FROM archive_copies c WHERE c.disc_id=d.id AND c.health='read_back_verified')))").bind(set.as_str()).fetch_one(&mut *db).await?;
+    let available:bool=sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM archive_placements p JOIN archive_discs d ON d.id=p.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE p.set_id=$1 AND d.set_id<>$1 AND (s.verified_complete_at IS NULL OR NOT EXISTS(SELECT 1 FROM archive_copies c WHERE c.disc_id=d.id AND c.health='read_back_verified')))").bind(set.as_str()).fetch_one(&mut *db).await?;
     require(available, ErrorCode::ArchiveMediaUnavailable)?;
-    let allowed:bool=db::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM archive_placements p JOIN archive_discs d ON d.id=p.disc_id JOIN archive_sources src ON src.set_id=d.set_id LEFT JOIN roots r ON r.id=src.root_id WHERE p.set_id=$1 AND d.set_id<>$1 AND (r.id IS NULL OR NOT ($2 OR r.owner_id=$3 OR EXISTS(SELECT 1 FROM grants g WHERE g.root_id=r.id AND g.principal_id=$3 AND g.capabilities @> '[\"list_read\"]'::jsonb))))").bind(set.as_str()).bind(admin).bind(actor.principal_id()).fetch_one(db).await?;
+    let allowed:bool=sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM archive_placements p JOIN archive_discs d ON d.id=p.disc_id JOIN archive_sources src ON src.set_id=d.set_id LEFT JOIN roots r ON r.id=src.root_id WHERE p.set_id=$1 AND d.set_id<>$1 AND (r.id IS NULL OR NOT ($2 OR r.owner_id=$3 OR EXISTS(SELECT 1 FROM grants g WHERE g.root_id=r.id AND g.principal_id=$3 AND g.capabilities @> '[\"list_read\"]'::jsonb))))").bind(set.as_str()).bind(admin).bind(actor.principal_id()).fetch_one(db).await?;
     require(allowed, ErrorCode::Forbidden)
 }

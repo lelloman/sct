@@ -111,7 +111,7 @@ impl ObjectStore for LocalStore {
             let path = self.path(key);
             let base = self.directory.clone();
             let key = key.clone();
-            simple_server::runtime::spawn_blocking(move || {
+            tokio::task::spawn_blocking(move || {
                 if path.exists() {
                     return read_existing(&path, &key, length);
                 }
@@ -149,16 +149,12 @@ impl ObjectStore for LocalStore {
     }
     fn read<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Reader> {
         Box::pin(async move {
-            Ok(Box::pin(
-                simple_server::fs::File::open(self.path(key))
-                    .await
-                    .map_err(io)?,
-            ) as Reader)
+            Ok(Box::pin(tokio::fs::File::open(self.path(key)).await.map_err(io)?) as Reader)
         })
     }
     fn stat<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Option<u64>> {
         Box::pin(async move {
-            match simple_server::fs::metadata(self.path(key)).await {
+            match tokio::fs::metadata(self.path(key)).await {
                 Ok(m) => Ok((m.len() > 0).then_some(m.len())),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(io(e)),
@@ -168,7 +164,7 @@ impl ObjectStore for LocalStore {
     fn delete<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, DeleteOutcome> {
         Box::pin(async move {
             let path = self.path(key);
-            simple_server::runtime::spawn_blocking(move || {
+            tokio::task::spawn_blocking(move || {
                 let parent = path.parent().unwrap();
                 std::fs::create_dir_all(parent).map_err(io)?;
                 let tombstone = path.with_extension(format!("delete-{}", uuid::Uuid::new_v4()));
@@ -199,7 +195,7 @@ impl ObjectStore for LocalStore {
         Box::pin(async move {
             let path = self.directory.clone();
             let headroom = self.headroom;
-            simple_server::runtime::spawn_blocking(move || {
+            tokio::task::spawn_blocking(move || {
                 let s = rustix::fs::statvfs(&path)
                     .map_err(|_| Error(ErrorCode::DestinationUnavailable))?;
                 Ok(Some(
@@ -216,7 +212,7 @@ impl ObjectStore for LocalStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[simple_server::test(host_runtime = true)]
+    #[tokio::test]
     async fn real_filesystem_conformance_and_partial_cleanup() {
         let directory = std::env::temp_dir().join(format!("sct-local-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();

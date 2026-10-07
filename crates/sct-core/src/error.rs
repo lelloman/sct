@@ -1,5 +1,4 @@
 use sct_protocol::ErrorCode;
-use simple_server::database::postgres as db;
 
 #[derive(Debug)]
 pub struct Error(pub ErrorCode);
@@ -10,11 +9,11 @@ impl std::fmt::Display for Error {
     }
 }
 impl std::error::Error for Error {}
-impl From<db::Error> for Error {
-    fn from(error: db::Error) -> Self {
+impl From<sqlx::Error> for Error {
+    fn from(error: sqlx::Error) -> Self {
         // Never expose database text, statements, connection strings or constraint values.
         let code = error.as_database_error().and_then(|e| e.code());
-        Self(match code {
+        Self(match code.as_deref() {
             Some("23505" | "40001" | "40P01") => ErrorCode::RevisionConflict,
             Some("23503" | "23514") => ErrorCode::InvalidRequest,
             _ => ErrorCode::InternalError,

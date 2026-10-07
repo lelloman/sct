@@ -9,16 +9,15 @@ use crate::{
     transfer_io::TransferEngine,
     tree_catalog::metadata,
 };
-use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use simple_server::database::postgres as db;
+use sqlx::{PgConnection, Row, postgres::PgRow};
 
 pub(crate) async fn check_base(
     db: &mut PgConnection,
     request: &CreateTreeDraftRequest,
 ) -> Result<EffectivePolicy> {
     let b = &request.base;
-    let row = db::query("SELECT * FROM entries WHERE root_id=$1 AND id=$2 AND NOT hidden")
+    let row = sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND id=$2 AND NOT hidden")
         .bind(b.root_id.as_str())
         .bind(b.directory_id.as_str())
         .fetch_optional(&mut *db)
@@ -36,7 +35,7 @@ pub(crate) async fn check_base(
             == b.base_version_id.as_ref().map(|v| v.as_str()),
         ErrorCode::RevisionConflict,
     )?;
-    let hidden: bool = db::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,hidden FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.hidden FROM entries e JOIN a ON e.id=a.parent_id) SELECT bool_or(hidden) FROM a")
+    let hidden: bool = sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,hidden FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.hidden FROM entries e JOIN a ON e.id=a.parent_id) SELECT bool_or(hidden) FROM a")
         .bind(b.directory_id.as_str()).fetch_one(&mut *db).await?;
     require(!hidden, ErrorCode::NotFound)?;
     let policy = effective(db, b.root_id.as_str(), Some(b.directory_id.as_str())).await?;
@@ -76,20 +75,20 @@ impl TransferEngine {
         authorize(db, actor, root.as_str(), Capability::Write).await?;
         lock_content_root(db, root.as_str()).await?;
         authorize(db, actor, root.as_str(), Capability::Write).await?;
-        let exists: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM tree_drafts WHERE root_id=$1 AND id=$2 AND principal_id=$3)")
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM tree_drafts WHERE root_id=$1 AND id=$2 AND principal_id=$3)")
             .bind(root.as_str()).bind(draft.as_str()).bind(&actor.principal).fetch_one(&mut *db).await?;
         require(exists, ErrorCode::NotFound)?;
-        db::query("UPDATE transfer_sessions SET state='expired' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp()")
+        sqlx::query("UPDATE transfer_sessions SET state='expired' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp()")
             .bind(draft.as_str()).execute(&mut *db).await?;
-        db::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()")
+        sqlx::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()")
             .bind(draft.as_str()).bind(self.expiry_seconds as f64).execute(&mut *db).await?;
-        db::query("UPDATE tree_drafts SET state='expired',phase='terminal' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM transfer_sessions WHERE id=$1)")
+        sqlx::query("UPDATE tree_drafts SET state='expired',phase='terminal' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM transfer_sessions WHERE id=$1)")
             .bind(draft.as_str()).execute(&mut *db).await?;
-        db::query("UPDATE tree_drafts SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()")
+        sqlx::query("UPDATE tree_drafts SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()")
             .bind(draft.as_str()).bind(self.expiry_seconds as f64).execute(&mut *db).await?;
-        db::query("UPDATE operations o SET epoch=epoch+1,server_epoch=$2,worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=(SELECT operation_id FROM tree_drafts WHERE id=$1) AND state IN ('active','recovering','cleaning_up') AND (server_epoch<>$2 OR worker_expires_at IS NULL OR worker_expires_at<=clock_timestamp())")
+        sqlx::query("UPDATE operations o SET epoch=epoch+1,server_epoch=$2,worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=(SELECT operation_id FROM tree_drafts WHERE id=$1) AND state IN ('active','recovering','cleaning_up') AND (server_epoch<>$2 OR worker_expires_at IS NULL OR worker_expires_at<=clock_timestamp())")
             .bind(draft.as_str()).bind(self.writer.epoch).execute(&mut *db).await?;
-        Ok(db::query("SELECT d.*,o.epoch,COALESCE(s.admission,'planning') admission,(extract(epoch FROM d.expires_at)*1000)::bigint expires_ms FROM tree_drafts d JOIN operations o ON o.id=d.operation_id LEFT JOIN transfer_sessions s ON s.id=d.id WHERE d.id=$1")
+        Ok(sqlx::query("SELECT d.*,o.epoch,COALESCE(s.admission,'planning') admission,(extract(epoch FROM d.expires_at)*1000)::bigint expires_ms FROM tree_drafts d JOIN operations o ON o.id=d.operation_id LEFT JOIN transfer_sessions s ON s.id=d.id WHERE d.id=$1")
             .bind(draft.as_str()).fetch_one(&mut *db).await?)
     }
 
@@ -104,7 +103,7 @@ impl TransferEngine {
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
-        if let Some(r) = db::query(
+        if let Some(r) = sqlx::query(
             "SELECT id,request FROM tree_drafts WHERE root_id=$1 AND principal_id=$2 AND key=$3",
         )
         .bind(root.as_str())
@@ -122,7 +121,7 @@ impl TransferEngine {
             return self.tree_draft_status(actor, root, &draft).await;
         }
         lock_root(&mut tx, root.as_str()).await?;
-        let enabled: bool = db::query_scalar("SELECT state='enabled' FROM roots WHERE id=$1")
+        let enabled: bool = sqlx::query_scalar("SELECT state='enabled' FROM roots WHERE id=$1")
             .bind(root.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -130,20 +129,20 @@ impl TransferEngine {
         check_base(&mut tx, request).await?;
         let draft = id();
         let operation = id();
-        db::query("INSERT INTO operations(id,root_id,principal_id,kind,state,phase,server_epoch,worker_expires_at) VALUES($1,$2,$3,'upload','active','draft',$4,clock_timestamp()+interval '30 seconds')")
+        sqlx::query("INSERT INTO operations(id,root_id,principal_id,kind,state,phase,server_epoch,worker_expires_at) VALUES($1,$2,$3,'upload','active','draft',$4,clock_timestamp()+interval '30 seconds')")
             .bind(&operation).bind(root.as_str()).bind(&actor.principal).bind(self.writer.epoch).execute(&mut *tx).await?;
-        db::query("INSERT INTO tree_drafts(id,root_id,directory_id,operation_id,principal_id,key,request,base_version_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp()+make_interval(secs=>$9))")
+        sqlx::query("INSERT INTO tree_drafts(id,root_id,directory_id,operation_id,principal_id,key,request,base_version_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp()+make_interval(secs=>$9))")
             .bind(&draft).bind(root.as_str()).bind(request.base.directory_id.as_str()).bind(&operation).bind(&actor.principal)
             .bind(request.idempotency_key.as_str()).bind(json(request)?).bind(request.base.base_version_id.as_ref().map(|v|v.as_str())).bind(self.expiry_seconds as f64).execute(&mut *tx).await?;
-        db::query("INSERT INTO draft_entries(root_id,draft_id,id,name,kind,origin) VALUES($1,$2,$3,'root','directory','base')")
+        sqlx::query("INSERT INTO draft_entries(root_id,draft_id,id,name,kind,origin) VALUES($1,$2,$3,'root','directory','base')")
             .bind(root.as_str()).bind(&draft).bind(request.base.directory_id.as_str()).execute(&mut *tx).await?;
         if let Some(base) = &request.base.base_version_id {
-            let manifest:String=db::query_scalar("SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND entry_id=$3 AND kind='directory' AND NOT retired")
+            let manifest:String=sqlx::query_scalar("SELECT manifest FROM file_versions WHERE root_id=$1 AND id=$2 AND entry_id=$3 AND kind='directory' AND NOT retired")
                 .bind(root.as_str()).bind(base.as_str()).bind(request.base.directory_id.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::RevisionConflict))?;
-            db::query("INSERT INTO tree_work(root_id,draft_id,kind,entry_id,manifest) VALUES($1,$2,'directory',$3,$4)")
+            sqlx::query("INSERT INTO tree_work(root_id,draft_id,kind,entry_id,manifest) VALUES($1,$2,'directory',$3,$4)")
                 .bind(root.as_str()).bind(&draft).bind(request.base.directory_id.as_str()).bind(manifest).execute(&mut *tx).await?;
         } else {
-            db::query("UPDATE tree_drafts SET phase='editing' WHERE id=$1")
+            sqlx::query("UPDATE tree_drafts SET phase='editing' WHERE id=$1")
                 .bind(&draft)
                 .execute(&mut *tx)
                 .await?;
@@ -194,7 +193,7 @@ impl TransferEngine {
         let mut entry_ids = Vec::new();
         for _ in 0..request.count.get() {
             let identity = id();
-            db::query("INSERT INTO draft_identities(root_id,draft_id,id) VALUES($1,$2,$3)")
+            sqlx::query("INSERT INTO draft_identities(root_id,draft_id,id) VALUES($1,$2,$3)")
                 .bind(root.as_str())
                 .bind(draft.as_str())
                 .bind(&identity)
@@ -252,10 +251,10 @@ impl TransferEngine {
                         ErrorCode::InvalidRequest,
                     )?;
                     authorize(&mut tx, actor, root.as_str(), Capability::Delete).await?;
-                    let n=db::query("UPDATE draft_entries SET removed=true WHERE root_id=$1 AND draft_id=$2 AND id=$3")
+                    let n=sqlx::query("UPDATE draft_entries SET removed=true WHERE root_id=$1 AND draft_id=$2 AND id=$3")
                         .bind(root.as_str()).bind(draft.as_str()).bind(entry_id.as_str()).execute(&mut *tx).await?.rows_affected();
                     require(n == 1, ErrorCode::NotFound)?;
-                    db::query("UPDATE tree_drafts SET requires_delete=true WHERE id=$1")
+                    sqlx::query("UPDATE tree_drafts SET requires_delete=true WHERE id=$1")
                         .bind(draft.as_str())
                         .execute(&mut *tx)
                         .await?;
@@ -275,7 +274,7 @@ impl TransferEngine {
                         entry_id.as_str() != row.get::<String, _>("directory_id"),
                         ErrorCode::InvalidRequest,
                     )?;
-                    let prior=db::query("SELECT kind,origin FROM draft_entries WHERE root_id=$1 AND draft_id=$2 AND id=$3")
+                    let prior=sqlx::query("SELECT kind,origin FROM draft_entries WHERE root_id=$1 AND draft_id=$2 AND id=$3")
                         .bind(root.as_str()).bind(draft.as_str()).bind(entry_id.as_str()).fetch_optional(&mut *tx).await?;
                     let kind = if *entry_kind == EntryKind::File {
                         "file"
@@ -290,7 +289,7 @@ impl TransferEngine {
                         )?;
                     } else {
                         require(origin == "new", ErrorCode::InvalidRequest)?;
-                        let allocated:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM draft_identities WHERE root_id=$1 AND draft_id=$2 AND id=$3)")
+                        let allocated:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM draft_identities WHERE root_id=$1 AND draft_id=$2 AND id=$3)")
                             .bind(root.as_str()).bind(draft.as_str()).bind(entry_id.as_str()).fetch_one(&mut *tx).await?;
                         require(allocated, ErrorCode::InvalidRequest)?;
                     }
@@ -299,7 +298,7 @@ impl TransferEngine {
                     } else {
                         None
                     };
-                    db::query("INSERT INTO draft_entries(root_id,draft_id,id,parent_id,name,kind,manifest,origin) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(root_id,draft_id,id) DO UPDATE SET parent_id=$4,name=$5,manifest=$7,removed=false,built=false")
+                    sqlx::query("INSERT INTO draft_entries(root_id,draft_id,id,parent_id,name,kind,manifest,origin) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(root_id,draft_id,id) DO UPDATE SET parent_id=$4,name=$5,manifest=$7,removed=false,built=false")
                         .bind(root.as_str()).bind(draft.as_str()).bind(entry_id.as_str()).bind(parent_id.as_str()).bind(name.as_str()).bind(kind).bind(manifest).bind(origin).execute(&mut *tx).await?;
                 }
             }
@@ -357,14 +356,14 @@ impl TransferEngine {
         if row.get::<String, _>("phase") == "editing" {
             let request: CreateTreeDraftRequest = serde_json::from_value(row.get("request"))?;
             check_base(&mut tx, &request).await?;
-            let removed:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM draft_entries WHERE root_id=$1 AND draft_id=$2 AND origin='base' AND removed)")
+            let removed:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM draft_entries WHERE root_id=$1 AND draft_id=$2 AND origin='base' AND removed)")
                 .bind(root.as_str()).bind(draft.as_str()).fetch_one(&mut *tx).await?;
             if removed || row.get::<bool, _>("requires_delete") {
                 authorize(&mut tx, actor, root.as_str(), Capability::Delete).await?;
             }
-            db::query("UPDATE tree_drafts SET phase='building',requires_delete=requires_delete OR $2 WHERE id=$1")
+            sqlx::query("UPDATE tree_drafts SET phase='building',requires_delete=requires_delete OR $2 WHERE id=$1")
                 .bind(draft.as_str()).bind(removed).execute(&mut *tx).await?;
-            db::query(
+            sqlx::query(
                 "INSERT INTO tree_work(root_id,draft_id,kind,position) VALUES($1,$2,'validate',$3)",
             )
             .bind(root.as_str())
@@ -389,7 +388,7 @@ impl TransferEngine {
             row.get::<String, _>("state") == "open",
             ErrorCode::InvalidRequest,
         )?;
-        let work = db::query(
+        let work = sqlx::query(
             "SELECT * FROM tree_work WHERE root_id=$1 AND draft_id=$2 ORDER BY sequence LIMIT 1",
         )
         .bind(root.as_str())
@@ -409,7 +408,7 @@ impl TransferEngine {
                     .await?;
                     manifest.validate()?;
                     if let Some(tree) = manifest.tree {
-                        db::query("INSERT INTO tree_work(root_id,draft_id,kind,entry_id,manifest) VALUES($1,$2,'page',$3,$4)")
+                        sqlx::query("INSERT INTO tree_work(root_id,draft_id,kind,entry_id,manifest) VALUES($1,$2,'page',$3,$4)")
                             .bind(root.as_str()).bind(draft.as_str()).bind(work.get::<String,_>("entry_id")).bind(tree.as_str()).execute(&mut *tx).await?;
                     }
                 }
@@ -426,7 +425,7 @@ impl TransferEngine {
                     match page {
                         DirectoryPage::DirectoryBranch { pages, .. } => {
                             for page in pages {
-                                db::query("INSERT INTO tree_work(root_id,draft_id,kind,entry_id,manifest) VALUES($1,$2,'page',$3,$4)")
+                                sqlx::query("INSERT INTO tree_work(root_id,draft_id,kind,entry_id,manifest) VALUES($1,$2,'page',$3,$4)")
                                 .bind(root.as_str()).bind(draft.as_str()).bind(&parent).bind(page.digest.as_str()).execute(&mut *tx).await?;
                             }
                         }
@@ -435,19 +434,21 @@ impl TransferEngine {
                                 serde_json::from_value(row.get("request"))?;
                             for entry in &entries {
                                 let directory = entry.kind == EntryKind::Directory;
-                                db::query("INSERT INTO draft_entries(root_id,draft_id,id,parent_id,name,kind,manifest,origin,removed) VALUES($1,$2,$3,$4,$5,$6,$7,'base',$8)")
+                                sqlx::query("INSERT INTO draft_entries(root_id,draft_id,id,parent_id,name,kind,manifest,origin,removed) VALUES($1,$2,$3,$4,$5,$6,$7,'base',$8)")
                                     .bind(root.as_str()).bind(draft.as_str()).bind(entry.id.as_str()).bind(&parent).bind(entry.name.as_str()).bind(if directory {"directory"}else{"file"}).bind(entry.manifest.as_str())
                                     .bind(request.base.mode == DraftMode::CompleteReplacement).execute(&mut *tx).await?;
                                 if directory {
-                                    db::query("INSERT INTO tree_work(root_id,draft_id,kind,entry_id,manifest) VALUES($1,$2,'directory',$3,$4)")
+                                    sqlx::query("INSERT INTO tree_work(root_id,draft_id,kind,entry_id,manifest) VALUES($1,$2,'directory',$3,$4)")
                                     .bind(root.as_str()).bind(draft.as_str()).bind(entry.id.as_str()).bind(entry.manifest.as_str()).execute(&mut *tx).await?;
                                 }
                             }
-                            db::query("UPDATE tree_drafts SET processed=processed+$2 WHERE id=$1")
-                                .bind(draft.as_str())
-                                .bind(entries.len() as i64)
-                                .execute(&mut *tx)
-                                .await?;
+                            sqlx::query(
+                                "UPDATE tree_drafts SET processed=processed+$2 WHERE id=$1",
+                            )
+                            .bind(draft.as_str())
+                            .bind(entries.len() as i64)
+                            .execute(&mut *tx)
+                            .await?;
                         }
                     }
                 }
@@ -456,9 +457,9 @@ impl TransferEngine {
                     let after = position["after"]
                         .as_str()
                         .ok_or(Error(ErrorCode::InternalError))?;
-                    let entries:Vec<String>=db::query_scalar("SELECT id FROM draft_entries WHERE root_id=$1 AND draft_id=$2 AND id>$3 AND NOT removed ORDER BY id LIMIT 64")
+                    let entries:Vec<String>=sqlx::query_scalar("SELECT id FROM draft_entries WHERE root_id=$1 AND draft_id=$2 AND id>$3 AND NOT removed ORDER BY id LIMIT 64")
                         .bind(root.as_str()).bind(draft.as_str()).bind(after).fetch_all(&mut *tx).await?;
-                    let boundary_length:i64=db::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,name FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.name FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(sum(char_length(name)+1) FILTER(WHERE parent_id IS NOT NULL),0)::bigint FROM a")
+                    let boundary_length:i64=sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,name FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.name FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(sum(char_length(name)+1) FILTER(WHERE parent_id IS NOT NULL),0)::bigint FROM a")
                         .bind(row.get::<String,_>("directory_id")).fetch_one(&mut *tx).await?;
                     for entry in &entries {
                         validate_entry(
@@ -472,7 +473,7 @@ impl TransferEngine {
                         .await?;
                     }
                     if let Some(last) = entries.last() {
-                        db::query("UPDATE tree_work SET position=$2 WHERE sequence=$1")
+                        sqlx::query("UPDATE tree_work SET position=$2 WHERE sequence=$1")
                             .bind(sequence)
                             .bind(serde_json::json!({"after":last}))
                             .execute(&mut *tx)
@@ -483,7 +484,7 @@ impl TransferEngine {
                 }
                 _ => return Err(Error(ErrorCode::InvalidRequest)),
             }
-            db::query("DELETE FROM tree_work WHERE root_id=$1 AND draft_id=$2 AND sequence=$3")
+            sqlx::query("DELETE FROM tree_work WHERE root_id=$1 AND draft_id=$2 AND sequence=$3")
                 .bind(root.as_str())
                 .bind(draft.as_str())
                 .bind(sequence)
@@ -492,7 +493,7 @@ impl TransferEngine {
         } else if row.get::<String, _>("phase") == "building" {
             crate::tree_build::build_step(&mut tx, actor, &row).await?;
         }
-        db::query("UPDATE tree_drafts SET phase='editing' WHERE id=$1 AND phase='initializing' AND NOT EXISTS(SELECT 1 FROM tree_work WHERE draft_id=$1)")
+        sqlx::query("UPDATE tree_drafts SET phase='editing' WHERE id=$1 AND phase='initializing' AND NOT EXISTS(SELECT 1 FROM tree_work WHERE draft_id=$1)")
             .bind(draft.as_str()).execute(&mut *tx).await?;
         tx.commit().await?;
         self.tree_draft_status(actor, root, draft).await
@@ -511,7 +512,7 @@ impl TransferEngine {
             ErrorCode::InvalidRequest,
         )?;
         let transfer: bool =
-            db::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE id=$1)")
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE id=$1)")
                 .bind(draft.as_str())
                 .fetch_one(&mut *tx)
                 .await?;
@@ -521,12 +522,12 @@ impl TransferEngine {
             tx = self.writer.transaction().await?;
             self.locked_draft(&mut tx, actor, root, draft).await?;
         } else {
-            db::query("UPDATE operations SET state='aborted',worker_expires_at=NULL WHERE id=$1")
+            sqlx::query("UPDATE operations SET state='aborted',worker_expires_at=NULL WHERE id=$1")
                 .bind(row.get::<String, _>("operation_id"))
                 .execute(&mut *tx)
                 .await?;
         }
-        db::query("UPDATE tree_drafts SET state='aborted',phase='terminal' WHERE id=$1")
+        sqlx::query("UPDATE tree_drafts SET state='aborted',phase='terminal' WHERE id=$1")
             .bind(draft.as_str())
             .execute(&mut *tx)
             .await?;
@@ -548,7 +549,7 @@ async fn validate_entry(
     let mut length = boundary_length;
     loop {
         require(seen.insert(current.clone()), ErrorCode::InvalidManifest)?;
-        let row=db::query("SELECT parent_id,name,kind,removed FROM draft_entries WHERE root_id=$1 AND draft_id=$2 AND id=$3")
+        let row=sqlx::query("SELECT parent_id,name,kind,removed FROM draft_entries WHERE root_id=$1 AND draft_id=$2 AND id=$3")
             .bind(root).bind(draft).bind(&current).fetch_optional(&mut *db).await?.ok_or(Error(ErrorCode::InvalidManifest))?;
         if current != entry {
             require(
@@ -557,7 +558,7 @@ async fn validate_entry(
             )?;
         }
         if row.get::<bool, _>("removed") {
-            db::query(
+            sqlx::query(
                 "UPDATE draft_entries SET removed=true WHERE root_id=$1 AND draft_id=$2 AND id=$3",
             )
             .bind(root)

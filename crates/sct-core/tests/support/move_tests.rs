@@ -4,7 +4,6 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
 async fn movement(
@@ -22,7 +21,7 @@ async fn movement(
         name: name.parse().unwrap(),
     }
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn cross_policy_moves_require_preview_and_preserve_subtree_identity_on_recovery() {
     let (w, a, db) = setup().await;
@@ -43,11 +42,11 @@ async fn cross_policy_moves_require_preview_and_preserve_subtree_identity_on_rec
         )
         .await
         .unwrap();
-    db::query("UPDATE pools SET capacity=220000")
+    sqlx::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    db::query("UPDATE allocations SET capacity=100000")
+    sqlx::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();

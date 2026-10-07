@@ -24,105 +24,9 @@ Prerequisites: Rust 1.96.0 (installed by rustup from `rust-toolchain.toml`), Nod
 24.13+ (`nvm use` reads `.nvmrc`), npm, Bash, ripgrep, jq, xorriso, util-linux (`prlimit`), and Docker for disposable PostgreSQL
 integration tests. Dependency versions are captured in `Cargo.lock` and
 `web/package-lock.json`. The check scripts target Linux development/CI hosts.
-The server links a separately built `libsimple_server_engine.so.1`. The matching
-host library lives in the sibling `../simple-server` checkout at the commit in
-`simple-server.rev`; the source backend is no longer compiled into ScT.
-`#[simple_server::main]` owns the production runtime. HTTP serving, outbound
-HTTP (including S3), OIDC discovery/token verification, PostgreSQL pools/transactions, tasks,
-timers and shutdown use that engine. Storage uses the shared asynchronous I/O
-interfaces and engine blocking workers. SQL, authorization and business rules
-remain in ScT. The server's normal/build graph excludes Tokio, SQLx, Reqwest,
-Axum, Hyper and OIDC implementation/crypto dependencies; `scripts/check-engine-link`
-enforces this alongside ELF linking. OIDC uses the shared engine API; ScT keeps
-browser binding, single-use flow storage, issuer/subject account mapping, sessions
-and permissions. Its signing fixture retains `openidconnect` as a dev-dependency.
-
-The independent SDK and offline `sct-recover` utility retain their own runtime
-and drivers. They are not production server dependencies. Integration tests may
-use `#[simple_server::test(host_runtime = true)]` to run independent Tokio client
-fixtures while polling ScT code in an engine scope. The memory qualification
-example uses this same explicit test-only interoperability arrangement.
-
-For local development, check out the recorded library revision, then build its
-engine once and expose it to Cargo and the runtime loader:
-
-```sh
-cargo build --locked --manifest-path ../simple-server/crates/engine/Cargo.toml
-export SIMPLE_SERVER_ENGINE_DIR="$(realpath ../simple-server/crates/engine/target/debug)"
-export LD_LIBRARY_PATH="$SIMPLE_SERVER_ENGINE_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-ln -sf libsimple_server_engine.so "$SIMPLE_SERVER_ENGINE_DIR/libsimple_server_engine.so.1"
-```
-
-`./scripts/build-image` builds a reusable, revision-tagged engine image and a
-local `sct-engine-canary:local` runtime image. It exports the exact library commit,
-verifies the engine checksum, and copies the same `.so` into builder and runtime
-images. The consumer builder does not compile the native engine. Repeated builds
-reuse the engine image and BuildKit Cargo caches; nothing is pushed. `scripts/qualify` uses the same
-pinned source and engine image. Production storage/configuration remains
-application-owned and must be supplied when running the image.
-
-The local canary on 6 October 2026 passed all 61 workspace tests (92 existing
-ignores), all 12 database-backed server tests, and real-process HTTP drain,
-SIGINT/SIGTERM, writer-release/restart and lease-loss checks. The release container
-loads the engine and serves static/API/health responses before graceful shutdown.
-A bounded-concurrency run also passed 65 core database contracts, explicitly
-excluding the known failure below. The broader core suite has an existing archive migration-name mismatch
-(`draft_names` versus `draft names`), reproduced on the unchanged source backend;
-its unrestricted parallel run also exhibits database/timing failures. This is
-not a claim that the full qualification matrix is green. No image was published
-or deployed.
-
-The subsequent OIDC migration (7 October) moves discovery, PKCE, token exchange
-and ID-token verification into the engine at the current `simple-server.rev`.
-The production graph shrinks from 164 to 109 package/version entries (55 removed,
-none added). The signing fixture still compiles OIDC as a dev-dependency.
-Workspace tests (61 passed, 92 ignored), strict Clippy, extended OIDC login and
-both process tests pass; shared OIDC contracts also verify discovery policy and
-cancellation cleanup. This step does not change S3, URL parsing or standalone tools.
-
-Three fresh-target, alternating-order dev build pairs at eight jobs measured
-**24.41s before / 22.42s after** (about **2.0s, 8%** less compilation), excluding
-the engine prebuild. Both sides already use the engine runtime/database/HTTP;
-this is the additional OIDC saving. Timestamp-only medians were 0.89s / 0.74s;
-this is not a measurement of typical semantic edits or runtime throughput.
-[Raw OIDC measurements](docs/measurements/sct-oidc-build-2026-10-07.json).
-The local `sct-engine-oidc:local` release image also passed engine loading/checksum,
-readiness, static/API routes, SIGTERM/SIGINT and writer-release/restart checks.
-The extended login fixture passed against its release `.so` as well as the debug
-engine. Nothing was published or deployed.
-
-The completed runtime migration pins simple-server `be6dde0`. Three paired,
-alternating-order builds (eight jobs, fresh targets, cached downloads, dev profile)
-measured median clean builds of **50.46s source / 28.08s engine**, a **44%**
-reduction; individual paired reductions ranged from **30–47%**. Engine prebuild
-cost is excluded. Timestamp-only incremental builds show little consistent
-benefit (medians 1.09s / 0.97s; one engine trial was slower). These are compilation
-measurements, not runtime throughput results. See the
-[current raw measurements](docs/measurements/sct-runtime-build-2026-10-06.json).
-
-Final runtime verification passed 61 workspace tests (92 ignored), 65 bounded
-core database contracts, all 12 server database tests, the writer lease test,
-strict workspace Clippy, protocol/client checks and the production dependency/ELF
-guard. The PostgreSQL catalog suite passed four tests; its management-upgrade
-test hits the same existing migration-name mismatch, confirmed with the unchanged
-baseline executable. Full S3 verification was blocked by authorization failure
-pulling the pinned MinIO fixture; browser and large qualification workloads were
-not rerun. The local release image passed readiness, static/API routing,
-SIGTERM, restart and SIGINT checks. No artifact was published or deployed.
-
-The earlier HTTP-only canary, before the full runtime migration, used three
-isolated debug-build trials (eight Cargo jobs, engine prebuild excluded) and gave median clean builds of **36.49s source / 33.77s engine** (about 7.5% faster).
-Timestamp-only rebuilds were **1.13s / 1.15s**, effectively unchanged. That earlier revision still
-compiled database/client/runtime dependencies. Those timings do not describe the
-full runtime migration. See the
-[raw measurements](docs/measurements/sct-engine-build-2026-10-06.json).
-To reproduce, export baseline commit `9e118e6` into a separate directory and run:
-
-```sh
-./scripts/benchmark-engine-builds --baseline /path/to/baseline \
-  --engine-dir "$SIMPLE_SERVER_ENGINE_DIR" --output /tmp/sct-builds.json
-```
-
+The crates.io package `lelloman-simple-server` (aliased as `simple-server`) provides the
+auth feature used by the HTTP server and transaction-scoped core checks, plus
+the shared routing, HTTP interfaces and backend-independent tracing observer.
 See [Step 03c](docs/step-03c-http-tracing.md) and
 [Step 11](docs/step-11-routing.md).
 
@@ -210,7 +114,7 @@ for prerequisites, resource limits and the exact scope.
 | `sct-protocol` | Public Rust-owned contracts with generated OpenAPI, JSON Schema and TypeScript |
 | `sct-client` | Standalone authenticated foundation API client; transfer/chunking follows in M2; depends on protocol, never core/server |
 | `sct-core` | Authorization, catalog, roots, policies, namespace and operation fencing; immutable payload coordination and recovery |
-| `sct-server` | Shared engine runtime/HTTP, configuration and worker wiring |
+| `sct-server` | Shared HTTP routes, Tokio runtime, configuration and worker wiring |
 | `web` | Vue 3/TypeScript UI; wire models are generated from Rust contracts |
 
 The external sample is a template copied to a temporary directory by

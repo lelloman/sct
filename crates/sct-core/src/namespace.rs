@@ -5,13 +5,12 @@ use crate::{
     policy::effective,
     roots::{json, lock_root, remember, replay, revision},
 };
-use db::{PgConnection, PgRow};
 use sct_protocol::*;
 use serde_json::json;
-use simple_server::database::postgres as db;
+use sqlx::{PgConnection, Row, postgres::PgRow};
 
 pub(crate) async fn row(db: &mut PgConnection, entry: &str) -> Result<PgRow> {
-    db::query("SELECT * FROM entries WHERE id=$1 AND NOT entry_purged(id)")
+    sqlx::query("SELECT * FROM entries WHERE id=$1 AND NOT entry_purged(id)")
         .bind(entry)
         .fetch_optional(db)
         .await?
@@ -36,7 +35,7 @@ pub(crate) fn inspect(row: &PgRow) -> Result<EntryInspection> {
     })
 }
 pub(crate) async fn hidden(db: &mut PgConnection, entry: &str) -> Result<bool> {
-    Ok(db::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,hidden FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.hidden FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(bool_or(hidden),true) FROM a")
+    Ok(sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,hidden FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.hidden FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(bool_or(hidden),true) FROM a")
         .bind(entry).fetch_one(db).await?)
 }
 async fn mutable_directory(db: &mut PgConnection, root: &str, entry: &str) -> Result<PgRow> {
@@ -54,14 +53,14 @@ async fn mutable_directory(db: &mut PgConnection, root: &str, entry: &str) -> Re
     Ok(row)
 }
 async fn path_length(db: &mut PgConnection, entry: &str) -> Result<i64> {
-    Ok(db::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,name FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.name FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(sum(char_length(name)+1) FILTER(WHERE parent_id IS NOT NULL),0)::bigint FROM a").bind(entry).fetch_one(db).await?)
+    Ok(sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,name FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.name FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(sum(char_length(name)+1) FILTER(WHERE parent_id IS NOT NULL),0)::bigint FROM a").bind(entry).fetch_one(db).await?)
 }
 impl Writer {
     pub async fn inspect_entry(&self, actor: &Actor, entry: &EntryId) -> Result<EntryInspection> {
         let mut tx = self.transaction().await?;
         let initial = row(&mut tx, entry.as_str()).await?;
         let root: String = initial.get("root_id");
-        db::query("SELECT id FROM roots WHERE id=$1 FOR SHARE")
+        sqlx::query("SELECT id FROM roots WHERE id=$1 FOR SHARE")
             .bind(&root)
             .execute(&mut *tx)
             .await?;
@@ -85,12 +84,12 @@ impl Writer {
     ) -> Result<EntryInspection> {
         let mut tx = self.transaction().await?;
         // A shared root lock gives a coherent path walk while short namespace writes commit.
-        db::query("SELECT id FROM roots WHERE id=$1 FOR SHARE")
+        sqlx::query("SELECT id FROM roots WHERE id=$1 FOR SHARE")
             .bind(root.as_str())
             .execute(&mut *tx)
             .await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
-        let mut entry = db::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id IS NULL")
+        let mut entry = sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id IS NULL")
             .bind(root.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -136,7 +135,7 @@ impl Writer {
                 }
                 unreachable!();
             }
-            entry=db::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id=$2 AND name=$3 AND NOT hidden").bind(root.as_str()).bind(entry.get::<String,_>("id")).bind(component).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+            entry=sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id=$2 AND name=$3 AND NOT hidden").bind(root.as_str()).bind(entry.get::<String,_>("id")).bind(component).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         }
         inspect(&entry)
     }
@@ -182,9 +181,9 @@ impl Writer {
         }
         let inherited = effective(&mut tx, root.as_str(), Some(request.parent_id.as_str())).await?;
         let entry = id();
-        let row=db::query("INSERT INTO entries(id,root_id,parent_id,name,kind,revision,versioning,policy_id,policy_revision,policy) VALUES($1,$2,$3,$4,'directory',$5,$6,$7,$8,$9) RETURNING *")
+        let row=sqlx::query("INSERT INTO entries(id,root_id,parent_id,name,kind,revision,versioning,policy_id,policy_revision,policy) VALUES($1,$2,$3,$4,'directory',$5,$6,$7,$8,$9) RETURNING *")
           .bind(entry).bind(root.as_str()).bind(request.parent_id.as_str()).bind(request.name.as_str()).bind(id()).bind(json(&request.versioning)?.as_str().unwrap()).bind(atomic.then(id)).bind(atomic.then(id)).bind(if atomic{Some(json(&inherited.policy)?)}else{None}).fetch_one(&mut *tx).await?;
-        db::query("UPDATE entries SET revision=$2 WHERE id=$1")
+        sqlx::query("UPDATE entries SET revision=$2 WHERE id=$1")
             .bind(request.parent_id.as_str())
             .bind(id())
             .execute(&mut *tx)
@@ -210,7 +209,7 @@ impl Writer {
         request: &ListEntriesRequest,
     ) -> Result<EntryPage> {
         let mut tx = self.transaction().await?;
-        db::query("SELECT id FROM roots WHERE id=$1 FOR SHARE")
+        sqlx::query("SELECT id FROM roots WHERE id=$1 FOR SHARE")
             .bind(root.as_str())
             .execute(&mut *tx)
             .await?;
@@ -238,7 +237,7 @@ impl Writer {
         } else {
             (String::new(), String::new())
         };
-        let rows=db::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id=$2 AND NOT purged AND ($3 OR NOT hidden) AND (name,id)>($4 COLLATE \"C\",$5) ORDER BY name COLLATE \"C\",id LIMIT $6")
+        let rows=sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND parent_id=$2 AND NOT purged AND ($3 OR NOT hidden) AND (name,id)>($4 COLLATE \"C\",$5) ORDER BY name COLLATE \"C\",id LIMIT $6")
           .bind(root.as_str()).bind(directory.as_str()).bind(request.include_hidden).bind(after.0).bind(after.1).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let items: Vec<_> = rows
@@ -323,10 +322,10 @@ impl Writer {
                 && source_policy.revision == destination_policy.revision,
             ErrorCode::InvalidRequest,
         )?;
-        let cycle:bool=db::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id FROM entries e JOIN a ON e.id=a.parent_id) SELECT EXISTS(SELECT 1 FROM a WHERE id=$2)")
+        let cycle:bool=sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id FROM entries e JOIN a ON e.id=a.parent_id) SELECT EXISTS(SELECT 1 FROM a WHERE id=$2)")
           .bind(request.destination_parent_id.as_str()).bind(entry.as_str()).fetch_one(&mut *tx).await?;
         require(!cycle, ErrorCode::InvalidRequest)?;
-        let subtree_max:i64=db::query_scalar("WITH RECURSIVE d AS (SELECT id,0::bigint length FROM entries WHERE id=$1 UNION ALL SELECT e.id,d.length+char_length(e.name)+1 FROM entries e JOIN d ON e.parent_id=d.id) SELECT max(length) FROM d")
+        let subtree_max:i64=sqlx::query_scalar("WITH RECURSIVE d AS (SELECT id,0::bigint length FROM entries WHERE id=$1 UNION ALL SELECT e.id,d.length+char_length(e.name)+1 FROM entries e JOIN d ON e.parent_id=d.id) SELECT max(length) FROM d")
           .bind(entry.as_str()).fetch_one(&mut *tx).await?;
         require(
             path_length(&mut tx, request.destination_parent_id.as_str()).await?
@@ -336,7 +335,7 @@ impl Writer {
                 <= 4096,
             ErrorCode::InvalidPath,
         )?;
-        let changed = db::query(
+        let changed = sqlx::query(
             "UPDATE entries SET parent_id=$2,name=$3,revision=$4 WHERE id=$1 RETURNING *",
         )
         .bind(entry.as_str())
@@ -345,7 +344,7 @@ impl Writer {
         .bind(id())
         .fetch_one(&mut *tx)
         .await?;
-        db::query("UPDATE entries SET revision=$3 WHERE id=$1 OR id=$2")
+        sqlx::query("UPDATE entries SET revision=$3 WHERE id=$1 OR id=$2")
             .bind(source)
             .bind(request.destination_parent_id.as_str())
             .bind(id())

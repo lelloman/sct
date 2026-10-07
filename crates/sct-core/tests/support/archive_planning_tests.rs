@@ -4,7 +4,7 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
+use sqlx::Row;
 use std::collections::BTreeMap;
 fn bundle() -> ArchiveBundle {
     serde_json::from_slice(include_bytes!(
@@ -104,15 +104,15 @@ pub(super) async fn file(
     chunks: &[Vec<u8>],
 ) {
     let length = chunks.iter().map(|c| c.len() as i64).sum::<i64>();
-    db::query("INSERT INTO archive_entries(set_id,path,kind,root_id,version_id,length) VALUES($1,$2,'file',$3,$4,$5)").bind(s.id.as_str()).bind(path).bind(r.as_str()).bind(v.as_str()).bind(length).execute(db).await.unwrap();
+    sqlx::query("INSERT INTO archive_entries(set_id,path,kind,root_id,version_id,length) VALUES($1,$2,'file',$3,$4,$5)").bind(s.id.as_str()).bind(path).bind(r.as_str()).bind(v.as_str()).bind(length).execute(db).await.unwrap();
     let mut offset = 0;
     for bytes in chunks {
         let hash = digest(bytes);
-        db::query("INSERT INTO archive_objects(set_id,root_id,digest,length) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING").bind(s.id.as_str()).bind(r.as_str()).bind(&hash).bind(bytes.len() as i64).execute(db).await.unwrap();
-        db::query("INSERT INTO archive_extents(set_id,path,offset_bytes,root_id,digest,length) VALUES($1,$2,$3,$4,$5,$6)").bind(s.id.as_str()).bind(path).bind(offset).bind(r.as_str()).bind(hash).bind(bytes.len() as i64).execute(db).await.unwrap();
+        sqlx::query("INSERT INTO archive_objects(set_id,root_id,digest,length) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING").bind(s.id.as_str()).bind(r.as_str()).bind(&hash).bind(bytes.len() as i64).execute(db).await.unwrap();
+        sqlx::query("INSERT INTO archive_extents(set_id,path,offset_bytes,root_id,digest,length) VALUES($1,$2,$3,$4,$5,$6)").bind(s.id.as_str()).bind(path).bind(offset).bind(r.as_str()).bind(hash).bind(bytes.len() as i64).execute(db).await.unwrap();
         offset += bytes.len() as i64;
     }
-    db::query("UPDATE archive_sets SET processed_entries=processed_entries+1,processed_bytes=processed_bytes+$2 WHERE id=$1").bind(s.id.as_str()).bind(length).execute(db).await.unwrap();
+    sqlx::query("UPDATE archive_sets SET processed_entries=processed_entries+1,processed_bytes=processed_bytes+$2 WHERE id=$1").bind(s.id.as_str()).bind(length).execute(db).await.unwrap();
 }
 pub(super) async fn finish(w: &Writer, a: &Actor, s: &ArchiveSet) -> ArchiveSet {
     for i in 0..1000 {
@@ -163,23 +163,23 @@ pub(super) async fn publish_fixture(
     )
     .await
     .unwrap();
-    db::query("INSERT INTO archive_artifacts(id,disc_id,state,sha256,length,relative_path,expires_at) SELECT 'artifact_'||id,id,'available',repeat('a',64),planned_iso_bytes,id||'.iso',clock_timestamp()+interval '1 day' FROM archive_discs WHERE set_id=$1").bind(s.id.as_str()).execute(db).await.unwrap();
-    db::query("UPDATE archive_sets SET state='ready',published_at=clock_timestamp() WHERE id=$1")
+    sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,sha256,length,relative_path,expires_at) SELECT 'artifact_'||id,id,'available',repeat('a',64),planned_iso_bytes,id||'.iso',clock_timestamp()+interval '1 day' FROM archive_discs WHERE set_id=$1").bind(s.id.as_str()).execute(db).await.unwrap();
+    sqlx::query("UPDATE archive_sets SET state='ready',published_at=clock_timestamp() WHERE id=$1")
         .bind(s.id.as_str())
         .execute(db)
         .await
         .unwrap();
     if verified {
-        db::query("UPDATE archive_sets SET verified_complete_at=clock_timestamp() WHERE id=$1")
+        sqlx::query("UPDATE archive_sets SET verified_complete_at=clock_timestamp() WHERE id=$1")
             .bind(s.id.as_str())
             .execute(db)
             .await
             .unwrap();
-        db::query("INSERT INTO archive_copies(id,disc_id,label,revision,health) SELECT 'copy_'||id,id,'fixture','r1','read_back_verified' FROM archive_discs WHERE set_id=$1").bind(s.id.as_str()).execute(db).await.unwrap();
+        sqlx::query("INSERT INTO archive_copies(id,disc_id,label,revision,health) SELECT 'copy_'||id,id,'fixture','r1','read_back_verified' FROM archive_discs WHERE set_id=$1").bind(s.id.as_str()).execute(db).await.unwrap();
     }
     w.cleanup_archive_capture(&s.id).await.unwrap();
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn archive_planner_restart_multidisc_locality_and_independent_reader() {
     let (w, a, db) = setup().await;
@@ -224,7 +224,7 @@ async fn archive_planner_restart_multidisc_locality_and_independent_reader() {
         })
         .collect();
     assert_eq!(filenames, vec!["/a-large", "/z-shared", "/é-empty"]);
-    let rows=db::query("SELECT id,planned_iso_bytes,object_count FROM archive_discs WHERE set_id=$1 ORDER BY number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
+    let rows=sqlx::query("SELECT id,planned_iso_bytes,object_count FROM archive_discs WHERE set_id=$1 ORDER BY number").bind(s.id.as_str()).fetch_all(&db).await.unwrap();
     let scratch = std::env::temp_dir().join(format!("sct-planner-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&scratch).unwrap();
     for (number, row) in rows.iter().enumerate() {
@@ -269,7 +269,7 @@ async fn archive_planner_restart_multidisc_locality_and_independent_reader() {
     }
     std::fs::remove_dir_all(scratch).unwrap();
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn archive_planner_reuses_only_verified_healthy_same_root_and_never_rewrites_history() {
     let (w, a, db) = setup().await;
@@ -283,7 +283,7 @@ async fn archive_planner_reuses_only_verified_healthy_same_root_and_never_rewrit
     let original = lines(&w, &first).await;
     publish_fixture(&w, &a, &db, &first, false).await;
     assert!(
-        db::query("UPDATE archive_index_records SET line=line WHERE set_id=$1")
+        sqlx::query("UPDATE archive_index_records SET line=line WHERE set_id=$1")
             .bind(first.id.as_str())
             .execute(&db)
             .await
@@ -302,7 +302,7 @@ async fn archive_planner_reuses_only_verified_healthy_same_root_and_never_rewrit
     assert_eq!(p.reused_payload_bytes.get(), 1000);
     assert_eq!(p.new_disc_count.get(), 1);
     assert_eq!(p.required_earlier_disc_count.get(), 1);
-    let before: Vec<Vec<u8>> = db::query_scalar(
+    let before: Vec<Vec<u8>> = sqlx::query_scalar(
         "SELECT line FROM archive_index_records WHERE set_id=$1 ORDER BY phase,key1,key2,position",
     )
     .bind(first.id.as_str())
@@ -310,7 +310,7 @@ async fn archive_planner_reuses_only_verified_healthy_same_root_and_never_rewrit
     .await
     .unwrap();
     assert_eq!(before.concat(), original);
-    db::query("UPDATE archive_copies SET health='damaged'")
+    sqlx::query("UPDATE archive_copies SET health='damaged'")
         .execute(&db)
         .await
         .unwrap();
@@ -329,7 +329,7 @@ async fn archive_planner_reuses_only_verified_healthy_same_root_and_never_rewrit
         .0,
         ErrorCode::ArchiveMediaUnavailable
     );
-    db::query("UPDATE archive_copies SET health='read_back_verified'")
+    sqlx::query("UPDATE archive_copies SET health='read_back_verified'")
         .execute(&db)
         .await
         .unwrap();
@@ -345,7 +345,7 @@ async fn archive_planner_reuses_only_verified_healthy_same_root_and_never_rewrit
     .await
     .unwrap();
     w.cleanup_archive_capture(&third.id).await.unwrap();
-    db::query("UPDATE archive_copies SET health='damaged'")
+    sqlx::query("UPDATE archive_copies SET health='damaged'")
         .execute(&db)
         .await
         .unwrap();
@@ -354,7 +354,7 @@ async fn archive_planner_reuses_only_verified_healthy_same_root_and_never_rewrit
     let fourth = finish(&w, &a, &fourth).await;
     assert_eq!(fourth.plan.as_ref().unwrap().reused_payload_bytes.get(), 0);
     publish_fixture(&w, &a, &db, &fourth, false).await;
-    db::query("UPDATE archive_copies SET health='read_back_verified'")
+    sqlx::query("UPDATE archive_copies SET health='read_back_verified'")
         .execute(&db)
         .await
         .unwrap();
@@ -373,7 +373,7 @@ async fn archive_planner_reuses_only_verified_healthy_same_root_and_never_rewrit
     let fifth = finish(&w, &a, &fifth).await;
     assert_eq!(fifth.plan.unwrap().reused_payload_bytes.get(), 0);
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn archive_planner_empty_snapshot_bundle_identity_and_capacity_failures() {
     let (w, a, db) = setup().await;
@@ -402,7 +402,7 @@ async fn archive_planner_empty_snapshot_bundle_identity_and_capacity_failures() 
     }
     assert_eq!(failure, Some(ErrorCode::ArchiveMetadataTooLarge));
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT next_disc FROM archive_collections WHERE id=$1")
+        sqlx::query_scalar::<_, i64>("SELECT next_disc FROM archive_collections WHERE id=$1")
             .bind(tiny.id.as_str())
             .fetch_one(&db)
             .await
@@ -411,7 +411,7 @@ async fn archive_planner_empty_snapshot_bundle_identity_and_capacity_failures() 
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn archive_planner_exact_budget_boundary_and_permanent_cancelled_numbers() {
     let (w, a, db) = setup().await;
@@ -423,7 +423,7 @@ async fn archive_planner_exact_budget_boundary_and_permanent_cancelled_numbers()
     file(&db, &s, &r.id, &v, "/boundary", &chunks).await;
     let s = finish(&w, &a, &s).await;
     let budget =
-        db::query_scalar::<_, i64>("SELECT planned_iso_bytes FROM archive_discs WHERE set_id=$1")
+        sqlx::query_scalar::<_, i64>("SELECT planned_iso_bytes FROM archive_discs WHERE set_id=$1")
             .bind(s.id.as_str())
             .fetch_one(&db)
             .await
@@ -443,7 +443,7 @@ async fn archive_planner_exact_budget_boundary_and_permanent_cancelled_numbers()
     let next = capture(&w, &a, &c, &r.id, &v).await;
     let next = finish(&w, &a, &next).await;
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT number FROM archive_discs WHERE set_id=$1")
+        sqlx::query_scalar::<_, i64>("SELECT number FROM archive_discs WHERE set_id=$1")
             .bind(next.id.as_str())
             .fetch_one(&db)
             .await
@@ -470,7 +470,7 @@ async fn archive_planner_exact_budget_boundary_and_permanent_cancelled_numbers()
     }
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn archive_planner_does_not_reuse_disc_with_an_inaccessible_other_source() {
     let (w, admin, db) = setup().await;

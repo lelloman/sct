@@ -1,4 +1,3 @@
-use simple_server::database::postgres as db;
 #[path = "support/archive_capture_tests.rs"]
 mod archive_capture_tests;
 #[path = "support/archive_catalog_tests.rs"]
@@ -50,7 +49,6 @@ mod tree_draft_tests;
 mod tree_publication_tests;
 #[path = "support/tree_read_tests.rs"]
 mod tree_read_tests;
-use db::PgPool;
 use sct_core::{
     auth::Actor,
     backend::{Registry, TestAdapter},
@@ -59,6 +57,7 @@ use sct_core::{
 };
 use sct_protocol::*;
 use serde_json::json;
+use sqlx::PgPool;
 use std::sync::Arc;
 
 async fn setup() -> (Writer, Actor, PgPool) {
@@ -154,7 +153,7 @@ async fn rename_request(
         name: name.parse().unwrap(),
     }
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn credentials_identity_revocation_and_grant_boundaries() {
     let (w, admin, pool) = setup().await;
@@ -218,7 +217,7 @@ async fn credentials_identity_revocation_and_grant_boundaries() {
     );
     w.revoke_grant(&admin, &g.id, &g.revision).await.unwrap();
     assert!(w.inspect_root(&alice, &private.id).await.is_err());
-    let rows: Vec<String> = db::query_scalar("SELECT secret_hash FROM credentials")
+    let rows: Vec<String> = sqlx::query_scalar("SELECT secret_hash FROM credentials")
         .fetch_all(&pool)
         .await
         .unwrap();
@@ -255,7 +254,7 @@ async fn credentials_identity_revocation_and_grant_boundaries() {
     );
     assert!(w.consume_oidc_flow("state", "browser").await.is_err());
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn roots_allocation_idempotency_and_mirror_accounting() {
     let (w, a, pool) = setup().await;
@@ -322,7 +321,7 @@ async fn roots_allocation_idempotency_and_mirror_accounting() {
         RootState::Enabled
     );
     assert!(w.update_root(&a, &first.id, &update).await.is_err());
-    db::query("UPDATE roots SET populated=true WHERE id=$1")
+    sqlx::query("UPDATE roots SET populated=true WHERE id=$1")
         .bind(second.id.as_str())
         .execute(&pool)
         .await
@@ -371,7 +370,7 @@ async fn roots_allocation_idempotency_and_mirror_accounting() {
     req.allocations[0].retained_capacity_bytes = 8000.try_into().unwrap();
     assert!(w.create_root(&a, &req).await.is_ok());
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn durable_ownership_recovery_and_shared_staging() {
     let (w, a, pool) = setup().await;
@@ -406,7 +405,7 @@ async fn durable_ownership_recovery_and_shared_staging() {
             .await
             .is_ok()
     );
-    db::query(
+    sqlx::query(
         "UPDATE operations SET worker_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
     )
     .bind(op.id().as_str())
@@ -444,7 +443,7 @@ async fn durable_ownership_recovery_and_shared_staging() {
         .unwrap();
     restarted.finish_operation(&reclaimed, true).await.unwrap();
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn namespace_pagination_identity_and_conflicts() {
     let (w, a, _) = setup().await;
@@ -572,7 +571,7 @@ async fn namespace_pagination_identity_and_conflicts() {
     let once = w.create_directory(&a, &r.id, &req).await.unwrap();
     assert_eq!(w.create_directory(&a, &r.id, &req).await.unwrap(), once);
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn effective_policies_atomic_scopes_and_transition_exclusion() {
     let (w, a, _) = setup().await;
@@ -726,7 +725,7 @@ async fn effective_policies_atomic_scopes_and_transition_exclusion() {
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn concurrent_pool_admission_cross_root_moves_and_cursor_isolation() {
     let (w, a, _) = setup().await;
@@ -862,7 +861,7 @@ async fn concurrent_pool_admission_cross_root_moves_and_cursor_isolation() {
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires disposable PostgreSQL"]
 async fn transfer_graph_reservations_and_pin_retirement_orders() {
     use std::collections::BTreeMap;
@@ -877,7 +876,7 @@ async fn transfer_graph_reservations_and_pin_retirement_orders() {
     writer.reserve_transfer(&fence, &demand).await.unwrap();
     writer.reserve_transfer(&fence, &demand).await.unwrap();
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -903,7 +902,7 @@ async fn transfer_graph_reservations_and_pin_retirement_orders() {
         .await
         .unwrap();
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM content_edges")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM content_edges")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -911,13 +910,13 @@ async fn transfer_graph_reservations_and_pin_retirement_orders() {
     );
     // Catalog constraints disallow cross-root edges and mutation of stored bytes.
     assert!(
-        db::query("UPDATE content_objects SET body='x'::bytea WHERE digest=$1")
+        sqlx::query("UPDATE content_objects SET body='x'::bytea WHERE digest=$1")
             .bind(&hash)
             .execute(&pool)
             .await
             .is_err()
     );
-    assert!(db::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES('other',$1,0,$1,3,1)").bind(&hash).execute(&pool).await.is_err());
+    assert!(sqlx::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES('other',$1,0,$1,3,1)").bind(&hash).execute(&pool).await.is_err());
     let entry = writer
         .resolve_path(&actor, &root.id, &"/".parse().unwrap())
         .await
@@ -933,20 +932,20 @@ async fn transfer_graph_reservations_and_pin_retirement_orders() {
     };
     let body = canonical(&manifest).unwrap();
     let manifest_id = digest(&body);
-    db::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,'file',3,0,$3)")
+    sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,'file',3,0,$3)")
         .bind(root.id.as_str()).bind(&manifest_id).bind(body).execute(&pool).await.unwrap();
-    db::query("INSERT INTO entries(id,root_id,parent_id,name,kind,revision) VALUES('pin-file',$1,$2,'pin-file','file','r1')")
+    sqlx::query("INSERT INTO entries(id,root_id,parent_id,name,kind,revision) VALUES('pin-file',$1,$2,'pin-file','file','r1')")
         .bind(root.id.as_str()).bind(entry.id.as_str()).execute(&pool).await.unwrap();
-    db::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES('version',$1,'pin-file',$2,3)").bind(root.id.as_str()).bind(&manifest_id).execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO file_versions(id,root_id,entry_id,manifest,length) VALUES('version',$1,'pin-file',$2,3)").bind(root.id.as_str()).bind(&manifest_id).execute(&pool).await.unwrap();
     let version = "version".parse().unwrap();
     let pin = writer
         .pin_version(&actor, &root.id, &version)
         .await
         .unwrap();
-    let n=db::query("UPDATE file_versions SET retired=true WHERE id='version' AND NOT EXISTS(SELECT 1 FROM read_pins WHERE version_id='version' AND expires_at>clock_timestamp())").execute(&pool).await.unwrap().rows_affected();
+    let n=sqlx::query("UPDATE file_versions SET retired=true WHERE id='version' AND NOT EXISTS(SELECT 1 FROM read_pins WHERE version_id='version' AND expires_at>clock_timestamp())").execute(&pool).await.unwrap().rows_affected();
     assert_eq!(n, 0);
     writer.release_read_pin(&actor, &pin).await.unwrap();
-    db::query("UPDATE file_versions SET retired=true WHERE id='version'")
+    sqlx::query("UPDATE file_versions SET retired=true WHERE id='version'")
         .execute(&pool)
         .await
         .unwrap();
@@ -960,7 +959,7 @@ async fn transfer_graph_reservations_and_pin_retirement_orders() {
     writer.finish_operation(&fence, true).await.unwrap();
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires disposable PostgreSQL"]
 async fn physical_copy_lost_response_and_recovery_preserve_charges() {
     use sct_core::{
@@ -1010,7 +1009,7 @@ async fn physical_copy_lost_response_and_recovery_preserve_charges() {
             .is_err()
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1018,7 +1017,7 @@ async fn physical_copy_lost_response_and_recovery_preserve_charges() {
     );
     assert!(writer.finish_operation(&fence, false).await.is_err());
     // A new worker uses the existing operation, not a competing root owner.
-    db::query("UPDATE operations SET worker_expires_at=clock_timestamp()-interval '1 second'")
+    sqlx::query("UPDATE operations SET worker_expires_at=clock_timestamp()-interval '1 second'")
         .execute(&pool)
         .await
         .unwrap();
@@ -1029,7 +1028,7 @@ async fn physical_copy_lost_response_and_recovery_preserve_charges() {
     memory.fault(Fault::UnknownDelete).await;
     assert_eq!(engine.cleanup_copies(&recovered).await.unwrap(), 0);
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1039,7 +1038,7 @@ async fn physical_copy_lost_response_and_recovery_preserve_charges() {
     assert_eq!(engine.cleanup_copies(&recovered).await.unwrap(), 1);
     assert_eq!(engine.cleanup_copies(&recovered).await.unwrap(), 0);
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1052,7 +1051,7 @@ async fn physical_copy_lost_response_and_recovery_preserve_charges() {
     writer.finish_operation(&recovered, true).await.unwrap();
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires disposable PostgreSQL"]
 async fn metadata_first_admission_and_abort_release_only_unused_space() {
     use sct_core::{
@@ -1158,14 +1157,14 @@ async fn metadata_first_admission_and_abort_release_only_unused_space() {
     }
     assert!(admitted);
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM object_copies")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM object_copies")
             .fetch_one(&pool)
             .await
             .unwrap(),
         0
     );
     assert!(
-        db::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap()
@@ -1193,7 +1192,7 @@ async fn metadata_first_admission_and_abort_release_only_unused_space() {
         SessionState::Aborted
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT reserved FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1201,7 +1200,7 @@ async fn metadata_first_admission_and_abort_release_only_unused_space() {
     );
     let mut request = request;
     request.idempotency_key = "upload-no-space".parse().unwrap();
-    db::query("UPDATE allocations SET capacity=100 WHERE root_id IS NULL")
+    sqlx::query("UPDATE allocations SET capacity=100 WHERE root_id IS NULL")
         .execute(&pool)
         .await
         .unwrap();
@@ -1240,7 +1239,7 @@ async fn metadata_first_admission_and_abort_release_only_unused_space() {
         AdmissionState::Rejected
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM transfer_audit")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM transfer_audit")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1248,7 +1247,7 @@ async fn metadata_first_admission_and_abort_release_only_unused_space() {
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires disposable PostgreSQL"]
 async fn mirrored_ingestion_retries_completed_copies_and_seals_only_verified_graph() {
     use sct_core::{
@@ -1364,7 +1363,7 @@ async fn mirrored_ingestion_retries_completed_copies_and_seals_only_verified_gra
             .await
             .is_err()
     );
-    let before: i64 = db::query_scalar("SELECT occupied FROM allocations WHERE root_id IS NULL")
+    let before: i64 = sqlx::query_scalar("SELECT occupied FROM allocations WHERE root_id IS NULL")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -1375,7 +1374,7 @@ async fn mirrored_ingestion_retries_completed_copies_and_seals_only_verified_gra
         .await
         .unwrap();
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1399,7 +1398,7 @@ async fn mirrored_ingestion_retries_completed_copies_and_seals_only_verified_gra
             .all(|c| c.state == CopyAcknowledgement::Acknowledged)
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM file_versions")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM file_versions")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1411,7 +1410,7 @@ async fn mirrored_ingestion_retries_completed_copies_and_seals_only_verified_gra
         .unwrap();
     engine.tick().await.unwrap();
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1528,7 +1527,7 @@ async fn ready_bytes(
     Ok(upload)
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires disposable PostgreSQL"]
 async fn publication_keep_one_receipts_and_pinned_outgoing_accounting() {
     use sct_core::{
@@ -1569,7 +1568,7 @@ async fn publication_keep_one_receipts_and_pinned_outgoing_accounting() {
     assert_ne!(newest.version_id, receipt.version_id);
     engine.tick().await.unwrap();
     let pending: i64 =
-        db::query_scalar("SELECT pending_cleanup FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar("SELECT pending_cleanup FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1594,7 +1593,7 @@ async fn publication_keep_one_receipts_and_pinned_outgoing_accounting() {
     writer.release_read_pin(&actor, &pin).await.unwrap();
     engine.tick().await.unwrap();
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&pool)
             .await
             .unwrap(),
@@ -1611,15 +1610,17 @@ async fn publication_keep_one_receipts_and_pinned_outgoing_accounting() {
     assert_eq!(history.versions.len(), 1);
     assert_eq!(history.versions[0].id, newest.version_id);
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM transfer_audit WHERE event='publication'")
-            .fetch_one(&pool)
-            .await
-            .unwrap(),
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM transfer_audit WHERE event='publication'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap(),
         2
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires disposable PostgreSQL"]
 async fn relaxed_admission_prunes_before_bytes_and_survives_later_abort() {
     use sct_core::{
@@ -1712,7 +1713,7 @@ async fn relaxed_admission_prunes_before_bytes_and_survives_later_abort() {
     }
     assert!(admitted);
     assert_eq!(
-        db::query_scalar::<_, i64>(
+        sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM transfer_audit WHERE event='admission_retirement'"
         )
         .fetch_one(&pool)
@@ -1751,7 +1752,7 @@ async fn relaxed_admission_prunes_before_bytes_and_survives_later_abort() {
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires disposable PostgreSQL"]
 async fn verified_download_ranges_fallback_and_pin_expiry() {
     use sct_core::{
@@ -1832,7 +1833,7 @@ async fn verified_download_ranges_fallback_and_pin_expiry() {
             .is_err()
     );
     assert_eq!(pinned.next().await.unwrap().unwrap(), b"abcdef");
-    db::query("UPDATE read_pins SET expires_at=clock_timestamp()-interval '1 second'")
+    sqlx::query("UPDATE read_pins SET expires_at=clock_timestamp()-interval '1 second'")
         .execute(&pool)
         .await
         .unwrap();

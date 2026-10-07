@@ -1,12 +1,12 @@
 use crate::api::{ApiError, App, Auth};
-use crate::web::{
+use sct_core::transfer_io::TransferEngine;
+use sct_protocol::*;
+use simple_server::web::{
     Json, Router,
     extract::{Path, Query, Request, State},
     http::StatusCode,
     routing::{get, post, put},
 };
-use sct_core::transfer_io::TransferEngine;
-use sct_protocol::*;
 
 fn engine(app: &App) -> Result<&TransferEngine, ApiError> {
     app.transfer
@@ -143,8 +143,8 @@ async fn content(
     Auth(actor): Auth,
     Path((root, version)): Path<(String, String)>,
     query: Result<Query<SnapshotPathQuery>, simple_server::extract::RejectionResponse>,
-    headers: crate::web::http::HeaderMap,
-) -> Result<crate::web::response::Response, ApiError> {
+    headers: simple_server::web::http::HeaderMap,
+) -> Result<simple_server::web::response::Response, ApiError> {
     let query = query.map_err(|_| ApiError(ErrorCode::InvalidRequest))?.0;
     crate::transfer_api::content_response(
         engine(&app)?,
@@ -200,10 +200,10 @@ async fn identities(
             .await?,
     ))
 }
-async fn bounded_body(request: Request) -> Result<crate::web::body::Bytes, ApiError> {
-    simple_server::time::timeout(
+async fn bounded_body(request: Request) -> Result<simple_server::web::body::Bytes, ApiError> {
+    tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        crate::web::body::to_bytes(request.into_body(), MANIFEST_BYTES),
+        simple_server::web::body::to_bytes(request.into_body(), MANIFEST_BYTES),
     )
     .await
     .map_err(|_| ApiError(ErrorCode::DestinationUnavailable))?

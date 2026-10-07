@@ -3,10 +3,9 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn overdue_tracks_only_successful_publication_and_replay_does_not_refresh_it() {
     let (w, a, db) = setup().await;
@@ -53,11 +52,13 @@ async fn overdue_tracks_only_successful_publication_and_replay_does_not_refresh_
         committed.next_expected_at_ms.unwrap().get() - committed.last_commit_at_ms.unwrap().get(),
         60000
     );
-    db::query("UPDATE roots SET last_commit_at=clock_timestamp()-interval '2 minutes' WHERE id=$1")
-        .bind(r.id.as_str())
-        .execute(&db)
-        .await
-        .unwrap();
+    sqlx::query(
+        "UPDATE roots SET last_commit_at=clock_timestamp()-interval '2 minutes' WHERE id=$1",
+    )
+    .bind(r.id.as_str())
+    .execute(&db)
+    .await
+    .unwrap();
     let stale = w.root_management(&a, &r.id).await.unwrap();
     assert_eq!(stale.backup_freshness, BackupFreshness::Overdue);
     e.commit_upload(&a, &r.id, &upload).await.unwrap();
@@ -84,12 +85,12 @@ async fn overdue_tracks_only_successful_publication_and_replay_does_not_refresh_
     let text = serde_json::to_string(&metrics.capacity).unwrap();
     assert!(!text.contains(r.id.as_str()));
     // Migration backfill uses committed publication audit, never admission time.
-    db::query("UPDATE roots SET last_commit_at=NULL WHERE id=$1")
+    sqlx::query("UPDATE roots SET last_commit_at=NULL WHERE id=$1")
         .bind(r.id.as_str())
         .execute(&db)
         .await
         .unwrap();
-    db::raw_sql(include_str!("../../migrations/0018_commit_freshness.sql"))
+    sqlx::raw_sql(include_str!("../../migrations/0018_commit_freshness.sql"))
         .execute(&db)
         .await
         .unwrap();

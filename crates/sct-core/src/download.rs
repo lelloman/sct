@@ -6,8 +6,7 @@ use crate::{
     transfer_io::TransferEngine,
 };
 use sct_protocol::*;
-use simple_server::database::postgres as db;
-use simple_server::{io::AsyncReadExt, time::Instant};
+use sqlx::Row;
 use std::{
     sync::{
         Arc,
@@ -15,6 +14,7 @@ use std::{
     },
     time::Duration,
 };
+use tokio::{io::AsyncReadExt, time::Instant};
 
 pub struct Download {
     engine: TransferEngine,
@@ -30,8 +30,8 @@ pub struct Download {
     deadline: Option<Instant>,
     alive: Arc<AtomicBool>,
     fetching: Arc<AtomicBool>,
-    keepalive: simple_server::runtime::JoinHandle<()>,
-    _permit: simple_server::sync::SemaphoreGuardArc,
+    keepalive: tokio::task::JoinHandle<()>,
+    _permit: tokio::sync::OwnedSemaphorePermit,
 }
 impl Drop for Download {
     fn drop(&mut self) {
@@ -39,7 +39,7 @@ impl Drop for Download {
         let writer = self.engine.writer.clone();
         let actor = self.actor.clone();
         let pin = self.pin.clone();
-        if let Ok(runtime) = simple_server::runtime::Handle::try_current() {
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
                 let _ = writer.release_read_pin(&actor, &pin).await;
             });
@@ -55,7 +55,7 @@ impl TransferEngine {
     ) -> Result<FileManifest> {
         let mut tx = self.writer.transaction().await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
-        let r=db::query("SELECT o.body,o.digest FROM file_versions v JOIN content_objects o ON o.root_id=v.root_id AND o.digest=v.manifest WHERE v.id=$1 AND v.root_id=$2 AND v.kind='file' AND NOT v.retired AND NOT entry_purged(v.entry_id)").bind(version.as_str()).bind(root.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+        let r=sqlx::query("SELECT o.body,o.digest FROM file_versions v JOIN content_objects o ON o.root_id=v.root_id AND o.digest=v.manifest WHERE v.id=$1 AND v.root_id=$2 AND v.kind='file' AND NOT v.retired AND NOT entry_purged(v.entry_id)").bind(version.as_str()).bind(root.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         let bytes: Vec<u8> = r.get("body");
         require(
             digest(&bytes) == r.get::<String, _>("digest"),
@@ -116,13 +116,18 @@ impl TransferEngine {
         path: Option<&[EntryName]>,
         range: Option<(u64, u64)>,
     ) -> Result<Download> {
-        let permit = self.slots.clone().acquire_arc().await;
+        let permit = self
+            .slots
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error(ErrorCode::DestinationUnavailable))?;
         let pin = self.writer.pin_version(actor, root, version).await?;
         let setup=async{
             let mut tx=self.writer.transaction().await?;authorize(&mut tx,actor,root.as_str(),Capability::ListRead).await?;
             // Pin acquisition already fixed this identity, even if rotation has
             // since retired it. No new pin can be acquired after that retirement.
-            let row=db::query("SELECT v.kind,v.manifest,r.placement FROM file_versions v JOIN roots r ON r.id=v.root_id WHERE v.id=$1 AND v.root_id=$2").bind(version.as_str()).bind(root.as_str()).fetch_one(&mut *tx).await?;
+            let row=sqlx::query("SELECT v.kind,v.manifest,r.placement FROM file_versions v JOIN roots r ON r.id=v.root_id WHERE v.id=$1 AND v.root_id=$2").bind(version.as_str()).bind(root.as_str()).fetch_one(&mut *tx).await?;
             let manifest:String=row.get("manifest");
             let manifest=if let Some(path)=path {
                 require(row.get::<String,_>("kind")=="directory",ErrorCode::NotFound)?;
@@ -152,9 +157,9 @@ impl TransferEngine {
         let renew_pin = pin.clone();
         let renew_alive = alive.clone();
         let renew_fetching = fetching.clone();
-        let keepalive = simple_server::runtime::spawn(async move {
+        let keepalive = tokio::spawn(async move {
             loop {
-                simple_server::time::sleep(Duration::from_secs(10)).await;
+                tokio::time::sleep(Duration::from_secs(10)).await;
                 if renew_fetching.load(Ordering::Acquire)
                     && renew_writer
                         .renew_read_pin(&renew_actor, &renew_root, &renew_pin)
@@ -216,12 +221,13 @@ impl Download {
                 return Err(Error(ErrorCode::DestinationUnavailable));
             }
             let mut tx = self.engine.writer.transaction().await?;
-            let row =
-                db::query("SELECT kind,length FROM content_objects WHERE root_id=$1 AND digest=$2")
-                    .bind(self.root.as_str())
-                    .bind(&digest)
-                    .fetch_one(&mut *tx)
-                    .await?;
+            let row = sqlx::query(
+                "SELECT kind,length FROM content_objects WHERE root_id=$1 AND digest=$2",
+            )
+            .bind(self.root.as_str())
+            .bind(&digest)
+            .fetch_one(&mut *tx)
+            .await?;
             let length = row.get::<i64, _>("length") as u64;
             if offset >= self.end || offset + length <= self.start {
                 continue;
@@ -270,7 +276,7 @@ impl Download {
         candidate: &ReadCandidate,
     ) -> Result<Vec<u8>> {
         let mut tx = self.engine.writer.transaction().await?;
-        let generation:Option<String>=db::query_scalar("SELECT generation FROM object_copies WHERE root_id=$1 AND digest=$2 AND backend_id=$3 AND state='available'").bind(self.root.as_str()).bind(digest).bind(candidate.backend_id.as_str()).fetch_optional(&mut *tx).await?;
+        let generation:Option<String>=sqlx::query_scalar("SELECT generation FROM object_copies WHERE root_id=$1 AND digest=$2 AND backend_id=$3 AND state='available'").bind(self.root.as_str()).bind(digest).bind(candidate.backend_id.as_str()).fetch_optional(&mut *tx).await?;
         drop(tx);
         let key = ObjectKey {
             root: self.root.clone(),
@@ -287,7 +293,7 @@ impl Download {
             .deadline
             .map(|d| initial.min(d.saturating_duration_since(Instant::now())))
             .unwrap_or(initial);
-        let reader = simple_server::time::timeout(initial, store.read_with_policy(&key, candidate))
+        let reader = tokio::time::timeout(initial, store.read_with_policy(&key, candidate))
             .await
             .map_err(|_| Error(ErrorCode::DestinationUnavailable))??;
         let bytes = read_progress(reader, length, candidate, self.deadline).await?;
@@ -328,7 +334,7 @@ pub(crate) async fn read_progress(
         if let Some(deadline) = deadline {
             until = until.min(deadline);
         }
-        let result = simple_server::time::timeout_at(until, reader.read(&mut buffer)).await;
+        let result = tokio::time::timeout_at(until, reader.read(&mut buffer)).await;
         match result {
             Ok(Ok(0)) => return Ok(bytes),
             Ok(Ok(n)) => {
@@ -354,54 +360,31 @@ pub(crate) async fn read_progress(
 }
 
 #[cfg(test)]
-fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(
-        simple_server::runtime::Runtime::try_current()
-            .expect("test engine")
-            .scope(future),
-    )
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use tokio::io::AsyncWriteExt;
-    #[simple_server::test(host_runtime = true)]
+    #[tokio::test]
     async fn progress_budget_accepts_slow_progress_but_rejects_stalls() {
         let candidate: ReadCandidate = serde_json::from_value(serde_json::json!({"backend_id":"one","connection_timeout_ms":100,"initial_response_timeout_ms":100,"idle_timeout_ms":100,"throughput_window_ms":50,"minimum_bytes_per_second":1,"startup_allowance_ms":1})).unwrap();
         let (reader, mut writer) = tokio::io::duplex(16);
-        let producer = super::sct_spawn(async move {
+        let producer = tokio::spawn(async move {
             for _ in 0..6 {
                 writer.write_all(b"x").await.unwrap();
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
         });
         assert_eq!(
-            read_progress(
-                Box::pin(tokio_util::compat::TokioAsyncReadCompatExt::compat(reader)),
-                6,
-                &candidate,
-                None
-            )
-            .await
-            .unwrap(),
+            read_progress(Box::pin(reader), 6, &candidate, None)
+                .await
+                .unwrap(),
             b"xxxxxx"
         );
         producer.await.unwrap();
         let (reader, _writer) = tokio::io::duplex(16);
         assert!(
-            read_progress(
-                Box::pin(tokio_util::compat::TokioAsyncReadCompatExt::compat(reader)),
-                6,
-                &candidate,
-                None
-            )
-            .await
-            .is_err()
+            read_progress(Box::pin(reader), 6, &candidate, None)
+                .await
+                .is_err()
         );
     }
 }

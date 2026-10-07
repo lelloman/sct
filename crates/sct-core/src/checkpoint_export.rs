@@ -9,9 +9,9 @@ use crate::{
 use sct_protocol::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use simple_server::database::postgres as db;
-use simple_server::io::AsyncWriteExt;
+use sqlx::Row;
 use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -43,12 +43,12 @@ pub(crate) fn identifier(value: &str) -> Result<String> {
     Ok(format!("\"{value}\""))
 }
 struct Artifact {
-    file: simple_server::fs::File,
+    file: tokio::fs::File,
     hash: Sha256,
 }
 impl Artifact {
     async fn create(path: &Path) -> Result<Self> {
-        let file = simple_server::fs::OpenOptions::new()
+        let file = tokio::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(path)
@@ -83,19 +83,19 @@ impl TransferEngine {
         let Some(directory) = &self.checkpoint_directory else {
             return Ok(());
         };
-        let Some(_export) = self.checkpoint_export.try_lock() else {
+        let Ok(_export) = self.checkpoint_export.try_lock() else {
             return Ok(());
         };
         let checkpoint: Option<String> = {
             let mut tx = self.writer.control_transaction().await?;
-            db::query_scalar("SELECT c.id FROM checkpoints c JOIN checkpoint_barrier b ON b.checkpoint_id=c.id WHERE c.state='exporting' AND b.phase='capturing' ORDER BY c.created_at LIMIT 1").fetch_optional(&mut *tx).await?
+            sqlx::query_scalar("SELECT c.id FROM checkpoints c JOIN checkpoint_barrier b ON b.checkpoint_id=c.id WHERE c.state='exporting' AND b.phase='capturing' ORDER BY c.created_at LIMIT 1").fetch_optional(&mut *tx).await?
         };
         let Some(checkpoint) = checkpoint else {
             return Ok(());
         };
         {
             let mut tx = self.writer.control_transaction().await?;
-            db::query(
+            sqlx::query(
                 "UPDATE checkpoints SET export_server_epoch=$2 WHERE id=$1 AND state='exporting'",
             )
             .bind(&checkpoint)
@@ -107,12 +107,14 @@ impl TransferEngine {
         let result = self.export_checkpoint(&checkpoint, directory).await;
         if let Err(error) = &result {
             let mut tx = self.writer.control_transaction().await?;
-            db::query("UPDATE checkpoints SET state='failed',failure=$2,revision=$3 WHERE id=$1 AND state='exporting' AND export_server_epoch=$4").bind(&checkpoint).bind(json(&error.0)?.as_str().unwrap()).bind(id()).bind(self.writer.epoch).execute(&mut *tx).await?;
-            db::query("DELETE FROM checkpoint_barrier WHERE checkpoint_id=$1 AND server_epoch=$2")
-                .bind(&checkpoint)
-                .bind(self.writer.epoch)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query("UPDATE checkpoints SET state='failed',failure=$2,revision=$3 WHERE id=$1 AND state='exporting' AND export_server_epoch=$4").bind(&checkpoint).bind(json(&error.0)?.as_str().unwrap()).bind(id()).bind(self.writer.epoch).execute(&mut *tx).await?;
+            sqlx::query(
+                "DELETE FROM checkpoint_barrier WHERE checkpoint_id=$1 AND server_epoch=$2",
+            )
+            .bind(&checkpoint)
+            .bind(self.writer.epoch)
+            .execute(&mut *tx)
+            .await?;
             tx.commit().await?;
         }
         result
@@ -120,13 +122,13 @@ impl TransferEngine {
     async fn export_checkpoint(&self, checkpoint: &str, directory: &Path) -> Result<()> {
         // Establish the MVCC snapshot before releasing the capture barrier.
         let mut snapshot = self.writer.catalog.pool.begin().await?;
-        db::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             .execute(&mut *snapshot)
             .await?;
-        db::query("SET LOCAL TIME ZONE 'UTC'")
+        sqlx::query("SET LOCAL TIME ZONE 'UTC'")
             .execute(&mut *snapshot)
             .await?;
-        let row=db::query("SELECT c.generation_watermark,c.principal_id,c.credential_id,b.server_epoch FROM checkpoints c JOIN checkpoint_barrier b ON b.checkpoint_id=c.id WHERE c.id=$1 AND c.state='exporting' AND b.phase='capturing'").bind(checkpoint).fetch_optional(&mut *snapshot).await?.ok_or(Error(ErrorCode::RevisionConflict))?;
+        let row=sqlx::query("SELECT c.generation_watermark,c.principal_id,c.credential_id,b.server_epoch FROM checkpoints c JOIN checkpoint_barrier b ON b.checkpoint_id=c.id WHERE c.id=$1 AND c.state='exporting' AND b.phase='capturing'").bind(checkpoint).fetch_optional(&mut *snapshot).await?.ok_or(Error(ErrorCode::RevisionConflict))?;
         require(
             row.get::<i64, _>("server_epoch") == self.writer.epoch,
             ErrorCode::RevisionConflict,
@@ -141,7 +143,7 @@ impl TransferEngine {
         {
             let mut tx = self.writer.control_transaction().await?;
             auth::admin(&mut tx, &actor).await?;
-            let changed = db::query(
+            let changed = sqlx::query(
                 "UPDATE checkpoints SET export_server_epoch=$2 WHERE id=$1 AND state='exporting'",
             )
             .bind(checkpoint)
@@ -150,35 +152,30 @@ impl TransferEngine {
             .await?
             .rows_affected();
             require(changed == 1, ErrorCode::RevisionConflict)?;
-            db::query("DELETE FROM checkpoint_barrier WHERE checkpoint_id=$1 AND server_epoch=$2")
-                .bind(checkpoint)
-                .bind(self.writer.epoch)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "DELETE FROM checkpoint_barrier WHERE checkpoint_id=$1 AND server_epoch=$2",
+            )
+            .bind(checkpoint)
+            .bind(self.writer.epoch)
+            .execute(&mut *tx)
+            .await?;
             tx.commit().await?;
         }
-        simple_server::fs::create_dir_all(directory)
-            .await
-            .map_err(io)?;
+        tokio::fs::create_dir_all(directory).await.map_err(io)?;
         let destination = directory.join(checkpoint);
-        simple_server::fs::create_dir(&destination)
-            .await
-            .map_err(io)?;
+        tokio::fs::create_dir(&destination).await.map_err(io)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            simple_server::fs::set_permissions(
-                &destination,
-                std::fs::Permissions::from_mode(0o700),
-            )
-            .await
-            .map_err(io)?;
+            tokio::fs::set_permissions(&destination, std::fs::Permissions::from_mode(0o700))
+                .await
+                .map_err(io)?;
         }
-        let schema: String = db::query_scalar("SELECT current_schema()")
+        let schema: String = sqlx::query_scalar("SELECT current_schema()")
             .fetch_one(&mut *snapshot)
             .await?;
-        let tables:Vec<String>=db::query_scalar("SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename<>'_sqlx_migrations' ORDER BY tablename").fetch_all(&mut *snapshot).await?;
-        let migrations=db::query("SELECT version,encode(checksum,'hex') checksum FROM _sqlx_migrations WHERE success ORDER BY version").fetch_all(&mut *snapshot).await?;
+        let tables:Vec<String>=sqlx::query_scalar("SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename<>'_sqlx_migrations' ORDER BY tablename").fetch_all(&mut *snapshot).await?;
+        let migrations=sqlx::query("SELECT version,encode(checksum,'hex') checksum FROM _sqlx_migrations WHERE success ORDER BY version").fetch_all(&mut *snapshot).await?;
         let schema_version = migrations
             .last()
             .ok_or(Error(ErrorCode::IntegrityFailure))?
@@ -205,9 +202,9 @@ impl TransferEngine {
                 identifier(&schema)?,
                 identifier(&table)?
             );
-            db::query(&query).execute(&mut *snapshot).await?;
+            sqlx::query(&query).execute(&mut *snapshot).await?;
             loop {
-                let rows = db::query("FETCH FORWARD 128 FROM sct_export_cursor")
+                let rows = sqlx::query("FETCH FORWARD 128 FROM sct_export_cursor")
                     .fetch_all(&mut *snapshot)
                     .await?;
                 let done = rows.len() < 128;
@@ -223,7 +220,7 @@ impl TransferEngine {
                     break;
                 }
             }
-            db::query("CLOSE sct_export_cursor")
+            sqlx::query("CLOSE sct_export_cursor")
                 .execute(&mut *snapshot)
                 .await?;
         }
@@ -231,7 +228,7 @@ impl TransferEngine {
         let mut inventory = Artifact::create(&destination.join("inventory.jsonl")).await?;
         let mut after = 0i64;
         loop {
-            let rows=db::query("SELECT c.* FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE p.checkpoint_id=$1 AND c.created_sequence>$2 ORDER BY c.created_sequence LIMIT 128").bind(checkpoint).bind(after).fetch_all(&mut *snapshot).await?;
+            let rows=sqlx::query("SELECT c.* FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE p.checkpoint_id=$1 AND c.created_sequence>$2 ORDER BY c.created_sequence LIMIT 128").bind(checkpoint).bind(after).fetch_all(&mut *snapshot).await?;
             let done = rows.len() < 128;
             for row in rows {
                 after = row.get("created_sequence");
@@ -263,13 +260,13 @@ impl TransferEngine {
         let mut artifact = Artifact::create(&destination.join("descriptor.json")).await?;
         artifact.line(&descriptor).await?;
         artifact.finish().await?;
-        simple_server::fs::File::open(&destination)
+        tokio::fs::File::open(&destination)
             .await
             .map_err(io)?
             .sync_all()
             .await
             .map_err(io)?;
-        simple_server::fs::File::open(directory)
+        tokio::fs::File::open(directory)
             .await
             .map_err(io)?
             .sync_all()
@@ -277,7 +274,7 @@ impl TransferEngine {
             .map_err(io)?;
         let mut tx = self.writer.control_transaction().await?;
         auth::admin(&mut tx, &actor).await?;
-        let changed=db::query("UPDATE checkpoints SET state='exported',descriptor=$2,revision=$3 WHERE id=$1 AND state='exporting' AND export_server_epoch=$4").bind(checkpoint).bind(json(&descriptor)?).bind(id()).bind(self.writer.epoch).execute(&mut *tx).await?.rows_affected();
+        let changed=sqlx::query("UPDATE checkpoints SET state='exported',descriptor=$2,revision=$3 WHERE id=$1 AND state='exporting' AND export_server_epoch=$4").bind(checkpoint).bind(json(&descriptor)?).bind(id()).bind(self.writer.epoch).execute(&mut *tx).await?.rows_affected();
         require(changed == 1, ErrorCode::RevisionConflict)?;
         tx.commit().await?;
         Ok(())
@@ -292,7 +289,7 @@ impl Writer {
     ) -> Result<CheckpointDescriptor> {
         let mut tx = self.control_transaction().await?;
         auth::admin(&mut tx, actor).await?;
-        let row = db::query("SELECT state,descriptor FROM checkpoints WHERE id=$1")
+        let row = sqlx::query("SELECT state,descriptor FROM checkpoints WHERE id=$1")
             .bind(checkpoint.as_str())
             .fetch_optional(&mut *tx)
             .await?
@@ -314,10 +311,11 @@ impl Writer {
     ) -> Result<CheckpointInventoryPage> {
         let mut tx = self.control_transaction().await?;
         auth::admin(&mut tx, actor).await?;
-        let exists: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM checkpoints WHERE id=$1)")
-            .bind(checkpoint.as_str())
-            .fetch_one(&mut *tx)
-            .await?;
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM checkpoints WHERE id=$1)")
+                .bind(checkpoint.as_str())
+                .fetch_one(&mut *tx)
+                .await?;
         require(exists, ErrorCode::NotFound)?;
         let scope = format!("checkpoint-inventory:{}", checkpoint.as_str());
         let after: i64 = match &request.cursor {
@@ -326,7 +324,7 @@ impl Writer {
             }
             None => 0,
         };
-        let rows=db::query("SELECT c.* FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE p.checkpoint_id=$1 AND c.created_sequence>$2 ORDER BY c.created_sequence LIMIT $3").bind(checkpoint.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT c.* FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE p.checkpoint_id=$1 AND c.created_sequence>$2 ORDER BY c.created_sequence LIMIT $3").bind(checkpoint.as_str()).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let limit = request.limit.get() as usize;
         let next_cursor = if rows.len() > limit {
             Some(
@@ -368,7 +366,7 @@ impl TransferEngine {
         actor: &Actor,
         checkpoint: &OperationId,
         artifact: &str,
-    ) -> Result<simple_server::fs::File> {
+    ) -> Result<tokio::fs::File> {
         let descriptor = self.writer.checkpoint_descriptor(actor, checkpoint).await?;
         require(
             matches!(
@@ -382,7 +380,7 @@ impl TransferEngine {
             .checkpoint_directory
             .as_ref()
             .ok_or(Error(ErrorCode::UnsupportedOperation))?;
-        simple_server::fs::File::open(
+        tokio::fs::File::open(
             directory
                 .join(descriptor.checkpoint_id.as_str())
                 .join(artifact),

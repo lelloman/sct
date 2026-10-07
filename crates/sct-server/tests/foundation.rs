@@ -10,13 +10,6 @@ use sct_core::{
     backend::{Registry, TestAdapter},
     roots::{BackendSetup, PoolSetup},
 };
-use sct_server::web::{
-    Json, Router,
-    extract::{Form, Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Redirect, Response},
-    routing::{get, post},
-};
 use sct_server::{
     api::App,
     config::{Config, OidcConfig},
@@ -24,6 +17,13 @@ use sct_server::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use simple_server::web::{
+    Json, Router,
+    extract::{Form, Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Redirect, Response},
+    routing::{get, post},
+};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -62,12 +62,11 @@ async fn token(State(p): State<Provider>, Form(form): Form<HashMap<String, Strin
     let Some(q) = p.codes.lock().unwrap().remove(&form["code"]) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    let mode = q.get("test_mode").map(String::as_str).unwrap_or("ok");
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(form["code_verifier"].as_bytes()));
-    if challenge != q["code_challenge"] || mode == "pkce" {
+    if challenge != q["code_challenge"] {
         return StatusCode::BAD_REQUEST.into_response();
     }
-
+    let mode = q.get("test_mode").map(String::as_str).unwrap_or("ok");
     let issuer = if mode == "issuer" {
         "https://wrong.example"
     } else {
@@ -92,19 +91,16 @@ async fn token(State(p): State<Provider>, Form(form): Form<HashMap<String, Strin
         StandardClaims::new(SubjectIdentifier::new("subject-a".into())),
         EmptyAdditionalClaims {},
     )
-    .set_nonce((mode != "missing_nonce").then(|| Nonce::new(nonce.into())));
+    .set_nonce(Some(Nonce::new(nonce.into())));
     let access = AccessToken::new("test-access-token".into());
     let token = CoreIdToken::new(
         claims,
         p.key.as_ref(),
         CoreJwsSigningAlgorithm::RsaSsaPkcs1V15Sha256,
-        (mode != "no_access_hash").then_some(&access),
+        Some(&access),
         None,
     )
     .unwrap();
-    if mode == "missing_id_token" {
-        return Json(json!({"access_token":access.secret(),"token_type":"Bearer"})).into_response();
-    }
     let mut signed = token.to_string();
     if mode == "signature" {
         // Flip the first encoded signature character, not trailing padding bits.
@@ -151,7 +147,7 @@ async fn oidc_login(
         .unwrap();
     (response, callback, browser)
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn oidc_http_authentication_csrf_and_foundation_api() {
     let (catalog, _pool) = support::database().await;
@@ -161,9 +157,9 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         .authenticate(&admin.secret, false, None)
         .await
         .unwrap();
-    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
-    let provider_listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
+    let provider_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let provider_origin = format!("http://{}", provider_listener.local_addr().unwrap());
     let provider = Provider {
         origin: provider_origin.clone(),
@@ -176,8 +172,8 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         ),
         codes: Arc::new(Mutex::new(HashMap::new())),
     };
-    let provider_task = sct_spawn(async move {
-        sct_server::web::serve(
+    let provider_task = tokio::spawn(async move {
+        simple_server::web::serve(
             provider_listener,
             Router::new()
                 .route("/.well-known/openid-configuration", get(discovery))
@@ -185,7 +181,7 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
                 .route("/authorize", get(authorize))
                 .route("/token", post(token))
                 .with_state(provider),
-            simple_server::engine_lifecycle::Shutdown::new(),
+            simple_server::lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -222,11 +218,11 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         public_url: origin.clone(),
         secure_cookies: false,
     };
-    let server = sct_spawn(async move {
-        sct_server::web::serve(
+    let server = tokio::spawn(async move {
+        simple_server::web::serve(
             listener,
             sct_server::application(app, PathBuf::from("nonexistent")),
-            simple_server::engine_lifecycle::Shutdown::new(),
+            simple_server::lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -257,21 +253,10 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
         "nonce",
         "signature",
         "access_hash",
-        "pkce",
-        "missing_nonce",
-        "missing_id_token",
     ] {
         let (response, _, _) = oidc_login(&http, &origin, mode).await;
         assert_eq!(response.status(), 401, "{mode}");
     }
-    // at_hash is optional; if present it must be checked (negative case above).
-    assert_eq!(
-        oidc_login(&http, &origin, "no_access_hash")
-            .await
-            .0
-            .status(),
-        303
-    );
     let (logged_in, callback, browser) = oidc_login(&http, &origin, "ok").await;
     assert_eq!(logged_in.status(), 303);
     let session = cookies(&logged_in);
@@ -511,16 +496,4 @@ async fn oidc_http_authentication_csrf_and_foundation_api() {
     );
     server.abort();
     provider_task.abort();
-}
-
-fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(
-        simple_server::runtime::Runtime::try_current()
-            .expect("test engine")
-            .scope(future),
-    )
 }

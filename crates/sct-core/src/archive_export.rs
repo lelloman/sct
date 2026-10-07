@@ -9,17 +9,16 @@ use crate::{
     roots::json,
     transfer_io::TransferEngine,
 };
-use db::PgConnection;
 use sct_protocol::*;
 use serde::Deserialize;
-use simple_server::database::postgres as db;
-use simple_server::io::AsyncWriteExt;
+use sqlx::{PgConnection, Row};
 use std::{
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
+use tokio::io::AsyncWriteExt;
 fn io(_: std::io::Error) -> Error {
     Error(ErrorCode::DestinationUnavailable)
 }
@@ -35,7 +34,7 @@ pub(crate) struct ArchiveRuntime {
     pub bundle: InstalledArchiveBundle,
     pub writer: IsoWriter,
     pub version: String,
-    pub mutex: simple_server::sync::Mutex<()>,
+    pub mutex: tokio::sync::Mutex<()>,
 }
 pub(crate) struct ExportFence {
     pub set: ArchiveSetId,
@@ -73,29 +72,26 @@ impl ArchiveRuntime {
 impl TransferEngine {
     pub async fn with_archive_exports(mut self, config: ArchiveExportConfig) -> Result<Self> {
         require(config.quota_bytes.get() > 0, ErrorCode::InvalidRequest)?;
-        simple_server::fs::create_dir_all(&config.directory)
+        tokio::fs::create_dir_all(&config.directory)
             .await
             .map_err(io)?;
         require(
-            !simple_server::fs::symlink_metadata(&config.directory)
+            !tokio::fs::symlink_metadata(&config.directory)
                 .await
                 .map_err(io)?
                 .file_type()
                 .is_symlink(),
             ErrorCode::InvalidPath,
         )?;
-        simple_server::fs::set_permissions(
-            &config.directory,
-            std::fs::Permissions::from_mode(0o700),
-        )
-        .await
-        .map_err(io)?;
-        let directory = simple_server::fs::canonicalize(&config.directory)
+        tokio::fs::set_permissions(&config.directory, std::fs::Permissions::from_mode(0o700))
+            .await
+            .map_err(io)?;
+        let directory = tokio::fs::canonicalize(&config.directory)
             .await
             .map_err(io)?;
         for name in ["work", "cache"] {
             let p = directory.join(name);
-            match simple_server::fs::symlink_metadata(&p).await {
+            match tokio::fs::symlink_metadata(&p).await {
                 Ok(m) => require(
                     m.is_dir() && !m.file_type().is_symlink(),
                     ErrorCode::InvalidPath,
@@ -110,8 +106,8 @@ impl TransferEngine {
         let writer = IsoWriter::default();
         let version = writer.version().await?;
         let mut tx = self.writer.transaction().await?;
-        db::query("INSERT INTO archive_storage(singleton,directory,quota_bytes) VALUES(true,$1,$2) ON CONFLICT DO NOTHING").bind(directory.to_str().ok_or(Error(ErrorCode::InvalidPath))?).bind(config.quota_bytes.get() as i64).execute(&mut *tx).await?;
-        let row = db::query("SELECT * FROM archive_storage WHERE singleton FOR UPDATE")
+        sqlx::query("INSERT INTO archive_storage(singleton,directory,quota_bytes) VALUES(true,$1,$2) ON CONFLICT DO NOTHING").bind(directory.to_str().ok_or(Error(ErrorCode::InvalidPath))?).bind(config.quota_bytes.get() as i64).execute(&mut *tx).await?;
+        let row = sqlx::query("SELECT * FROM archive_storage WHERE singleton FOR UPDATE")
             .fetch_one(&mut *tx)
             .await?;
         require(
@@ -124,7 +120,7 @@ impl TransferEngine {
                 <= config.quota_bytes.get(),
             ErrorCode::ArchiveResourceLimit,
         )?;
-        db::query("UPDATE archive_storage SET quota_bytes=$1 WHERE singleton")
+        sqlx::query("UPDATE archive_storage SET quota_bytes=$1 WHERE singleton")
             .bind(config.quota_bytes.get() as i64)
             .execute(&mut *tx)
             .await?;
@@ -134,7 +130,7 @@ impl TransferEngine {
             bundle,
             writer,
             version,
-            mutex: simple_server::sync::Mutex::new(()),
+            mutex: tokio::sync::Mutex::new(()),
         }));
         Ok(self)
     }
@@ -142,7 +138,7 @@ impl TransferEngine {
         let Some(runtime) = &self.archive else {
             return Ok(());
         };
-        let Some(_guard) = runtime.mutex.try_lock() else {
+        let Ok(_guard) = runtime.mutex.try_lock() else {
             return Ok(());
         };
         let disk_lock = runtime.lock()?;
@@ -150,7 +146,7 @@ impl TransferEngine {
         let mut iso_writer = runtime.writer.clone();
         iso_writer.inherited_lock = Some(Arc::new(disk_lock.try_clone().map_err(io)?));
         let mut tx = self.writer.transaction().await?;
-        let sets:Vec<String>=db::query_scalar("SELECT s.id FROM archive_sets s LEFT JOIN archive_exports e ON e.set_id=s.id WHERE (s.state IN ('planning','building') OR (e.set_id IS NOT NULL AND NOT e.finished)) ORDER BY s.archive_run_after,s.id LIMIT 4").fetch_all(&mut *tx).await?;
+        let sets:Vec<String>=sqlx::query_scalar("SELECT s.id FROM archive_sets s LEFT JOIN archive_exports e ON e.set_id=s.id WHERE (s.state IN ('planning','building') OR (e.set_id IS NOT NULL AND NOT e.finished)) ORDER BY s.archive_run_after,s.id LIMIT 4").fetch_all(&mut *tx).await?;
         drop(tx);
         for set in sets {
             let set: ArchiveSetId = set.parse()?;
@@ -165,10 +161,11 @@ impl TransferEngine {
                     }
                 }
                 let mut tx = self.writer.transaction().await?;
-                let state: String = db::query_scalar("SELECT state FROM archive_sets WHERE id=$1")
-                    .bind(set.as_str())
-                    .fetch_one(&mut *tx)
-                    .await?;
+                let state: String =
+                    sqlx::query_scalar("SELECT state FROM archive_sets WHERE id=$1")
+                        .bind(set.as_str())
+                        .fetch_one(&mut *tx)
+                        .await?;
                 drop(tx);
                 if state == "building" {
                     self.export_one_disc(runtime, &set, &iso_writer).await?;
@@ -188,13 +185,13 @@ impl TransferEngine {
                     ErrorCode::ArchiveExpired => "expired",
                     _ => "failed",
                 };
-                db::query("UPDATE archive_sets SET state=$4,failure=$2,revision=$3 WHERE id=$1 AND state IN ('planning','building')").bind(set.as_str()).bind(serde_json::to_value(&error.0)?.as_str().ok_or(Error(ErrorCode::InternalError))?).bind(id()).bind(state).execute(&mut *tx).await?;
+                sqlx::query("UPDATE archive_sets SET state=$4,failure=$2,revision=$3 WHERE id=$1 AND state IN ('planning','building')").bind(set.as_str()).bind(serde_json::to_value(&error.0)?.as_str().ok_or(Error(ErrorCode::InternalError))?).bind(id()).bind(state).execute(&mut *tx).await?;
                 tx.commit().await?;
                 self.cleanup_archive_export(runtime, &set).await?;
                 self.writer.cleanup_archive_capture(&set).await?;
             }
             let mut tx = self.writer.transaction().await?;
-            db::query("UPDATE archive_sets SET archive_run_after=clock_timestamp() WHERE id=$1")
+            sqlx::query("UPDATE archive_sets SET archive_run_after=clock_timestamp() WHERE id=$1")
                 .bind(set.as_str())
                 .execute(&mut *tx)
                 .await?;
@@ -212,21 +209,22 @@ impl TransferEngine {
             ErrorCode::Forbidden,
         )?;
         let mut tx = self.writer.transaction().await?;
-        let owner:String=db::query_scalar("SELECT c.owner_id FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE s.id=$1 FOR UPDATE OF c").bind(set.as_str()).fetch_one(&mut *tx).await?;
-        let host = db::query("SELECT * FROM archive_storage WHERE singleton FOR UPDATE")
+        let owner:String=sqlx::query_scalar("SELECT c.owner_id FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE s.id=$1 FOR UPDATE OF c").bind(set.as_str()).fetch_one(&mut *tx).await?;
+        let host = sqlx::query("SELECT * FROM archive_storage WHERE singleton FOR UPDATE")
             .fetch_one(&mut *tx)
             .await?;
-        let account = db::query("SELECT * FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
-            .bind(&owner)
-            .fetch_one(&mut *tx)
-            .await?;
-        let row=db::query("SELECT state,plan,expires_at>clock_timestamp() AS live FROM archive_sets WHERE id=$1 FOR UPDATE").bind(set.as_str()).fetch_one(&mut *tx).await?;
+        let account =
+            sqlx::query("SELECT * FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
+                .bind(&owner)
+                .fetch_one(&mut *tx)
+                .await?;
+        let row=sqlx::query("SELECT state,plan,expires_at>clock_timestamp() AS live FROM archive_sets WHERE id=$1 FOR UPDATE").bind(set.as_str()).fetch_one(&mut *tx).await?;
         require(
             row.get::<String, _>("state") == "building" && row.get::<bool, _>("live"),
             ErrorCode::ArchiveExpired,
         )?;
         let exists: bool =
-            db::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_exports WHERE set_id=$1)")
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_exports WHERE set_id=$1)")
                 .bind(set.as_str())
                 .fetch_one(&mut *tx)
                 .await?;
@@ -236,7 +234,7 @@ impl TransferEngine {
                 plan.bundle_sha256.as_str() == digest(&canonical(&runtime.bundle.manifest)?),
                 ErrorCode::IntegrityFailure,
             )?;
-            let largest: i64 = db::query_scalar(
+            let largest: i64 = sqlx::query_scalar(
                 "SELECT max(planned_iso_bytes) FROM archive_discs WHERE set_id=$1",
             )
             .bind(set.as_str())
@@ -264,16 +262,16 @@ impl TransferEngine {
                     >= reserve + host.get::<i64, _>("reserved_bytes") as u64,
                 ErrorCode::DestinationCapacity,
             )?;
-            db::query(
+            sqlx::query(
                 "UPDATE archive_storage SET reserved_bytes=reserved_bytes+$1 WHERE singleton",
             )
             .bind(reserve as i64)
             .execute(&mut *tx)
             .await?;
-            db::query("UPDATE archive_accounts SET reserved_bytes=reserved_bytes+$2 WHERE principal_id=$1").bind(owner).bind(reserve as i64).execute(&mut *tx).await?;
-            db::query("INSERT INTO archive_exports(set_id,reserved_bytes,writer_version,writer_options) VALUES($1,$2,$3,$4)").bind(set.as_str()).bind(reserve as i64).bind(&runtime.version).bind(json(&WRITER_OPTIONS)?).execute(&mut *tx).await?;
+            sqlx::query("UPDATE archive_accounts SET reserved_bytes=reserved_bytes+$2 WHERE principal_id=$1").bind(owner).bind(reserve as i64).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO archive_exports(set_id,reserved_bytes,writer_version,writer_options) VALUES($1,$2,$3,$4)").bind(set.as_str()).bind(reserve as i64).bind(&runtime.version).bind(json(&WRITER_OPTIONS)?).execute(&mut *tx).await?;
         }
-        let epoch:Option<i64>=db::query_scalar("UPDATE archive_exports SET worker_epoch=worker_epoch+1,server_epoch=$2,worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE set_id=$1 AND NOT finished AND (worker_expires_at IS NULL OR worker_expires_at<=clock_timestamp() OR server_epoch<>$2) RETURNING worker_epoch").bind(set.as_str()).bind(self.writer.epoch).fetch_optional(&mut *tx).await?;
+        let epoch:Option<i64>=sqlx::query_scalar("UPDATE archive_exports SET worker_epoch=worker_epoch+1,server_epoch=$2,worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE set_id=$1 AND NOT finished AND (worker_expires_at IS NULL OR worker_expires_at<=clock_timestamp() OR server_epoch<>$2) RETURNING worker_epoch").bind(set.as_str()).bind(self.writer.epoch).fetch_optional(&mut *tx).await?;
         let fence = ExportFence {
             set: set.clone(),
             epoch: epoch.ok_or(Error(ErrorCode::ArchiveBusy))?,
@@ -292,31 +290,19 @@ impl TransferEngine {
         fence: &ExportFence,
         work: F,
     ) -> Result<T> {
-        futures_util::pin_mut!(work);
+        tokio::pin!(work);
         loop {
-            match futures_util::future::select(
-                work.as_mut(),
-                Box::pin(simple_server::time::sleep(Duration::from_secs(5))),
-            )
-            .await
-            {
-                futures_util::future::Either::Left((result, _)) => {
-                    let value = result?;
-                    self.export_fence(fence).await?;
-                    return Ok(value);
-                }
-                futures_util::future::Either::Right(_) => self.export_fence(fence).await?,
-            }
+            tokio::select! {result=&mut work=>{let value=result?;self.export_fence(fence).await?;return Ok(value);},_=tokio::time::sleep(Duration::from_secs(5))=>self.export_fence(fence).await?}
         }
     }
 }
 async fn check_fence(db: &mut PgConnection, fence: &ExportFence, server: i64) -> Result<()> {
-    let row=db::query("SELECT state,principal_id,credential_id,selections,expires_at>clock_timestamp() AS live FROM archive_sets WHERE id=$1 FOR UPDATE").bind(fence.set.as_str()).fetch_one(&mut *db).await?;
+    let row=sqlx::query("SELECT state,principal_id,credential_id,selections,expires_at>clock_timestamp() AS live FROM archive_sets WHERE id=$1 FOR UPDATE").bind(fence.set.as_str()).fetch_one(&mut *db).await?;
     require(
         row.get::<String, _>("state") == "building" && row.get::<bool, _>("live"),
         ErrorCode::ArchiveExpired,
     )?;
-    let changed=db::query("UPDATE archive_exports SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE set_id=$1 AND worker_epoch=$2 AND server_epoch=$3 AND NOT finished AND worker_expires_at>clock_timestamp()").bind(fence.set.as_str()).bind(fence.epoch).bind(server).execute(&mut *db).await?.rows_affected();
+    let changed=sqlx::query("UPDATE archive_exports SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE set_id=$1 AND worker_epoch=$2 AND server_epoch=$3 AND NOT finished AND worker_expires_at>clock_timestamp()").bind(fence.set.as_str()).bind(fence.epoch).bind(server).execute(&mut *db).await?.rows_affected();
     require(changed == 1, ErrorCode::ArchiveBusy)?;
     let actor = Actor {
         principal: row.get("principal_id"),
@@ -343,7 +329,7 @@ impl TransferEngine {
         // A crash after publication may leave the previous staging tree. Remove
         // it before spending the single-disc staging reservation again.
         let mut tx = self.writer.transaction().await?;
-        let leftovers=db::query("SELECT b.disc_id,b.relative_path FROM archive_builds b JOIN archive_discs d ON d.id=b.disc_id JOIN archive_artifacts a ON a.id=b.artifact_id WHERE d.set_id=$1 AND a.state='available' AND b.relative_path<>'' LIMIT 128").bind(set.as_str()).fetch_all(&mut *tx).await?;
+        let leftovers=sqlx::query("SELECT b.disc_id,b.relative_path FROM archive_builds b JOIN archive_discs d ON d.id=b.disc_id JOIN archive_artifacts a ON a.id=b.artifact_id WHERE d.set_id=$1 AND a.state='available' AND b.relative_path<>'' LIMIT 128").bind(set.as_str()).fetch_all(&mut *tx).await?;
         drop(tx);
         for old in leftovers {
             let relative: String = old.get("relative_path");
@@ -351,7 +337,7 @@ impl TransferEngine {
                 .await?;
             let mut tx = self.writer.transaction().await?;
             check_fence(&mut tx, &fence, self.writer.epoch).await?;
-            db::query("UPDATE archive_builds SET relative_path='' WHERE disc_id=$1")
+            sqlx::query("UPDATE archive_builds SET relative_path='' WHERE disc_id=$1")
                 .bind(old.get::<String, _>("disc_id"))
                 .execute(&mut *tx)
                 .await?;
@@ -359,16 +345,16 @@ impl TransferEngine {
         }
 
         let mut tx = self.writer.transaction().await?;
-        let row=db::query("SELECT d.*,a.id AS artifact_id,a.sha256 AS artifact_hash,a.length AS artifact_length,b.relative_path AS work_path FROM archive_discs d LEFT JOIN archive_artifacts a ON a.disc_id=d.id LEFT JOIN archive_builds b ON b.disc_id=d.id WHERE d.set_id=$1 AND (a.id IS NULL OR a.state<>'available') ORDER BY d.number LIMIT 1").bind(set.as_str()).fetch_optional(&mut *tx).await?;
+        let row=sqlx::query("SELECT d.*,a.id AS artifact_id,a.sha256 AS artifact_hash,a.length AS artifact_length,b.relative_path AS work_path FROM archive_discs d LEFT JOIN archive_artifacts a ON a.disc_id=d.id LEFT JOIN archive_builds b ON b.disc_id=d.id WHERE d.set_id=$1 AND (a.id IS NULL OR a.state<>'available') ORDER BY d.number LIMIT 1").bind(set.as_str()).fetch_optional(&mut *tx).await?;
         drop(tx);
         let Some(row) = row else {
             let mut tx = self.writer.transaction().await?;
             check_fence(&mut tx, &fence, self.writer.epoch).await?;
-            db::query("UPDATE archive_sets SET state='ready',published_at=clock_timestamp(),revision=$2 WHERE id=$1").bind(set.as_str()).bind(id()).execute(&mut *tx).await?;
+            sqlx::query("UPDATE archive_sets SET state='ready',published_at=clock_timestamp(),revision=$2 WHERE id=$1").bind(set.as_str()).bind(id()).execute(&mut *tx).await?;
             // The download window begins when the whole set becomes visible,
             // not when its first (potentially slow) disc starts building.
-            db::query("UPDATE archive_artifacts a SET expires_at=s.published_at+make_interval(secs=>limits.cache_ttl_seconds) FROM archive_discs d JOIN archive_sets s ON s.id=d.set_id JOIN archive_collections c ON c.id=s.collection_id JOIN archive_accounts limits ON limits.principal_id=c.owner_id WHERE a.disc_id=d.id AND s.id=$1").bind(set.as_str()).execute(&mut *tx).await?;
-            db::query("UPDATE archive_exports SET worker_expires_at=NULL WHERE set_id=$1")
+            sqlx::query("UPDATE archive_artifacts a SET expires_at=s.published_at+make_interval(secs=>limits.cache_ttl_seconds) FROM archive_discs d JOIN archive_sets s ON s.id=d.set_id JOIN archive_collections c ON c.id=s.collection_id JOIN archive_accounts limits ON limits.principal_id=c.owner_id WHERE a.disc_id=d.id AND s.id=$1").bind(set.as_str()).execute(&mut *tx).await?;
+            sqlx::query("UPDATE archive_exports SET worker_expires_at=NULL WHERE set_id=$1")
                 .bind(set.as_str())
                 .execute(&mut *tx)
                 .await?;
@@ -422,8 +408,8 @@ impl TransferEngine {
         let work = work_path(runtime, &relative)?;
         let mut tx = self.writer.transaction().await?;
         check_fence(&mut tx, &fence, self.writer.epoch).await?;
-        db::query("INSERT INTO archive_artifacts(id,disc_id,state,expires_at) SELECT $1,$2,'building',clock_timestamp()+make_interval(secs=>a.cache_ttl_seconds) FROM archive_discs d JOIN archive_collections c ON c.id=d.collection_id JOIN archive_accounts a ON a.principal_id=c.owner_id WHERE d.id=$2 ON CONFLICT(disc_id) DO NOTHING").bind(&artifact).bind(disc.as_str()).execute(&mut *tx).await?;
-        db::query("INSERT INTO archive_builds(disc_id,artifact_id,attempt,stage,relative_path,server_epoch,worker_epoch) VALUES($1,$2,$3,'staging',$4,$5,$6) ON CONFLICT(disc_id) DO UPDATE SET attempt=$3,stage='staging',relative_path=$4,server_epoch=$5,worker_epoch=$6,updated_at=clock_timestamp()").bind(disc.as_str()).bind(&artifact).bind(&attempt).bind(&relative).bind(self.writer.epoch).bind(fence.epoch).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,expires_at) SELECT $1,$2,'building',clock_timestamp()+make_interval(secs=>a.cache_ttl_seconds) FROM archive_discs d JOIN archive_collections c ON c.id=d.collection_id JOIN archive_accounts a ON a.principal_id=c.owner_id WHERE d.id=$2 ON CONFLICT(disc_id) DO NOTHING").bind(&artifact).bind(disc.as_str()).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO archive_builds(disc_id,artifact_id,attempt,stage,relative_path,server_epoch,worker_epoch) VALUES($1,$2,$3,'staging',$4,$5,$6) ON CONFLICT(disc_id) DO UPDATE SET attempt=$3,stage='staging',relative_path=$4,server_epoch=$5,worker_epoch=$6,updated_at=clock_timestamp()").bind(disc.as_str()).bind(&artifact).bind(&attempt).bind(&relative).bind(self.writer.epoch).bind(fence.epoch).execute(&mut *tx).await?;
         tx.commit().await?;
         archive_iso::private_directory(&work).await?;
         let tree = work.join("tree");
@@ -473,7 +459,7 @@ impl TransferEngine {
         sync_directory(&work).await?;
         let mut tx = self.writer.transaction().await?;
         check_fence(&mut tx, &fence, self.writer.epoch).await?;
-        db::query(
+        sqlx::query(
             "UPDATE archive_artifacts SET sha256=$2,length=$3 WHERE id=$1 AND state='building'",
         )
         .bind(&artifact)
@@ -481,7 +467,7 @@ impl TransferEngine {
         .bind(length as i64)
         .execute(&mut *tx)
         .await?;
-        db::query("UPDATE archive_builds SET stage='verified',updated_at=clock_timestamp() WHERE disc_id=$1").bind(disc.as_str()).execute(&mut *tx).await?;
+        sqlx::query("UPDATE archive_builds SET stage='verified',updated_at=clock_timestamp() WHERE disc_id=$1").bind(disc.as_str()).execute(&mut *tx).await?;
         tx.commit().await?;
         self.publish_image(
             runtime,
@@ -515,11 +501,9 @@ impl TransferEngine {
                     .guarded(fence, self.archive_object_bytes(&object))
                     .await?;
                 let path = tree.join(object.relative_path());
-                simple_server::fs::create_dir_all(
-                    path.parent().ok_or(Error(ErrorCode::InternalError))?,
-                )
-                .await
-                .map_err(io)?;
+                tokio::fs::create_dir_all(path.parent().ok_or(Error(ErrorCode::InternalError))?)
+                    .await
+                    .map_err(io)?;
                 archive_iso::write_file(&path, &bytes).await?;
                 cursor = (
                     object.root_id.as_str().into(),
@@ -536,7 +520,7 @@ impl TransferEngine {
         cursor: &(String, String),
     ) -> Result<Vec<ArchiveObject>> {
         let mut tx = self.writer.transaction().await?;
-        let rows=db::query("SELECT root_id,digest,length FROM archive_placements WHERE set_id=$1 AND disc_id=$2 AND (root_id COLLATE \"C\",digest COLLATE \"C\")>($3 COLLATE \"C\",$4 COLLATE \"C\") ORDER BY root_id COLLATE \"C\",digest COLLATE \"C\" LIMIT 128").bind(set.as_str()).bind(disc.as_str()).bind(&cursor.0).bind(&cursor.1).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT root_id,digest,length FROM archive_placements WHERE set_id=$1 AND disc_id=$2 AND (root_id COLLATE \"C\",digest COLLATE \"C\")>($3 COLLATE \"C\",$4 COLLATE \"C\") ORDER BY root_id COLLATE \"C\",digest COLLATE \"C\" LIMIT 128").bind(set.as_str()).bind(disc.as_str()).bind(&cursor.0).bind(&cursor.1).fetch_all(&mut *tx).await?;
         rows.into_iter()
             .map(|r| {
                 Ok(ArchiveObject {
@@ -550,7 +534,7 @@ impl TransferEngine {
     async fn archive_object_bytes(&self, object: &ArchiveObject) -> Result<Vec<u8>> {
         let mut tx = self.writer.transaction().await?;
         let placement: serde_json::Value =
-            db::query_scalar("SELECT placement FROM roots WHERE id=$1")
+            sqlx::query_scalar("SELECT placement FROM roots WHERE id=$1")
                 .bind(object.root_id.as_str())
                 .fetch_one(&mut *tx)
                 .await?;
@@ -562,15 +546,15 @@ impl TransferEngine {
         };
         let deadline = policy
             .overall_deadline_ms
-            .map(|n| simple_server::time::Instant::now() + Duration::from_millis(n.get()));
+            .map(|n| tokio::time::Instant::now() + Duration::from_millis(n.get()));
         let mut failure = Error(ErrorCode::DestinationUnavailable);
         for candidate in &policy.candidates {
             let result=async {
                 let mut tx=self.writer.transaction().await?;
-                let generation:Option<String>=db::query_scalar("SELECT generation FROM object_copies WHERE root_id=$1 AND digest=$2 AND backend_id=$3 AND state='available'").bind(object.root_id.as_str()).bind(object.digest.as_str()).bind(candidate.backend_id.as_str()).fetch_optional(&mut *tx).await?;drop(tx);
+                let generation:Option<String>=sqlx::query_scalar("SELECT generation FROM object_copies WHERE root_id=$1 AND digest=$2 AND backend_id=$3 AND state='available'").bind(object.root_id.as_str()).bind(object.digest.as_str()).bind(candidate.backend_id.as_str()).fetch_optional(&mut *tx).await?;drop(tx);
                 let key=ObjectKey {root:object.root_id.clone(),digest:object.digest.clone(),generation:generation.ok_or(Error(ErrorCode::DestinationUnavailable))?.parse()?};let store=self.store(candidate.backend_id.as_str())?;
-                let mut initial=Duration::from_millis(candidate.connection_timeout_ms.get()+candidate.initial_response_timeout_ms.get());if let Some(end)=deadline {initial=initial.min(end.saturating_duration_since(simple_server::time::Instant::now()));}
-                let reader=simple_server::time::timeout(initial,store.read_with_policy(&key,candidate)).await.map_err(|_|Error(ErrorCode::DestinationUnavailable))??;
+                let mut initial=Duration::from_millis(candidate.connection_timeout_ms.get()+candidate.initial_response_timeout_ms.get());if let Some(end)=deadline {initial=initial.min(end.saturating_duration_since(tokio::time::Instant::now()));}
+                let reader=tokio::time::timeout(initial,store.read_with_policy(&key,candidate)).await.map_err(|_|Error(ErrorCode::DestinationUnavailable))??;
                 let bytes=crate::download::read_progress(reader,object.length.get(),candidate,deadline).await?;require(bytes.len() as u64==object.length.get() && digest(&bytes)==object.digest.as_str(),ErrorCode::IntegrityFailure)?;Ok(bytes)
             }.await;
             match result {
@@ -627,7 +611,7 @@ impl TransferEngine {
             )?;
         }
         require(
-            simple_server::fs::metadata(tree.join("recovery/sct-recover"))
+            tokio::fs::metadata(tree.join("recovery/sct-recover"))
                 .await
                 .map_err(io)?
                 .permissions()
@@ -688,7 +672,7 @@ impl TransferEngine {
         } = image;
         self.export_fence(fence).await?;
         if candidate != cache {
-            match simple_server::fs::hard_link(candidate, cache).await {
+            match tokio::fs::hard_link(candidate, cache).await {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     let (actual, size) = self
@@ -704,26 +688,26 @@ impl TransferEngine {
         }
         sync_directory(&runtime.directory.join("cache")).await?;
         let mut tx = self.writer.transaction().await?;
-        let owner:String=db::query_scalar("SELECT c.owner_id FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE s.id=$1 FOR UPDATE OF c").bind(fence.set.as_str()).fetch_one(&mut *tx).await?;
-        db::query("SELECT singleton FROM archive_storage WHERE singleton FOR UPDATE")
+        let owner:String=sqlx::query_scalar("SELECT c.owner_id FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE s.id=$1 FOR UPDATE OF c").bind(fence.set.as_str()).fetch_one(&mut *tx).await?;
+        sqlx::query("SELECT singleton FROM archive_storage WHERE singleton FOR UPDATE")
             .fetch_one(&mut *tx)
             .await?;
-        db::query("SELECT principal_id FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
+        sqlx::query("SELECT principal_id FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
             .bind(&owner)
             .fetch_one(&mut *tx)
             .await?;
         check_fence(&mut tx, fence, self.writer.epoch).await?;
-        let changed=db::query("UPDATE archive_artifacts SET state='available',relative_path=$2 WHERE id=$1 AND state='building' AND sha256=$3 AND length=$4").bind(artifact).bind(format!("cache/{artifact}.iso")).bind(hash.as_str()).bind(length as i64).execute(&mut *tx).await?.rows_affected();
+        let changed=sqlx::query("UPDATE archive_artifacts SET state='available',relative_path=$2 WHERE id=$1 AND state='building' AND sha256=$3 AND length=$4").bind(artifact).bind(format!("cache/{artifact}.iso")).bind(hash.as_str()).bind(length as i64).execute(&mut *tx).await?.rows_affected();
         require(changed == 1, ErrorCode::RevisionConflict)?;
-        db::query("UPDATE archive_storage SET reserved_bytes=reserved_bytes-$1,cache_bytes=cache_bytes+$1 WHERE singleton").bind(length as i64).execute(&mut *tx).await?;
-        db::query("UPDATE archive_accounts SET reserved_bytes=reserved_bytes-$2,cache_bytes=cache_bytes+$2 WHERE principal_id=$1").bind(owner).bind(length as i64).execute(&mut *tx).await?;
-        db::query("UPDATE archive_exports SET reserved_bytes=reserved_bytes-$2,worker_expires_at=NULL WHERE set_id=$1").bind(fence.set.as_str()).bind(length as i64).execute(&mut *tx).await?;
-        db::query("UPDATE archive_builds SET stage='available',updated_at=clock_timestamp() WHERE disc_id=$1").bind(disc.as_str()).execute(&mut *tx).await?;
+        sqlx::query("UPDATE archive_storage SET reserved_bytes=reserved_bytes-$1,cache_bytes=cache_bytes+$1 WHERE singleton").bind(length as i64).execute(&mut *tx).await?;
+        sqlx::query("UPDATE archive_accounts SET reserved_bytes=reserved_bytes-$2,cache_bytes=cache_bytes+$2 WHERE principal_id=$1").bind(owner).bind(length as i64).execute(&mut *tx).await?;
+        sqlx::query("UPDATE archive_exports SET reserved_bytes=reserved_bytes-$2,worker_expires_at=NULL WHERE set_id=$1").bind(fence.set.as_str()).bind(length as i64).execute(&mut *tx).await?;
+        sqlx::query("UPDATE archive_builds SET stage='available',updated_at=clock_timestamp() WHERE disc_id=$1").bind(disc.as_str()).execute(&mut *tx).await?;
         tx.commit().await?;
         // Only one full staging/extraction tree is charged at a time.
         let mut tx = self.writer.transaction().await?;
         let relative: String =
-            db::query_scalar("SELECT relative_path FROM archive_builds WHERE disc_id=$1")
+            sqlx::query_scalar("SELECT relative_path FROM archive_builds WHERE disc_id=$1")
                 .bind(disc.as_str())
                 .fetch_one(&mut *tx)
                 .await?;
@@ -731,7 +715,7 @@ impl TransferEngine {
         if !relative.is_empty() {
             remove_work(&work_path(runtime, &relative)?).await?;
             let mut tx = self.writer.transaction().await?;
-            db::query("UPDATE archive_builds SET relative_path='' WHERE disc_id=$1")
+            sqlx::query("UPDATE archive_builds SET relative_path='' WHERE disc_id=$1")
                 .bind(disc.as_str())
                 .execute(&mut *tx)
                 .await?;
@@ -755,7 +739,7 @@ async fn remove_work(path: &Path) -> Result<()> {
     // directories removable without following a symlink outside this attempt.
     let mut stack = vec![path.to_path_buf()];
     while let Some(directory) = stack.pop() {
-        let metadata = match simple_server::fs::symlink_metadata(&directory).await {
+        let metadata = match tokio::fs::symlink_metadata(&directory).await {
             Ok(m) => m,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(io(e)),
@@ -763,27 +747,27 @@ async fn remove_work(path: &Path) -> Result<()> {
         if !metadata.is_dir() || metadata.file_type().is_symlink() {
             continue;
         }
-        simple_server::fs::set_permissions(
+        tokio::fs::set_permissions(
             &directory,
             std::fs::Permissions::from_mode(metadata.permissions().mode() | 0o700),
         )
         .await
         .map_err(io)?;
-        let mut entries = simple_server::fs::read_dir(directory).await.map_err(io)?;
+        let mut entries = tokio::fs::read_dir(directory).await.map_err(io)?;
         while let Some(entry) = entries.next_entry().await.map_err(io)? {
             if entry.file_type().await.map_err(io)?.is_dir() {
                 stack.push(entry.path());
             }
         }
     }
-    match simple_server::fs::remove_dir_all(path).await {
+    match tokio::fs::remove_dir_all(path).await {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(io(e)),
     }
 }
 pub(crate) async fn sync_directory(path: &Path) -> Result<()> {
-    simple_server::fs::File::open(path)
+    tokio::fs::File::open(path)
         .await
         .map_err(io)?
         .sync_all()
@@ -795,7 +779,7 @@ async fn count_regular_files(root: &Path, maximum: u64) -> Result<u64> {
     let mut count = 0;
     let mut directories = 0;
     while let Some(path) = stack.pop() {
-        let mut entries = simple_server::fs::read_dir(path).await.map_err(io)?;
+        let mut entries = tokio::fs::read_dir(path).await.map_err(io)?;
         while let Some(entry) = entries.next_entry().await.map_err(io)? {
             let kind = entry.file_type().await.map_err(io)?;
             if kind.is_dir() {
@@ -822,7 +806,7 @@ impl TransferEngine {
         set: &ArchiveSetId,
     ) -> Result<()> {
         let mut tx = self.writer.transaction().await?;
-        let state: String = db::query_scalar("SELECT state FROM archive_sets WHERE id=$1")
+        let state: String = sqlx::query_scalar("SELECT state FROM archive_sets WHERE id=$1")
             .bind(set.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -832,7 +816,7 @@ impl TransferEngine {
         ) {
             return Ok(());
         }
-        let export=db::query("UPDATE archive_exports SET worker_epoch=worker_epoch+1,worker_expires_at=NULL WHERE set_id=$1 AND NOT finished RETURNING set_id").bind(set.as_str()).fetch_optional(&mut *tx).await?;
+        let export=sqlx::query("UPDATE archive_exports SET worker_epoch=worker_epoch+1,worker_expires_at=NULL WHERE set_id=$1 AND NOT finished RETURNING set_id").bind(set.as_str()).fetch_optional(&mut *tx).await?;
         tx.commit().await?;
         if export.is_none() {
             self.writer.cleanup_archive_capture(set).await?;
@@ -840,7 +824,7 @@ impl TransferEngine {
         }
         let ready = state == "ready";
         let mut tx = self.writer.transaction().await?;
-        let rows=db::query("SELECT b.disc_id,b.relative_path,b.artifact_id,a.state FROM archive_builds b JOIN archive_discs d ON d.id=b.disc_id JOIN archive_artifacts a ON a.id=b.artifact_id WHERE d.set_id=$1 AND (b.relative_path<>'' OR (NOT $2 AND a.state IN ('building','available'))) ORDER BY d.number LIMIT 128").bind(set.as_str()).bind(ready).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT b.disc_id,b.relative_path,b.artifact_id,a.state FROM archive_builds b JOIN archive_discs d ON d.id=b.disc_id JOIN archive_artifacts a ON a.id=b.artifact_id WHERE d.set_id=$1 AND (b.relative_path<>'' OR (NOT $2 AND a.state IN ('building','available'))) ORDER BY d.number LIMIT 128").bind(set.as_str()).bind(ready).fetch_all(&mut *tx).await?;
         drop(tx);
         for row in rows {
             let relative: String = row.get("relative_path");
@@ -853,7 +837,7 @@ impl TransferEngine {
                 ErrorCode::InvalidPath,
             )?;
             if !ready {
-                match simple_server::fs::remove_file(
+                match tokio::fs::remove_file(
                     runtime.directory.join(format!("cache/{artifact}.iso")),
                 )
                 .await
@@ -864,56 +848,60 @@ impl TransferEngine {
                 }
             }
             let mut tx = self.writer.transaction().await?;
-            let owner:String=db::query_scalar("SELECT c.owner_id FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE s.id=$1 FOR UPDATE OF c").bind(set.as_str()).fetch_one(&mut *tx).await?;
-            db::query("SELECT singleton FROM archive_storage WHERE singleton FOR UPDATE")
+            let owner:String=sqlx::query_scalar("SELECT c.owner_id FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE s.id=$1 FOR UPDATE OF c").bind(set.as_str()).fetch_one(&mut *tx).await?;
+            sqlx::query("SELECT singleton FROM archive_storage WHERE singleton FOR UPDATE")
                 .fetch_one(&mut *tx)
                 .await?;
-            db::query("SELECT principal_id FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
-                .bind(&owner)
-                .fetch_one(&mut *tx)
-                .await?;
+            sqlx::query(
+                "SELECT principal_id FROM archive_accounts WHERE principal_id=$1 FOR UPDATE",
+            )
+            .bind(&owner)
+            .fetch_one(&mut *tx)
+            .await?;
             if !ready {
-                let released:Option<i64>=db::query_scalar("UPDATE archive_artifacts SET state='expired',relative_path=NULL WHERE id=$1 AND state='available' RETURNING length").bind(&artifact).fetch_optional(&mut *tx).await?;
+                let released:Option<i64>=sqlx::query_scalar("UPDATE archive_artifacts SET state='expired',relative_path=NULL WHERE id=$1 AND state='available' RETURNING length").bind(&artifact).fetch_optional(&mut *tx).await?;
                 if let Some(bytes) = released {
-                    db::query(
+                    sqlx::query(
                         "UPDATE archive_storage SET cache_bytes=cache_bytes-$1 WHERE singleton",
                     )
                     .bind(bytes)
                     .execute(&mut *tx)
                     .await?;
-                    db::query("UPDATE archive_accounts SET cache_bytes=cache_bytes-$2 WHERE principal_id=$1").bind(&owner).bind(bytes).execute(&mut *tx).await?;
+                    sqlx::query("UPDATE archive_accounts SET cache_bytes=cache_bytes-$2 WHERE principal_id=$1").bind(&owner).bind(bytes).execute(&mut *tx).await?;
                 }
-                db::query("UPDATE archive_artifacts SET state='failed',relative_path=NULL WHERE id=$1 AND state='building'").bind(&artifact).execute(&mut *tx).await?;
+                sqlx::query("UPDATE archive_artifacts SET state='failed',relative_path=NULL WHERE id=$1 AND state='building'").bind(&artifact).execute(&mut *tx).await?;
             }
-            db::query("UPDATE archive_builds SET relative_path='',stage=CASE WHEN $2 THEN stage ELSE 'failed' END WHERE disc_id=$1").bind(row.get::<String,_>("disc_id")).bind(ready).execute(&mut *tx).await?;
+            sqlx::query("UPDATE archive_builds SET relative_path='',stage=CASE WHEN $2 THEN stage ELSE 'failed' END WHERE disc_id=$1").bind(row.get::<String,_>("disc_id")).bind(ready).execute(&mut *tx).await?;
             tx.commit().await?;
         }
         let mut tx = self.writer.transaction().await?;
-        let owner:String=db::query_scalar("SELECT c.owner_id FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE s.id=$1 FOR UPDATE OF c").bind(set.as_str()).fetch_one(&mut *tx).await?;
-        db::query("SELECT singleton FROM archive_storage WHERE singleton FOR UPDATE")
+        let owner:String=sqlx::query_scalar("SELECT c.owner_id FROM archive_sets s JOIN archive_collections c ON c.id=s.collection_id WHERE s.id=$1 FOR UPDATE OF c").bind(set.as_str()).fetch_one(&mut *tx).await?;
+        sqlx::query("SELECT singleton FROM archive_storage WHERE singleton FOR UPDATE")
             .fetch_one(&mut *tx)
             .await?;
-        db::query("SELECT principal_id FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
+        sqlx::query("SELECT principal_id FROM archive_accounts WHERE principal_id=$1 FOR UPDATE")
             .bind(&owner)
             .fetch_one(&mut *tx)
             .await?;
-        let remaining:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_builds b JOIN archive_discs d ON d.id=b.disc_id JOIN archive_artifacts a ON a.id=b.artifact_id WHERE d.set_id=$1 AND (b.relative_path<>'' OR (NOT $2 AND a.state IN ('building','available'))))").bind(set.as_str()).bind(ready).fetch_one(&mut *tx).await?;
+        let remaining:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_builds b JOIN archive_discs d ON d.id=b.disc_id JOIN archive_artifacts a ON a.id=b.artifact_id WHERE d.set_id=$1 AND (b.relative_path<>'' OR (NOT $2 AND a.state IN ('building','available'))))").bind(set.as_str()).bind(ready).fetch_one(&mut *tx).await?;
         if remaining {
             return Ok(());
         }
-        let released:Option<i64>=db::query_scalar("SELECT reserved_bytes FROM archive_exports WHERE set_id=$1 AND NOT finished FOR UPDATE").bind(set.as_str()).fetch_optional(&mut *tx).await?;
+        let released:Option<i64>=sqlx::query_scalar("SELECT reserved_bytes FROM archive_exports WHERE set_id=$1 AND NOT finished FOR UPDATE").bind(set.as_str()).fetch_optional(&mut *tx).await?;
         if let Some(bytes) = released {
-            db::query(
+            sqlx::query(
                 "UPDATE archive_storage SET reserved_bytes=reserved_bytes-$1 WHERE singleton",
             )
             .bind(bytes)
             .execute(&mut *tx)
             .await?;
-            db::query("UPDATE archive_accounts SET reserved_bytes=reserved_bytes-$2 WHERE principal_id=$1").bind(owner).bind(bytes).execute(&mut *tx).await?;
-            db::query("UPDATE archive_exports SET reserved_bytes=0,finished=true WHERE set_id=$1")
-                .bind(set.as_str())
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query("UPDATE archive_accounts SET reserved_bytes=reserved_bytes-$2 WHERE principal_id=$1").bind(owner).bind(bytes).execute(&mut *tx).await?;
+            sqlx::query(
+                "UPDATE archive_exports SET reserved_bytes=0,finished=true WHERE set_id=$1",
+            )
+            .bind(set.as_str())
+            .execute(&mut *tx)
+            .await?;
         }
         tx.commit().await?;
         self.writer.cleanup_archive_capture(set).await?;

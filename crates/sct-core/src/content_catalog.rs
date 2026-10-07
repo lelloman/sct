@@ -5,14 +5,13 @@ use crate::{
     lease::Writer,
     operations::{OperationFence, check_fence},
 };
-use db::PgConnection;
 use sct_protocol::*;
-use simple_server::database::postgres as db;
+use sqlx::{PgConnection, Row};
 use std::collections::BTreeMap;
 
 /// Root-row serialization also orders pin acquisition against retirement.
 pub(crate) async fn lock_content_root(db: &mut PgConnection, root: &str) -> Result<()> {
-    db::query("SELECT id FROM roots WHERE id=$1 FOR UPDATE")
+    sqlx::query("SELECT id FROM roots WHERE id=$1 FOR UPDATE")
         .bind(root)
         .fetch_optional(db)
         .await?
@@ -29,19 +28,19 @@ impl Writer {
         lock_content_root(&mut tx, &fence.root).await?;
         check_fence(&mut tx, fence, self.epoch).await?;
         for (pool, bytes) in demand {
-            let belongs:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM root_backends r JOIN backends b ON b.id=r.backend_id WHERE r.root_id=$1 AND b.pool_id=$2)").bind(&fence.root).bind(pool.as_str()).fetch_one(&mut *tx).await?;
+            let belongs:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM root_backends r JOIN backends b ON b.id=r.backend_id WHERE r.root_id=$1 AND b.pool_id=$2)").bind(&fence.root).bind(pool.as_str()).fetch_one(&mut *tx).await?;
             require(belongs, ErrorCode::InvalidRequest)?;
-            db::query("SELECT id FROM pools WHERE id=$1 FOR UPDATE")
+            sqlx::query("SELECT id FROM pools WHERE id=$1 FOR UPDATE")
                 .bind(pool.as_str())
                 .fetch_one(&mut *tx)
                 .await?;
-            let allocation: String = db::query_scalar(
+            let allocation: String = sqlx::query_scalar(
                 "SELECT id FROM allocations WHERE pool_id=$1 AND root_id IS NULL FOR UPDATE",
             )
             .bind(pool.as_str())
             .fetch_one(&mut *tx)
             .await?;
-            let previous: Option<i64> = db::query_scalar(
+            let previous: Option<i64> = sqlx::query_scalar(
                 "SELECT bytes FROM reservations WHERE allocation_id=$1 AND operation_id=$2",
             )
             .bind(&allocation)
@@ -55,9 +54,9 @@ impl Writer {
                 )?;
                 continue;
             }
-            let n=db::query("UPDATE allocations SET reserved=reserved+$2 WHERE id=$1 AND capacity-reserved-occupied >= $2").bind(&allocation).bind(bytes.get() as i64).execute(&mut *tx).await?.rows_affected();
+            let n=sqlx::query("UPDATE allocations SET reserved=reserved+$2 WHERE id=$1 AND capacity-reserved-occupied >= $2").bind(&allocation).bind(bytes.get() as i64).execute(&mut *tx).await?.rows_affected();
             require(n == 1, ErrorCode::StagingExhausted)?;
-            db::query(
+            sqlx::query(
                 "INSERT INTO reservations(id,allocation_id,operation_id,bytes) VALUES($1,$2,$3,$4)",
             )
             .bind(id())
@@ -80,7 +79,7 @@ impl Writer {
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
-        let exists: bool = db::query_scalar(
+        let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM file_versions WHERE id=$1 AND root_id=$2 AND NOT retired AND NOT entry_purged(entry_id))",
         )
         .bind(version.as_str())
@@ -89,7 +88,7 @@ impl Writer {
         .await?;
         require(exists, ErrorCode::NotFound)?;
         let pin = id();
-        db::query("INSERT INTO read_pins(id,root_id,version_id,principal_id,expires_at) VALUES($1,$2,$3,$4,clock_timestamp()+interval '30 seconds')").bind(&pin).bind(root.as_str()).bind(version.as_str()).bind(&actor.principal).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO read_pins(id,root_id,version_id,principal_id,expires_at) VALUES($1,$2,$3,$4,clock_timestamp()+interval '30 seconds')").bind(&pin).bind(root.as_str()).bind(version.as_str()).bind(&actor.principal).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(pin)
     }
@@ -98,14 +97,14 @@ impl Writer {
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::ListRead).await?;
-        let n=db::query("UPDATE read_pins SET expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1 AND root_id=$2 AND principal_id=$3 AND expires_at>clock_timestamp()").bind(pin).bind(root.as_str()).bind(&actor.principal).execute(&mut *tx).await?.rows_affected();
+        let n=sqlx::query("UPDATE read_pins SET expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1 AND root_id=$2 AND principal_id=$3 AND expires_at>clock_timestamp()").bind(pin).bind(root.as_str()).bind(&actor.principal).execute(&mut *tx).await?.rows_affected();
         require(n == 1, ErrorCode::NotFound)?;
         tx.commit().await?;
         Ok(())
     }
     pub async fn release_read_pin(&self, actor: &Actor, pin: &str) -> Result<()> {
         let mut tx = self.transaction().await?;
-        db::query("DELETE FROM read_pins WHERE id=$1 AND principal_id=$2")
+        sqlx::query("DELETE FROM read_pins WHERE id=$1 AND principal_id=$2")
             .bind(pin)
             .bind(&actor.principal)
             .execute(&mut *tx)
@@ -120,7 +119,7 @@ pub(crate) async fn children(
     root: &str,
     parent: &str,
 ) -> Result<Vec<(String, u64, u64)>> {
-    let rows=db::query("SELECT child,logical_length,chunk_count FROM content_edges WHERE root_id=$1 AND parent=$2 ORDER BY ordinal LIMIT 1024").bind(root).bind(parent).fetch_all(db).await?;
+    let rows=sqlx::query("SELECT child,logical_length,chunk_count FROM content_edges WHERE root_id=$1 AND parent=$2 ORDER BY ordinal LIMIT 1024").bind(root).bind(parent).fetch_all(db).await?;
     Ok(rows
         .iter()
         .map(|r| {
@@ -142,8 +141,8 @@ pub(crate) async fn object(
     height: Option<u32>,
     body: Option<&[u8]>,
 ) -> Result<()> {
-    db::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(root_id,digest) DO NOTHING").bind(root).bind(digest).bind(kind).bind(length as i64).bind(height.map(|v|v as i32)).bind(body).execute(&mut *db).await?;
-    let r=db::query("SELECT kind,length,height,body FROM content_objects WHERE root_id=$1 AND digest=$2 FOR UPDATE").bind(root).bind(digest).fetch_one(&mut *db).await?;
+    sqlx::query("INSERT INTO content_objects(root_id,digest,kind,length,height,body) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(root_id,digest) DO NOTHING").bind(root).bind(digest).bind(kind).bind(length as i64).bind(height.map(|v|v as i32)).bind(body).execute(&mut *db).await?;
+    let r=sqlx::query("SELECT kind,length,height,body FROM content_objects WHERE root_id=$1 AND digest=$2 FOR UPDATE").bind(root).bind(digest).fetch_one(&mut *db).await?;
     require(
         r.get::<String, _>("kind") == kind
             && r.get::<i64, _>("length") == length as i64
@@ -154,7 +153,7 @@ pub(crate) async fn object(
         match r.get::<Option<Vec<u8>>, _>("body") {
             Some(old) => require(old == body, ErrorCode::InvalidManifest)?,
             None => {
-                db::query("UPDATE content_objects SET body=$3 WHERE root_id=$1 AND digest=$2")
+                sqlx::query("UPDATE content_objects SET body=$3 WHERE root_id=$1 AND digest=$2")
                     .bind(root)
                     .bind(digest)
                     .bind(body)
@@ -174,7 +173,7 @@ pub(crate) async fn edge(
     length: u64,
     count: u64,
 ) -> Result<()> {
-    db::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING").bind(root).bind(parent).bind(ordinal as i32).bind(child).bind(length as i64).bind(count as i64).execute(db).await?;
+    sqlx::query("INSERT INTO content_edges(root_id,parent,ordinal,child,logical_length,chunk_count) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING").bind(root).bind(parent).bind(ordinal as i32).bind(child).bind(length as i64).bind(count as i64).execute(db).await?;
     Ok(())
 }
 impl Writer {
@@ -199,7 +198,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         lock_content_root(&mut tx, &fence.root).await?;
         check_fence(&mut tx, fence, self.epoch).await?;
-        let frozen:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1 AND admission<>'planning') OR EXISTS(SELECT 1 FROM tree_drafts WHERE operation_id=$1 AND (phase<>'editing' OR state<>'open'))").bind(&fence.id).fetch_one(&mut *tx).await?;
+        let frozen:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM transfer_sessions WHERE operation_id=$1 AND admission<>'planning') OR EXISTS(SELECT 1 FROM tree_drafts WHERE operation_id=$1 AND (phase<>'editing' OR state<>'open'))").bind(&fence.id).fetch_one(&mut *tx).await?;
         require(!frozen, ErrorCode::InvalidRequest)?;
         object(
             &mut tx,

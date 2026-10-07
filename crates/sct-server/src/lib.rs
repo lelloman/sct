@@ -2,35 +2,36 @@
 
 use std::path::PathBuf;
 
-use crate::web::{
+use sct_core::catalog::Catalog;
+use sct_protocol::{ErrorCode, ErrorResponse};
+use simple_server::web::static_files::StaticDir;
+use simple_server::web::{
     Json, Router,
     extract::State,
     http::StatusCode,
     response::IntoResponse,
     routing::{any, get},
 };
-use sct_core::catalog::Catalog;
-use sct_protocol::{ErrorCode, ErrorResponse};
 
 pub fn router(catalog: Option<Catalog>, web_directory: PathBuf) -> Router {
     Router::new()
         .route(
             "/health/live",
-            crate::web::routing::get_service(simple_server::health::Probe::liveness().endpoint(
-                |result| {
+            simple_server::web::routing::get_service(
+                simple_server::health::Probe::liveness().endpoint(|result| {
                     result.expect("infallible liveness");
-                    crate::web::http::Response::builder()
+                    simple_server::web::http::Response::builder()
                         .header("content-type", "text/plain; charset=utf-8")
-                        .body(crate::web::body::Body::from("ok\n"))
+                        .body(simple_server::web::body::Body::from("ok\n"))
                         .expect("static liveness response")
-                },
-            )),
+                }),
+            ),
         )
         .route("/health/database", get(database_health))
         // Reserve API paths so missing API operations never return web HTML.
         .route("/api", any(api_not_implemented))
         .route("/api/{*path}", any(api_not_implemented))
-        .fallback_static_dir(web_directory)
+        .fallback_service(StaticDir::new(web_directory))
         .with_state(catalog)
 }
 
@@ -54,7 +55,7 @@ async fn database_health(State(catalog): State<Option<Catalog>>) -> StatusCode {
             simple_server::health::Check::new("database", move || {
                 let catalog = catalog.clone();
                 async move {
-                    simple_server::time::timeout(std::time::Duration::from_secs(2), catalog.ping())
+                    tokio::time::timeout(std::time::Duration::from_secs(2), catalog.ping())
                         .await
                         .ok()
                         .and_then(Result::ok)
@@ -82,8 +83,9 @@ pub mod oidc;
 pub fn application(app: api::App, web_directory: PathBuf) -> Router {
     let router =
         router(Some(app.writer.catalog().clone()), web_directory).merge(api::routes(app.clone()));
-    observability::install(router, app)
-        .layer(crate::web::middleware::from_fn(correlation::middleware))
+    observability::install(router, app).layer(simple_server::web::middleware::from_fn(
+        correlation::middleware,
+    ))
 }
 pub fn capabilities() -> sct_protocol::Capabilities {
     use sct_protocol::*;
@@ -125,5 +127,3 @@ mod maintenance_api;
 mod observability;
 
 mod correlation;
-
-pub mod web;

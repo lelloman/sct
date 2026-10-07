@@ -1,5 +1,4 @@
 use super::*;
-use simple_server::database::postgres as db;
 
 async fn regular(
     w: &Writer,
@@ -22,7 +21,7 @@ fn page(limit: u64) -> ListRequest {
     }
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn delegated_management_enforces_ceiling_revisions_and_content_separation() {
     let (w, admin, db) = setup().await;
@@ -120,7 +119,7 @@ async fn delegated_management_enforces_ceiling_revisions_and_content_separation(
     );
     assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
     assert_eq!(
-        db::query_scalar::<_, i64>(
+        sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM management_audit WHERE event='root.settings_updated'"
         )
         .fetch_one(&db)
@@ -144,7 +143,7 @@ async fn delegated_management_enforces_ceiling_revisions_and_content_separation(
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn accounts_scope_cursors_hide_secrets_and_recheck_revocation() {
     let (w, admin, db) = setup().await;
@@ -233,11 +232,12 @@ async fn accounts_scope_cursors_hide_secrets_and_recheck_revocation() {
         .0,
         ErrorCode::InvalidRequest
     );
-    let audit: String =
-        db::query_scalar("SELECT coalesce(string_agg(details::text,','),'') FROM management_audit")
-            .fetch_one(&db)
-            .await
-            .unwrap();
+    let audit: String = sqlx::query_scalar(
+        "SELECT coalesce(string_agg(details::text,','),'') FROM management_audit",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
     assert!(!audit.contains(&credential.secret));
     assert!(!audit.contains(&second.secret));
 }

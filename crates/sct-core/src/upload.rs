@@ -7,9 +7,8 @@ use crate::{
     roots::{json, lock_root, revision},
     transfer_io::TransferEngine,
 };
-use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use simple_server::database::postgres as db;
+use sqlx::{PgConnection, Row, postgres::PgRow};
 
 pub(crate) struct Session {
     pub id: String,
@@ -34,7 +33,7 @@ impl Session {
             UploadRequest::File(request) => check_target(db, &self.root, request).await,
             UploadRequest::Tree(request) => {
                 let deletion: bool =
-                    db::query_scalar("SELECT requires_delete FROM tree_drafts WHERE id=$1")
+                    sqlx::query_scalar("SELECT requires_delete FROM tree_drafts WHERE id=$1")
                         .bind(&self.id)
                         .fetch_one(&mut *db)
                         .await?;
@@ -72,7 +71,7 @@ pub(crate) async fn check_target(
             expected_revision,
         } => (entry_id.as_str(), expected_revision, "file"),
     };
-    let row = db::query("SELECT * FROM entries WHERE root_id=$1 AND id=$2 AND NOT hidden")
+    let row = sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND id=$2 AND NOT hidden")
         .bind(root)
         .bind(entry)
         .fetch_optional(&mut *db)
@@ -88,12 +87,12 @@ pub(crate) async fn check_target(
         ErrorCode::NotFound,
     )?;
     if let FileTarget::Create { name, .. } = &request.target {
-        let length:i64=db::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,name FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.name FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(sum(char_length(name)+1) FILTER(WHERE parent_id IS NOT NULL),0)::bigint FROM a").bind(entry).fetch_one(&mut *db).await?;
+        let length:i64=sqlx::query_scalar("WITH RECURSIVE a AS (SELECT id,parent_id,name FROM entries WHERE id=$1 UNION ALL SELECT e.id,e.parent_id,e.name FROM entries e JOIN a ON e.id=a.parent_id) SELECT COALESCE(sum(char_length(name)+1) FILTER(WHERE parent_id IS NOT NULL),0)::bigint FROM a").bind(entry).fetch_one(&mut *db).await?;
         require(
             length + (name.as_str().chars().count() as i64) < 4096,
             ErrorCode::InvalidPath,
         )?;
-        let exists:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM entries WHERE root_id=$1 AND parent_id=$2 AND name=$3 AND NOT hidden)").bind(root).bind(entry).bind(name.as_str()).fetch_one(&mut *db).await?;
+        let exists:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM entries WHERE root_id=$1 AND parent_id=$2 AND name=$3 AND NOT hidden)").bind(root).bind(entry).bind(name.as_str()).fetch_one(&mut *db).await?;
         require(!exists, ErrorCode::RevisionConflict)?;
     }
     let policy = effective(db, root, Some(entry)).await?;
@@ -122,12 +121,12 @@ impl TransferEngine {
         // Serialize exact retries before checking the durable root owner.
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
-        if let Some(row)=db::query("SELECT id,request FROM transfer_sessions WHERE root_id=$1 AND principal_id=$2 AND key=$3").bind(root.as_str()).bind(&actor.principal).bind(request.idempotency_key.as_str()).fetch_optional(&mut *tx).await? {
+        if let Some(row)=sqlx::query("SELECT id,request FROM transfer_sessions WHERE root_id=$1 AND principal_id=$2 AND key=$3").bind(root.as_str()).bind(&actor.principal).bind(request.idempotency_key.as_str()).fetch_optional(&mut *tx).await? {
             require(row.get::<serde_json::Value,_>("request")==json(request)?,ErrorCode::IdempotencyConflict)?;
             let upload:UploadId=row.get::<String,_>("id").parse()?;tx.commit().await?;return self.upload_status(actor,root,&upload).await;
         }
         lock_root(&mut tx, root.as_str()).await?;
-        let enabled: bool = db::query_scalar("SELECT state='enabled' FROM roots WHERE id=$1")
+        let enabled: bool = sqlx::query_scalar("SELECT state='enabled' FROM roots WHERE id=$1")
             .bind(root.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -135,7 +134,7 @@ impl TransferEngine {
         check_target(&mut tx, root.as_str(), request).await?;
         let operation = id();
         let upload = id();
-        db::query("INSERT INTO operations(id,root_id,principal_id,kind,state,phase,server_epoch,worker_expires_at) VALUES($1,$2,$3,'upload','active','planning',$4,clock_timestamp()+interval '30 seconds')").bind(&operation).bind(root.as_str()).bind(&actor.principal).bind(self.writer.epoch).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO operations(id,root_id,principal_id,kind,state,phase,server_epoch,worker_expires_at) VALUES($1,$2,$3,'upload','active','planning',$4,clock_timestamp()+interval '30 seconds')").bind(&operation).bind(root.as_str()).bind(&actor.principal).bind(self.writer.epoch).execute(&mut *tx).await?;
         object(
             &mut tx,
             root.as_str(),
@@ -168,8 +167,8 @@ impl TransferEngine {
             )
             .await?;
         }
-        db::query("INSERT INTO transfer_sessions(id,root_id,operation_id,principal_id,key,request,manifest,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+make_interval(secs=>$8))").bind(&upload).bind(root.as_str()).bind(operation).bind(&actor.principal).bind(request.idempotency_key.as_str()).bind(json(request)?).bind(&manifest).bind(self.expiry_seconds as f64).execute(&mut *tx).await?;
-        db::query("INSERT INTO session_objects(root_id,session_id,digest) VALUES($1,$2,$3)")
+        sqlx::query("INSERT INTO transfer_sessions(id,root_id,operation_id,principal_id,key,request,manifest,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+make_interval(secs=>$8))").bind(&upload).bind(root.as_str()).bind(operation).bind(&actor.principal).bind(request.idempotency_key.as_str()).bind(json(request)?).bind(&manifest).bind(self.expiry_seconds as f64).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO session_objects(root_id,session_id,digest) VALUES($1,$2,$3)")
             .bind(root.as_str())
             .bind(&upload)
             .bind(manifest)
@@ -188,10 +187,10 @@ impl TransferEngine {
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
-        let row=db::query("SELECT s.*,EXISTS(SELECT 1 FROM tree_drafts d WHERE d.id=s.id) is_tree,o.epoch,o.server_epoch,o.phase,o.state operation_state,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) worker_expired FROM transfer_sessions s JOIN operations o ON o.id=s.operation_id WHERE s.id=$1 AND s.root_id=$2 AND s.principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
-        db::query("UPDATE transfer_sessions SET state='expired' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp()").bind(upload.as_str()).execute(&mut *tx).await?;
-        db::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()").bind(upload.as_str()).bind(self.expiry_seconds as f64).execute(&mut *tx).await?;
-        let state: String = db::query_scalar("SELECT state FROM transfer_sessions WHERE id=$1")
+        let row=sqlx::query("SELECT s.*,EXISTS(SELECT 1 FROM tree_drafts d WHERE d.id=s.id) is_tree,o.epoch,o.server_epoch,o.phase,o.state operation_state,(o.worker_expires_at IS NULL OR o.worker_expires_at<=clock_timestamp()) worker_expired FROM transfer_sessions s JOIN operations o ON o.id=s.operation_id WHERE s.id=$1 AND s.root_id=$2 AND s.principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+        sqlx::query("UPDATE transfer_sessions SET state='expired' WHERE id=$1 AND state IN ('open','ready') AND expires_at<=clock_timestamp()").bind(upload.as_str()).execute(&mut *tx).await?;
+        sqlx::query("UPDATE transfer_sessions SET expires_at=clock_timestamp()+make_interval(secs=>$2) WHERE id=$1 AND state IN ('open','ready') AND expires_at>clock_timestamp()").bind(upload.as_str()).bind(self.expiry_seconds as f64).execute(&mut *tx).await?;
+        let state: String = sqlx::query_scalar("SELECT state FROM transfer_sessions WHERE id=$1")
             .bind(upload.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -233,9 +232,9 @@ impl TransferEngine {
         self.session(actor, root, upload).await?;
         let mut tx = self.writer.transaction().await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
-        let row=db::query("SELECT *,floor(extract(epoch FROM expires_at)*1000)::bigint expires_ms FROM transfer_sessions WHERE id=$1 AND root_id=$2 AND principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_one(&mut *tx).await?;
+        let row=sqlx::query("SELECT *,floor(extract(epoch FROM expires_at)*1000)::bigint expires_ms FROM transfer_sessions WHERE id=$1 AND root_id=$2 AND principal_id=$3").bind(upload.as_str()).bind(root.as_str()).bind(&actor.principal).fetch_one(&mut *tx).await?;
         let mut result = status(&row)?;
-        let copies=db::query("SELECT rb.backend_id,COALESCE(sum(c.bytes) FILTER(WHERE c.state='available'),0)::bigint acknowledged,COALESCE(bool_and(COALESCE(c.state='available',false)),false) complete FROM root_backends rb LEFT JOIN session_objects p ON p.root_id=rb.root_id AND p.session_id=$2 LEFT JOIN object_copies c ON c.root_id=p.root_id AND c.digest=p.digest AND c.backend_id=rb.backend_id AND c.state IN ('available','writing') WHERE rb.root_id=$1 GROUP BY rb.backend_id ORDER BY rb.backend_id").bind(root.as_str()).bind(upload.as_str()).fetch_all(&mut *tx).await?;
+        let copies=sqlx::query("SELECT rb.backend_id,COALESCE(sum(c.bytes) FILTER(WHERE c.state='available'),0)::bigint acknowledged,COALESCE(bool_and(COALESCE(c.state='available',false)),false) complete FROM root_backends rb LEFT JOIN session_objects p ON p.root_id=rb.root_id AND p.session_id=$2 LEFT JOIN object_copies c ON c.root_id=p.root_id AND c.digest=p.digest AND c.backend_id=rb.backend_id AND c.state IN ('available','writing') WHERE rb.root_id=$1 GROUP BY rb.backend_id ORDER BY rb.backend_id").bind(root.as_str()).bind(upload.as_str()).fetch_all(&mut *tx).await?;
         result.upload.copies = copies
             .iter()
             .map(|r| {
@@ -284,8 +283,8 @@ impl TransferEngine {
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
         lock_content_root(&mut tx, root.as_str()).await?;
         authorize(&mut tx, actor, root.as_str(), Capability::Write).await?;
-        db::query("UPDATE transfer_sessions SET state='aborted' WHERE id=$1 AND state IN ('open','ready')").bind(upload.as_str()).execute(&mut *tx).await?;
-        let active: bool = db::query_scalar("SELECT state='active' FROM operations WHERE id=$1")
+        sqlx::query("UPDATE transfer_sessions SET state='aborted' WHERE id=$1 AND state IN ('open','ready')").bind(upload.as_str()).execute(&mut *tx).await?;
+        let active: bool = sqlx::query_scalar("SELECT state='active' FROM operations WHERE id=$1")
             .bind(s.fence.id().as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -300,7 +299,7 @@ impl TransferEngine {
         let mut tx = self.writer.transaction().await?;
         lock_content_root(&mut tx, &s.root).await?;
         check_fence(&mut tx, &s.fence, self.writer.epoch).await?;
-        let rows=db::query("SELECT o.* FROM session_objects p JOIN content_objects o USING(root_id,digest) WHERE p.session_id=$1 AND p.root_id=$2 AND NOT p.expanded ORDER BY p.digest LIMIT 64").bind(&s.id).bind(&s.root).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT o.* FROM session_objects p JOIN content_objects o USING(root_id,digest) WHERE p.session_id=$1 AND p.root_id=$2 AND NOT p.expanded ORDER BY p.digest LIMIT 64").bind(&s.id).bind(&s.root).fetch_all(&mut *tx).await?;
         for row in rows {
             let hash: String = row.get("digest");
             let kind: String = row.get("kind");
@@ -310,12 +309,12 @@ impl TransferEngine {
                     ErrorCode::InvalidManifest,
                 )?;
             }
-            let valid:bool=db::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM content_edges e JOIN content_objects c ON c.root_id=e.root_id AND c.digest=e.child WHERE e.root_id=$1 AND e.parent=$2 AND (e.logical_length<>c.length OR e.chunk_count<>CASE WHEN c.kind='chunk' THEN 1 ELSE (SELECT COALESCE(sum(x.chunk_count),0) FROM content_edges x WHERE x.root_id=c.root_id AND x.parent=c.digest) END))").bind(&s.root).bind(&hash).fetch_one(&mut *tx).await?;
+            let valid:bool=sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM content_edges e JOIN content_objects c ON c.root_id=e.root_id AND c.digest=e.child WHERE e.root_id=$1 AND e.parent=$2 AND (e.logical_length<>c.length OR e.chunk_count<>CASE WHEN c.kind='chunk' THEN 1 ELSE (SELECT COALESCE(sum(x.chunk_count),0) FROM content_edges x WHERE x.root_id=c.root_id AND x.parent=c.digest) END))").bind(&s.root).bind(&hash).fetch_one(&mut *tx).await?;
             require(valid, ErrorCode::InvalidManifest)?;
-            db::query("INSERT INTO session_objects(root_id,session_id,digest) SELECT root_id,$1,child FROM content_edges WHERE root_id=$2 AND parent=$3 ON CONFLICT DO NOTHING").bind(&s.id).bind(&s.root).bind(&hash).execute(&mut *tx).await?;
-            db::query("UPDATE session_objects SET expanded=true WHERE root_id=$1 AND session_id=$2 AND digest=$3").bind(&s.root).bind(&s.id).bind(hash).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO session_objects(root_id,session_id,digest) SELECT root_id,$1,child FROM content_edges WHERE root_id=$2 AND parent=$3 ON CONFLICT DO NOTHING").bind(&s.id).bind(&s.root).bind(&hash).execute(&mut *tx).await?;
+            sqlx::query("UPDATE session_objects SET expanded=true WHERE root_id=$1 AND session_id=$2 AND digest=$3").bind(&s.root).bind(&s.id).bind(hash).execute(&mut *tx).await?;
         }
-        let complete:bool=db::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM session_objects WHERE root_id=$1 AND session_id=$2 AND NOT expanded)").bind(&s.root).bind(&s.id).fetch_one(&mut *tx).await?;
+        let complete:bool=sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM session_objects WHERE root_id=$1 AND session_id=$2 AND NOT expanded)").bind(&s.root).bind(&s.id).fetch_one(&mut *tx).await?;
         tx.commit().await?;
         Ok(complete)
     }

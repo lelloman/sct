@@ -1,6 +1,5 @@
-use db::{PgPool, PgPoolOptions};
 use sct_core::catalog::Catalog;
-use simple_server::database::postgres as db;
+use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub async fn database() -> (Catalog, PgPool) {
     database_through(None).await
@@ -10,7 +9,7 @@ pub async fn database_through(version: Option<i64>) -> (Catalog, PgPool) {
     let url = std::env::var("SCT_TEST_DATABASE_URL").expect("dedicated test database required");
     let admin = PgPool::connect(&url).await.unwrap();
     let schema = format!("test_{}", uuid::Uuid::new_v4().simple());
-    db::query(&format!("CREATE SCHEMA {schema}"))
+    sqlx::query(&format!("CREATE SCHEMA {schema}"))
         .execute(&admin)
         .await
         .unwrap();
@@ -24,7 +23,7 @@ pub async fn database_through(version: Option<i64>) -> (Catalog, PgPool) {
         .await
         .unwrap();
     if let Some(version) = version {
-        let mut migrator = db::migrate::Migrator::new(std::path::Path::new(concat!(
+        let mut migrator = sqlx::migrate::Migrator::new(std::path::Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/migrations"
         )))

@@ -5,9 +5,8 @@ use crate::{
     lease::Writer,
     roots::{json, remember, replay},
 };
-use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use simple_server::database::postgres as db;
+use sqlx::{PgConnection, Row, postgres::PgRow};
 
 pub(crate) const COLLECTION_SELECT: &str = "SELECT c.*, (extract(epoch FROM c.created_at)*1000)::bigint AS created_ms, (SELECT s.id FROM archive_sets s WHERE s.collection_id=c.id AND s.verified_complete_at IS NOT NULL ORDER BY sequence DESC LIMIT 1) AS last_complete FROM archive_collections c";
 pub(crate) fn collection_row(row: &PgRow) -> Result<ArchiveCollection> {
@@ -33,7 +32,7 @@ pub(crate) async fn collection_access(
     lock: bool,
 ) -> Result<ArchiveCollection> {
     let admin = auth::administrator(db, actor).await?;
-    let row = db::query(&format!(
+    let row = sqlx::query(&format!(
         "{COLLECTION_SELECT} WHERE c.id=$1{}",
         if lock { " FOR UPDATE OF c" } else { "" }
     ))
@@ -85,7 +84,7 @@ pub(crate) async fn load_set(
     set: &ArchiveSetId,
 ) -> Result<ArchiveSet> {
     set_row(
-        &db::query(&format!("{SET_SELECT} WHERE collection_id=$1 AND id=$2"))
+        &sqlx::query(&format!("{SET_SELECT} WHERE collection_id=$1 AND id=$2"))
             .bind(collection.as_str())
             .bind(set.as_str())
             .fetch_optional(db)
@@ -111,12 +110,12 @@ impl Writer {
         {
             return Ok(result);
         }
-        db::query("INSERT INTO archive_accounts(principal_id) VALUES($1) ON CONFLICT DO NOTHING")
+        sqlx::query("INSERT INTO archive_accounts(principal_id) VALUES($1) ON CONFLICT DO NOTHING")
             .bind(actor.principal_id())
             .execute(&mut *tx)
             .await?;
         let identity: ArchiveCollectionId = id().parse()?;
-        db::query("INSERT INTO archive_collections(id,owner_id,label,revision,media_capacity) VALUES($1,$2,$3,$4,$5)")
+        sqlx::query("INSERT INTO archive_collections(id,owner_id,label,revision,media_capacity) VALUES($1,$2,$3,$4,$5)")
             .bind(identity.as_str()).bind(actor.principal_id()).bind(request.label.as_str()).bind(id()).bind(request.media_capacity_bytes.get() as i64).execute(&mut *tx).await?;
         let result = collection_access(&mut tx, actor, &identity, false).await?;
         remember(
@@ -163,15 +162,15 @@ impl Writer {
             current.revision == request.expected_revision,
             ErrorCode::RevisionConflict,
         )?;
-        let busy:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_sets WHERE collection_id=$1 AND state IN ('capturing','planning','awaiting_confirmation','building'))").bind(collection.as_str()).fetch_one(&mut *tx).await?;
+        let busy:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_sets WHERE collection_id=$1 AND state IN ('capturing','planning','awaiting_confirmation','building'))").bind(collection.as_str()).fetch_one(&mut *tx).await?;
         require(!busy, ErrorCode::ArchiveBusy)?;
-        let sequence:Option<i64>=db::query_scalar("UPDATE archive_collections SET next_set=next_set+1,revision=$2 WHERE id=$1 AND next_set<=1000000 RETURNING next_set-1")
+        let sequence:Option<i64>=sqlx::query_scalar("UPDATE archive_collections SET next_set=next_set+1,revision=$2 WHERE id=$1 AND next_set<=1000000 RETURNING next_set-1")
             .bind(collection.as_str()).bind(id()).fetch_optional(&mut *tx).await?;
         let sequence = sequence.ok_or(Error(ErrorCode::DestinationCapacity))?;
         let identity: ArchiveSetId = id().parse()?;
-        db::query("INSERT INTO archive_sets(id,collection_id,sequence,revision,state,principal_id,credential_id,selections,media_capacity) VALUES($1,$2,$3,$4,'capturing',$5,$6,$7,$8)")
+        sqlx::query("INSERT INTO archive_sets(id,collection_id,sequence,revision,state,principal_id,credential_id,selections,media_capacity) VALUES($1,$2,$3,$4,'capturing',$5,$6,$7,$8)")
             .bind(identity.as_str()).bind(collection.as_str()).bind(sequence).bind(id()).bind(actor.principal_id()).bind(&actor.credential).bind(json(&request.selections)?).bind(request.media_capacity_bytes.get() as i64).execute(&mut *tx).await?;
-        db::query("INSERT INTO archive_sources(set_id,ordinal,root_id,version_id,path) SELECT $1,(ordinality-1)::integer,value->>'root_id',value->>'version_id',value->>'path' FROM jsonb_array_elements($2) WITH ORDINALITY")
+        sqlx::query("INSERT INTO archive_sources(set_id,ordinal,root_id,version_id,path) SELECT $1,(ordinality-1)::integer,value->>'root_id',value->>'version_id',value->>'path' FROM jsonb_array_elements($2) WITH ORDINALITY")
             .bind(identity.as_str()).bind(json(&request.selections)?).execute(&mut *tx).await?;
         crate::archive_capture::pin_capture(
             &mut tx,
@@ -180,7 +179,7 @@ impl Writer {
             &request.selections,
         )
         .await?;
-        db::query("INSERT INTO archive_jobs(set_id) VALUES($1)")
+        sqlx::query("INSERT INTO archive_jobs(set_id) VALUES($1)")
             .bind(identity.as_str())
             .execute(&mut *tx)
             .await?;
@@ -211,7 +210,7 @@ pub async fn reserve_disc_numbers(
         (1..=ARCHIVE_MAX_DISCS).contains(&count),
         ErrorCode::InvalidRequest,
     )?;
-    let row = db::query(
+    let row = sqlx::query(
         "SELECT next_disc,reconciliation_required FROM archive_collections WHERE id=$1 FOR UPDATE",
     )
     .bind(collection.as_str())
@@ -222,7 +221,7 @@ pub async fn reserve_disc_numbers(
         !row.get::<bool, _>("reconciliation_required"),
         ErrorCode::ArchiveReconciliationRequired,
     )?;
-    let plan=db::query("SELECT first_disc,last_disc,state,frozen_at IS NOT NULL AS frozen FROM archive_sets WHERE id=$1 AND collection_id=$2 FOR UPDATE").bind(set.as_str()).bind(collection.as_str()).fetch_optional(&mut *db).await?.ok_or(Error(ErrorCode::NotFound))?;
+    let plan=sqlx::query("SELECT first_disc,last_disc,state,frozen_at IS NOT NULL AS frozen FROM archive_sets WHERE id=$1 AND collection_id=$2 FOR UPDATE").bind(set.as_str()).bind(collection.as_str()).fetch_optional(&mut *db).await?.ok_or(Error(ErrorCode::NotFound))?;
     require(
         plan.get::<String, _>("state") == "planning" && !plan.get::<bool, _>("frozen"),
         ErrorCode::RevisionConflict,
@@ -238,13 +237,13 @@ pub async fn reserve_disc_numbers(
     let first = row.get::<i64, _>("next_disc") as u64;
     let last = first + count - 1;
     require(last <= ARCHIVE_MAX_DISCS, ErrorCode::DestinationCapacity)?;
-    db::query("UPDATE archive_collections SET next_disc=$2,revision=$3 WHERE id=$1")
+    sqlx::query("UPDATE archive_collections SET next_disc=$2,revision=$3 WHERE id=$1")
         .bind(collection.as_str())
         .bind((last + 1) as i64)
         .bind(id())
         .execute(&mut *db)
         .await?;
-    db::query("UPDATE archive_sets SET first_disc=$2,last_disc=$3,revision=$4 WHERE id=$1")
+    sqlx::query("UPDATE archive_sets SET first_disc=$2,last_disc=$3,revision=$4 WHERE id=$1")
         .bind(set.as_str())
         .bind(first as i64)
         .bind(last as i64)

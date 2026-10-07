@@ -7,7 +7,7 @@ use crate::{
     roots::{json, lock_root, remember, replay, revision},
 };
 use sct_protocol::*;
-use simple_server::database::postgres as db;
+use sqlx::Row;
 
 impl Writer {
     pub async fn hide_entry(
@@ -35,12 +35,12 @@ impl Writer {
             return Ok(result);
         }
         lock_root(&mut tx, root.as_str()).await?;
-        let enabled: bool = db::query_scalar("SELECT state='enabled' FROM roots WHERE id=$1")
+        let enabled: bool = sqlx::query_scalar("SELECT state='enabled' FROM roots WHERE id=$1")
             .bind(root.as_str())
             .fetch_one(&mut *tx)
             .await?;
         require(enabled, ErrorCode::DestinationUnavailable)?;
-        let current = db::query("SELECT * FROM entries WHERE root_id=$1 AND id=$2")
+        let current = sqlx::query("SELECT * FROM entries WHERE root_id=$1 AND id=$2")
             .bind(root.as_str())
             .bind(entry.as_str())
             .fetch_optional(&mut *tx)
@@ -55,7 +55,7 @@ impl Writer {
             ErrorCode::NotFound,
         )?;
         // Atomic children have no mutable namespace row and cannot reach here.
-        let changed = db::query(
+        let changed = sqlx::query(
             "UPDATE entries SET hidden=true,revision=$3 WHERE root_id=$1 AND id=$2 RETURNING *",
         )
         .bind(root.as_str())
@@ -63,12 +63,12 @@ impl Writer {
         .bind(id())
         .fetch_one(&mut *tx)
         .await?;
-        db::query("UPDATE entries SET revision=$2 WHERE id=$1")
+        sqlx::query("UPDATE entries SET revision=$2 WHERE id=$1")
             .bind(parent)
             .bind(id())
             .execute(&mut *tx)
             .await?;
-        db::query("UPDATE roots SET revision=$2 WHERE id=$1")
+        sqlx::query("UPDATE roots SET revision=$2 WHERE id=$1")
             .bind(root.as_str())
             .bind(id())
             .execute(&mut *tx)

@@ -3,7 +3,6 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 async fn collection(w: &Writer, a: &Actor) -> ArchiveCollection {
     w.create_archive_collection(
@@ -54,7 +53,7 @@ async fn finish(w: &Writer, set: &ArchiveSetId) {
     }
     panic!("capture failed to converge");
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn archive_capture_pins_old_bytes_through_retention_restart_and_hide() {
     let (w, a, db) = setup().await;
@@ -72,7 +71,7 @@ async fn archive_capture_pins_old_bytes_through_retention_restart_and_hide() {
         .await
         .unwrap();
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins WHERE expires_at IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins WHERE expires_at IS NULL")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -112,14 +111,14 @@ async fn archive_capture_pins_old_bytes_through_retention_restart_and_hide() {
         ArchiveJobState::Planning
     );
     let hashes: Vec<String> =
-        db::query_scalar("SELECT digest FROM archive_objects WHERE set_id=$1")
+        sqlx::query_scalar("SELECT digest FROM archive_objects WHERE set_id=$1")
             .bind(set.id.as_str())
             .fetch_all(&db)
             .await
             .unwrap();
     assert_eq!(hashes, vec![digest(b"older")]);
     assert_eq!(
-        db::query_scalar::<_, String>(
+        sqlx::query_scalar::<_, String>(
             "SELECT version_id FROM archive_entries WHERE set_id=$1 AND path='/file'"
         )
         .bind(set.id.as_str())
@@ -128,7 +127,7 @@ async fn archive_capture_pins_old_bytes_through_retention_restart_and_hide() {
         .unwrap(),
         old.version_id.as_str()
     );
-    assert!(db::query_scalar::<_,i64>("SELECT count(*) FROM object_copies WHERE root_id=$1 AND digest=$2 AND state='available'").bind(r.id.as_str()).bind(digest(b"older")).fetch_one(&db).await.unwrap()>0);
+    assert!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM object_copies WHERE root_id=$1 AND digest=$2 AND state='available'").bind(r.id.as_str()).bind(digest(b"older")).fetch_one(&db).await.unwrap()>0);
     let current = next.inspect_archive_set(&a, &c.id, &set.id).await.unwrap();
     next.cancel_archive_set(
         &a,
@@ -144,21 +143,21 @@ async fn archive_capture_pins_old_bytes_through_retention_restart_and_hide() {
     assert!(next.cleanup_archive_capture(&set.id).await.unwrap());
     assert!(next.cleanup_archive_capture(&set.id).await.unwrap());
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
             .fetch_one(&db)
             .await
             .unwrap(),
         0
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT pinned_bytes FROM archive_accounts")
+        sqlx::query_scalar::<_, i64>("SELECT pinned_bytes FROM archive_accounts")
             .fetch_one(&db)
             .await
             .unwrap(),
         0
     );
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn archive_capture_preserves_atomic_tree_shared_objects_and_empty_directories() {
     use super::{
@@ -168,11 +167,11 @@ async fn archive_capture_preserves_atomic_tree_shared_objects_and_empty_director
     };
     let (w, a, db) = setup().await;
     let r = root(&w, &a, "/tree", 4000).await;
-    db::query("UPDATE pools SET capacity=220000")
+    sqlx::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    db::query("UPDATE allocations SET capacity=100000")
+    sqlx::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -269,7 +268,7 @@ async fn archive_capture_preserves_atomic_tree_shared_objects_and_empty_director
     assert_eq!(result.processed_entries.get(), 134);
     assert_eq!(result.processed_bytes.get(), 8);
     assert_eq!(
-        db::query_scalar::<_, i64>(
+        sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM archive_entries WHERE set_id=$1 AND kind='directory'"
         )
         .bind(set.id.as_str())
@@ -279,7 +278,7 @@ async fn archive_capture_preserves_atomic_tree_shared_objects_and_empty_director
         132
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM archive_objects WHERE set_id=$1")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_objects WHERE set_id=$1")
             .bind(set.id.as_str())
             .fetch_one(&db)
             .await
@@ -287,7 +286,7 @@ async fn archive_capture_preserves_atomic_tree_shared_objects_and_empty_director
         1
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM archive_extents WHERE set_id=$1")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM archive_extents WHERE set_id=$1")
             .bind(set.id.as_str())
             .fetch_one(&db)
             .await
@@ -295,7 +294,7 @@ async fn archive_capture_preserves_atomic_tree_shared_objects_and_empty_director
         2
     );
     assert_eq!(
-        db::query_scalar::<_, String>(
+        sqlx::query_scalar::<_, String>(
             "SELECT version_id FROM archive_entries WHERE set_id=$1 AND path='/atomic/file-0'"
         )
         .bind(set.id.as_str())
@@ -305,7 +304,7 @@ async fn archive_capture_preserves_atomic_tree_shared_objects_and_empty_director
         tree.version_id.as_str()
     );
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires PostgreSQL"]
 async fn archive_capture_limits_expiry_and_failed_work_release_owned_pins() {
     let (w, a, db) = setup().await;
@@ -366,7 +365,7 @@ async fn archive_capture_limits_expiry_and_failed_work_release_owned_pins() {
         ErrorCode::ArchiveResourceLimit
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -391,7 +390,7 @@ async fn archive_capture_limits_expiry_and_failed_work_release_owned_pins() {
         ArchiveJobState::Failed
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT pinned_bytes FROM archive_accounts")
+        sqlx::query_scalar::<_, i64>("SELECT pinned_bytes FROM archive_accounts")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -407,7 +406,7 @@ async fn archive_capture_limits_expiry_and_failed_work_release_owned_pins() {
         .create_archive_plan(&a, &c.id, &request(&c, &r.id, &version, "/file"))
         .await
         .unwrap();
-    db::query(
+    sqlx::query(
         "UPDATE archive_sets SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
     )
     .bind(expiring.id.as_str())
@@ -423,7 +422,7 @@ async fn archive_capture_limits_expiry_and_failed_work_release_owned_pins() {
         ArchiveJobState::Expired
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM graph_pins")
             .fetch_one(&db)
             .await
             .unwrap(),

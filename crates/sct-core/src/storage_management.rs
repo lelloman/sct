@@ -8,9 +8,8 @@ use crate::{
     paging,
     roots::{BackendSetup, json, lock_root, parse, revision},
 };
-use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use simple_server::database::postgres as db;
+use sqlx::{PgConnection, Row, postgres::PgRow};
 
 fn backend(row: &PgRow) -> Result<BackendConfiguration> {
     Ok(BackendConfiguration {
@@ -85,7 +84,7 @@ impl Writer {
     /// Internal runtime startup. Only provisioned references are stored, never resolved secrets.
     pub async fn configured_backends(&self) -> Result<Vec<BackendSetup>> {
         let mut tx = self.transaction().await?;
-        let rows=db::query("SELECT b.pool_id,b.inspection,c.settings FROM backends b JOIN backend_configurations c ON c.backend_id=b.id ORDER BY b.id").fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT b.pool_id,b.inspection,c.settings FROM backends b JOIN backend_configurations c ON c.backend_id=b.id ORDER BY b.id").fetch_all(&mut *tx).await?;
         rows.iter()
             .map(|r| {
                 Ok(BackendSetup {
@@ -103,14 +102,14 @@ impl Writer {
     ) -> Result<BackendConfiguration> {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
-        let row=db::query("SELECT b.*,c.revision,c.settings FROM backends b JOIN backend_configurations c ON c.backend_id=b.id WHERE b.id=$1").bind(backend_id.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
+        let row=sqlx::query("SELECT b.*,c.revision,c.settings FROM backends b JOIN backend_configurations c ON c.backend_id=b.id WHERE b.id=$1").bind(backend_id.as_str()).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::NotFound))?;
         backend(&row)
     }
     pub async fn list_backends(&self, actor: &Actor, request: &ListRequest) -> Result<BackendPage> {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
         let after = after(&mut tx, actor, "backends", request).await?;
-        let rows=db::query("SELECT b.*,c.revision,c.settings FROM backends b JOIN backend_configurations c ON c.backend_id=b.id WHERE b.id>$1 ORDER BY b.id LIMIT $2").bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT b.*,c.revision,c.settings FROM backends b JOIN backend_configurations c ON c.backend_id=b.id WHERE b.id>$1 ORDER BY b.id LIMIT $2").bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let next_cursor = next(&mut tx, actor, "backends", request, &rows).await?;
         let backends = rows
             .iter()
@@ -132,11 +131,11 @@ impl Writer {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
         // Serialize instance changes and bootstrap import; destination identity never changes.
-        db::query("SELECT pg_advisory_xact_lock(73628492)")
+        sqlx::query("SELECT pg_advisory_xact_lock(73628492)")
             .execute(&mut *tx)
             .await?;
         let identity = registry.validate(&request.inspection, &request.settings)?;
-        let old=db::query("SELECT b.*,c.revision FROM backends b JOIN backend_configurations c ON c.backend_id=b.id WHERE b.id=$1 FOR UPDATE OF b,c").bind(request.inspection.id.as_str()).fetch_optional(&mut *tx).await?;
+        let old=sqlx::query("SELECT b.*,c.revision FROM backends b JOIN backend_configurations c ON c.backend_id=b.id WHERE b.id=$1 FOR UPDATE OF b,c").bind(request.inspection.id.as_str()).fetch_optional(&mut *tx).await?;
         match (&old, &request.expected_revision) {
             (Some(row), Some(expected)) => {
                 revision(row, expected)?;
@@ -157,9 +156,9 @@ impl Writer {
             .probe(&request.settings);
         inspection.last_observed_at_ms = None;
         let rev = id();
-        db::query("INSERT INTO backends(id,pool_id,kind,destination_identity,inspection) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET inspection=EXCLUDED.inspection")
+        sqlx::query("INSERT INTO backends(id,pool_id,kind,destination_identity,inspection) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET inspection=EXCLUDED.inspection")
             .bind(inspection.id.as_str()).bind(request.pool_id.as_str()).bind(&inspection.adapter_kind).bind(identity).bind(json(&inspection)?).execute(&mut *tx).await?;
-        db::query("INSERT INTO backend_configurations(backend_id,revision,settings) VALUES($1,$2,$3) ON CONFLICT(backend_id) DO UPDATE SET revision=EXCLUDED.revision,settings=EXCLUDED.settings,updated_at=clock_timestamp()")
+        sqlx::query("INSERT INTO backend_configurations(backend_id,revision,settings) VALUES($1,$2,$3) ON CONFLICT(backend_id) DO UPDATE SET revision=EXCLUDED.revision,settings=EXCLUDED.settings,updated_at=clock_timestamp()")
             .bind(inspection.id.as_str()).bind(&rev).bind(&request.settings).execute(&mut *tx).await?;
         audit(&mut tx,actor,None,"backend.configured",serde_json::json!({"backend_id":inspection.id,"pool_id":request.pool_id,"adapter_kind":inspection.adapter_kind})).await?;
         tx.commit().await?;
@@ -174,7 +173,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
         let after = after(&mut tx, actor, "pools", request).await?;
-        let rows=db::query("SELECT p.*,COALESCE((SELECT sum(capacity)::bigint FROM allocations WHERE pool_id=p.id),0) AS allocated FROM pools p WHERE id>$1 ORDER BY id LIMIT $2").bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT p.*,COALESCE((SELECT sum(capacity)::bigint FROM allocations WHERE pool_id=p.id),0) AS allocated FROM pools p WHERE id>$1 ORDER BY id LIMIT $2").bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let next_cursor = next(&mut tx, actor, "pools", request, &rows).await?;
         let pools = rows
             .iter()
@@ -196,13 +195,13 @@ impl Writer {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
         let rev = id();
-        db::query("INSERT INTO pools VALUES($1,$2,$3)")
+        sqlx::query("INSERT INTO pools VALUES($1,$2,$3)")
             .bind(request.id.as_str())
             .bind(&rev)
             .bind(request.capacity_bytes.get() as i64)
             .execute(&mut *tx)
             .await?;
-        db::query("INSERT INTO allocations(id,pool_id,capacity) VALUES($1,$2,$3)")
+        sqlx::query("INSERT INTO allocations(id,pool_id,capacity) VALUES($1,$2,$3)")
             .bind(id())
             .bind(request.id.as_str())
             .bind(request.staging_bytes.get() as i64)
@@ -226,13 +225,13 @@ impl Writer {
     ) -> Result<PoolInspection> {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
-        let row = db::query("SELECT * FROM pools WHERE id=$1 FOR UPDATE")
+        let row = sqlx::query("SELECT * FROM pools WHERE id=$1 FOR UPDATE")
             .bind(pool_id.as_str())
             .fetch_optional(&mut *tx)
             .await?
             .ok_or(Error(ErrorCode::NotFound))?;
         revision(&row, &request.expected_revision)?;
-        let allocated: i64 = db::query_scalar(
+        let allocated: i64 = sqlx::query_scalar(
             "SELECT COALESCE(sum(capacity),0)::bigint FROM allocations WHERE pool_id=$1",
         )
         .bind(pool_id.as_str())
@@ -243,7 +242,7 @@ impl Writer {
             ErrorCode::QuotaExhausted,
         )?;
         let rev = id();
-        db::query("UPDATE pools SET capacity=$2,revision=$3 WHERE id=$1")
+        sqlx::query("UPDATE pools SET capacity=$2,revision=$3 WHERE id=$1")
             .bind(pool_id.as_str())
             .bind(request.capacity_bytes.get() as i64)
             .bind(&rev)
@@ -274,7 +273,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
         allocation(
-            &db::query("SELECT * FROM allocations WHERE id=$1")
+            &sqlx::query("SELECT * FROM allocations WHERE id=$1")
                 .bind(allocation_id.as_str())
                 .fetch_optional(&mut *tx)
                 .await?
@@ -289,7 +288,7 @@ impl Writer {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
         lock_root(&mut tx, request.root_id.as_str()).await?;
-        let row = db::query(
+        let row = sqlx::query(
             "INSERT INTO allocations(id,pool_id,root_id,capacity) VALUES($1,$2,$3,$4) RETURNING *",
         )
         .bind(id())
@@ -317,7 +316,7 @@ impl Writer {
     ) -> Result<AllocationManagement> {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
-        let row = db::query("SELECT * FROM allocations WHERE id=$1")
+        let row = sqlx::query("SELECT * FROM allocations WHERE id=$1")
             .bind(allocation_id.as_str())
             .fetch_optional(&mut *tx)
             .await?
@@ -327,11 +326,11 @@ impl Writer {
             crate::content_catalog::lock_content_root(&mut tx, root).await?;
         }
         // Match admission's pool-before-allocation lock order.
-        db::query("SELECT id FROM pools WHERE id=$1 FOR UPDATE")
+        sqlx::query("SELECT id FROM pools WHERE id=$1 FOR UPDATE")
             .bind(row.get::<String, _>("pool_id"))
             .fetch_one(&mut *tx)
             .await?;
-        let row = db::query("SELECT * FROM allocations WHERE id=$1 FOR UPDATE")
+        let row = sqlx::query("SELECT * FROM allocations WHERE id=$1 FOR UPDATE")
             .bind(allocation_id.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -339,7 +338,7 @@ impl Writer {
         if let Some(root) = &root
             && request.capacity_bytes.get() < row.get::<i64, _>("capacity") as u64
         {
-            let busy:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND state IN ('active','recovering','cleaning_up'))").bind(root).fetch_one(&mut *tx).await?;
+            let busy:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND state IN ('active','recovering','cleaning_up'))").bind(root).fetch_one(&mut *tx).await?;
             require(!busy, ErrorCode::RootBusy)?;
         }
 
@@ -349,14 +348,14 @@ impl Writer {
             ErrorCode::QuotaExhausted,
         )?;
         if let Some(root) = &root {
-            let required:i64=db::query_scalar("SELECT r.quota*count(rb.backend_id) FROM roots r LEFT JOIN root_backends rb ON rb.root_id=r.id AND rb.backend_id IN (SELECT id FROM backends WHERE pool_id=$2) WHERE r.id=$1 GROUP BY r.id").bind(root).bind(row.get::<String,_>("pool_id")).fetch_one(&mut *tx).await?;
+            let required:i64=sqlx::query_scalar("SELECT r.quota*count(rb.backend_id) FROM roots r LEFT JOIN root_backends rb ON rb.root_id=r.id AND rb.backend_id IN (SELECT id FROM backends WHERE pool_id=$2) WHERE r.id=$1 GROUP BY r.id").bind(root).bind(row.get::<String,_>("pool_id")).fetch_one(&mut *tx).await?;
             require(
                 request.capacity_bytes.get() >= required as u64,
                 ErrorCode::QuotaExhausted,
             )?;
         }
         let row =
-            db::query("UPDATE allocations SET capacity=$2,revision=$3 WHERE id=$1 RETURNING *")
+            sqlx::query("UPDATE allocations SET capacity=$2,revision=$3 WHERE id=$1 RETURNING *")
                 .bind(allocation_id.as_str())
                 .bind(request.capacity_bytes.get() as i64)
                 .bind(id())

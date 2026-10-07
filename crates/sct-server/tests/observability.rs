@@ -1,10 +1,9 @@
-use simple_server::database::postgres as db;
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
 use sct_core::backend::Registry;
 use sct_protocol::ErrorResponse;
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
     let (catalog, db) = support::database().await;
@@ -22,7 +21,7 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
         .issue_token(&actor, &"reader-private".parse().unwrap())
         .await
         .unwrap();
-    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -32,11 +31,11 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
         secure_cookies: false,
         transfer: None,
     };
-    let server = sct_spawn(async move {
-        sct_server::web::serve(
+    let server = tokio::spawn(async move {
+        simple_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::engine_lifecycle::Shutdown::new(),
+            simple_server::lifecycle::Shutdown::new(),
         )
         .await
         .unwrap();
@@ -113,7 +112,7 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
             .status(),
         204
     );
-    db::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
+    sqlx::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
         .execute(&db)
         .await
         .unwrap();
@@ -134,16 +133,4 @@ async fn metrics_require_admin_bound_labels_and_readiness_tracks_fencing() {
         200
     );
     server.abort();
-}
-
-fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(
-        simple_server::runtime::Runtime::try_current()
-            .expect("test engine")
-            .scope(future),
-    )
 }

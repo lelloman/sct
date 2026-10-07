@@ -9,9 +9,8 @@ use crate::{
     paging,
     roots::{json, revision},
 };
-use db::PgRow;
 use sct_protocol::*;
-use simple_server::database::postgres as db;
+use sqlx::{Row, postgres::PgRow};
 
 /// Opaque worker ownership; never sent over HTTP. Executors must do bounded work
 /// and fence every catalog mutation before persisting physical I/O decisions.
@@ -80,14 +79,14 @@ impl Writer {
     ) -> Result<MaintenanceJob> {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
-        let exists: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM roots WHERE id=$1)")
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM roots WHERE id=$1)")
             .bind(request.root_id.as_str())
             .fetch_one(&mut *tx)
             .await?;
         require(exists, ErrorCode::NotFound)?;
         let job = id();
-        let inserted=db::query("INSERT INTO maintenance_jobs(id,root_id,principal_id,run_principal_id,credential_id,key,request,kind,revision) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8) ON CONFLICT(principal_id,key) DO NOTHING").bind(&job).bind(request.root_id.as_str()).bind(actor.principal_id()).bind(&actor.credential).bind(request.idempotency_key.as_str()).bind(json(request)?).bind(json(&request.kind)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?.rows_affected();
-        let row=db::query("SELECT *, (extract(epoch FROM next_attempt_at)*1000)::bigint AS next_ms FROM maintenance_jobs WHERE principal_id=$1 AND key=$2").bind(actor.principal_id()).bind(request.idempotency_key.as_str()).fetch_one(&mut *tx).await?;
+        let inserted=sqlx::query("INSERT INTO maintenance_jobs(id,root_id,principal_id,run_principal_id,credential_id,key,request,kind,revision) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8) ON CONFLICT(principal_id,key) DO NOTHING").bind(&job).bind(request.root_id.as_str()).bind(actor.principal_id()).bind(&actor.credential).bind(request.idempotency_key.as_str()).bind(json(request)?).bind(json(&request.kind)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?.rows_affected();
+        let row=sqlx::query("SELECT *, (extract(epoch FROM next_attempt_at)*1000)::bigint AS next_ms FROM maintenance_jobs WHERE principal_id=$1 AND key=$2").bind(actor.principal_id()).bind(request.idempotency_key.as_str()).fetch_one(&mut *tx).await?;
         require(
             row.get::<serde_json::Value, _>("request") == json(request)?,
             ErrorCode::IdempotencyConflict,
@@ -95,7 +94,7 @@ impl Writer {
         if inserted == 1 {
             if request.kind == MaintenanceKind::MirrorRepair {
                 let placement: serde_json::Value =
-                    db::query_scalar("SELECT placement FROM roots WHERE id=$1")
+                    sqlx::query_scalar("SELECT placement FROM roots WHERE id=$1")
                         .bind(request.root_id.as_str())
                         .fetch_one(&mut *tx)
                         .await?;
@@ -125,7 +124,7 @@ impl Writer {
         job: &OperationId,
     ) -> Result<MaintenanceJob> {
         let mut tx = self.transaction().await?;
-        let row = db::query(INSPECT)
+        let row = sqlx::query(INSPECT)
             .bind(job.as_str())
             .fetch_optional(&mut *tx)
             .await?
@@ -158,7 +157,7 @@ impl Writer {
             Some(c) => paging::consume(&mut tx, actor, &scope, c, &binding).await?,
             None => String::new(),
         };
-        let rows=db::query("SELECT *, (extract(epoch FROM next_attempt_at)*1000)::bigint AS next_ms FROM maintenance_jobs WHERE ($1::text IS NULL OR root_id=$1) AND id>$2 ORDER BY id LIMIT $3").bind(root.map(RootId::as_str)).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows=sqlx::query("SELECT *, (extract(epoch FROM next_attempt_at)*1000)::bigint AS next_ms FROM maintenance_jobs WHERE ($1::text IS NULL OR root_id=$1) AND id>$2 ORDER BY id LIMIT $3").bind(root.map(RootId::as_str)).bind(after).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let next_cursor = if rows.len() > request.limit.get() as usize {
             Some(
                 paging::save(
@@ -189,7 +188,7 @@ impl Writer {
     ) -> Result<MaintenanceJob> {
         let mut tx = self.transaction().await?;
         auth::admin(&mut tx, actor).await?;
-        let row = db::query("SELECT * FROM maintenance_jobs WHERE id=$1 FOR UPDATE")
+        let row = sqlx::query("SELECT * FROM maintenance_jobs WHERE id=$1 FOR UPDATE")
             .bind(job.as_str())
             .fetch_optional(&mut *tx)
             .await?
@@ -202,7 +201,7 @@ impl Writer {
             ),
             ErrorCode::InvalidRequest,
         )?;
-        db::query("UPDATE maintenance_jobs SET state='queued',run_principal_id=$2,credential_id=$3,attempts=0,next_attempt_at=NULL,failure=NULL,revision=$4,worker_expires_at=NULL WHERE id=$1").bind(job.as_str()).bind(actor.principal_id()).bind(&actor.credential).bind(id()).execute(&mut *tx).await?;
+        sqlx::query("UPDATE maintenance_jobs SET state='queued',run_principal_id=$2,credential_id=$3,attempts=0,next_attempt_at=NULL,failure=NULL,revision=$4,worker_expires_at=NULL WHERE id=$1").bind(job.as_str()).bind(actor.principal_id()).bind(&actor.credential).bind(id()).execute(&mut *tx).await?;
         audit(
             &mut tx,
             actor,
@@ -211,7 +210,7 @@ impl Writer {
             serde_json::json!({"job_id":job}),
         )
         .await?;
-        let row = db::query(INSPECT)
+        let row = sqlx::query(INSPECT)
             .bind(job.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -220,11 +219,11 @@ impl Writer {
     }
     pub async fn claim_maintenance(&self, job: &OperationId) -> Result<Option<MaintenanceClaim>> {
         let mut tx = self.transaction().await?;
-        let row=db::query("SELECT * FROM maintenance_jobs WHERE id=$1 AND state IN ('queued','running','retry_wait') AND (next_attempt_at IS NULL OR next_attempt_at<=clock_timestamp()) AND (worker_expires_at IS NULL OR worker_expires_at<=clock_timestamp() OR server_epoch<>$2) FOR UPDATE SKIP LOCKED").bind(job.as_str()).bind(self.epoch).fetch_optional(&mut *tx).await?;
+        let row=sqlx::query("SELECT * FROM maintenance_jobs WHERE id=$1 AND state IN ('queued','running','retry_wait') AND (next_attempt_at IS NULL OR next_attempt_at<=clock_timestamp()) AND (worker_expires_at IS NULL OR worker_expires_at<=clock_timestamp() OR server_epoch<>$2) FOR UPDATE SKIP LOCKED").bind(job.as_str()).bind(self.epoch).fetch_optional(&mut *tx).await?;
         let Some(row) = row else { return Ok(None) };
         let actor = actor(&row);
         if let Err(error) = auth::admin(&mut tx, &actor).await {
-            db::query("UPDATE maintenance_jobs SET state='blocked',failure=$2,revision=$3,worker_expires_at=NULL WHERE id=$1").bind(job.as_str()).bind(json(&error.0)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?;
+            sqlx::query("UPDATE maintenance_jobs SET state='blocked',failure=$2,revision=$3,worker_expires_at=NULL WHERE id=$1").bind(job.as_str()).bind(json(&error.0)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?;
             audit(
                 &mut tx,
                 &actor,
@@ -239,14 +238,14 @@ impl Writer {
         let root: String = row.get("root_id");
         lock_content_root(&mut tx, &root).await?;
         let existing: Option<String> = row.get("operation_id");
-        let busy:bool=db::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND state IN ('active','recovering','cleaning_up') AND ($2::text IS NULL OR id<>$2))").bind(&root).bind(&existing).fetch_one(&mut *tx).await?;
+        let busy:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM operations WHERE root_id=$1 AND state IN ('active','recovering','cleaning_up') AND ($2::text IS NULL OR id<>$2))").bind(&root).bind(&existing).fetch_one(&mut *tx).await?;
         if busy {
             return Ok(None);
         };
         let operation = existing.unwrap_or_else(id);
         let kind: MaintenanceKind = serde_json::from_value(json(&row.get::<String, _>("kind"))?)?;
-        let epoch:i64=db::query_scalar("INSERT INTO operations(id,root_id,principal_id,kind,state,server_epoch,worker_expires_at) VALUES($1,$2,$3,$4,'active',$5,clock_timestamp()+interval '30 seconds') ON CONFLICT(id) DO UPDATE SET epoch=operations.epoch+1,server_epoch=EXCLUDED.server_epoch,state='active',worker_expires_at=EXCLUDED.worker_expires_at RETURNING epoch").bind(&operation).bind(&root).bind(actor.principal_id()).bind(if kind==MaintenanceKind::MirrorRepair{"repair"}else{"reclamation"}).bind(self.epoch).fetch_one(&mut *tx).await?;
-        let worker_epoch:i64=db::query_scalar("UPDATE maintenance_jobs SET operation_id=$2,state='running',worker_epoch=worker_epoch+1,server_epoch=$3,worker_expires_at=clock_timestamp()+interval '30 seconds',revision=$4 WHERE id=$1 RETURNING worker_epoch").bind(job.as_str()).bind(&operation).bind(self.epoch).bind(id()).fetch_one(&mut *tx).await?;
+        let epoch:i64=sqlx::query_scalar("INSERT INTO operations(id,root_id,principal_id,kind,state,server_epoch,worker_expires_at) VALUES($1,$2,$3,$4,'active',$5,clock_timestamp()+interval '30 seconds') ON CONFLICT(id) DO UPDATE SET epoch=operations.epoch+1,server_epoch=EXCLUDED.server_epoch,state='active',worker_expires_at=EXCLUDED.worker_expires_at RETURNING epoch").bind(&operation).bind(&root).bind(actor.principal_id()).bind(if kind==MaintenanceKind::MirrorRepair{"repair"}else{"reclamation"}).bind(self.epoch).fetch_one(&mut *tx).await?;
+        let worker_epoch:i64=sqlx::query_scalar("UPDATE maintenance_jobs SET operation_id=$2,state='running',worker_epoch=worker_epoch+1,server_epoch=$3,worker_expires_at=clock_timestamp()+interval '30 seconds',revision=$4 WHERE id=$1 RETURNING worker_epoch").bind(job.as_str()).bind(&operation).bind(self.epoch).bind(id()).fetch_one(&mut *tx).await?;
         let cursor = row.get("cursor");
         tx.commit().await?;
         Ok(Some(MaintenanceClaim {
@@ -267,7 +266,7 @@ impl Writer {
         result: Result<MaintenanceProgress>,
     ) -> Result<()> {
         let mut tx = self.transaction().await?;
-        let row=db::query("SELECT * FROM maintenance_jobs WHERE id=$1 AND state='running' AND worker_epoch=$2 AND server_epoch=$3 AND worker_expires_at>clock_timestamp() FOR UPDATE").bind(&claim.job).bind(claim.worker_epoch).bind(self.epoch).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::RevisionConflict))?;
+        let row=sqlx::query("SELECT * FROM maintenance_jobs WHERE id=$1 AND state='running' AND worker_epoch=$2 AND server_epoch=$3 AND worker_expires_at>clock_timestamp() FOR UPDATE").bind(&claim.job).bind(claim.worker_epoch).bind(self.epoch).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::RevisionConflict))?;
         lock_content_root(&mut tx, &claim.fence.root).await?;
         check_fence(&mut tx, &claim.fence, self.epoch).await?;
         let run_actor = actor(&row);
@@ -282,9 +281,9 @@ impl Writer {
                     ErrorCode::InvalidRequest,
                 )?;
                 if progress.complete {
-                    let pending:bool=db::query_scalar("SELECT uncertain_io OR EXISTS(SELECT 1 FROM reservations WHERE operation_id=$1) OR EXISTS(SELECT 1 FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE c.operation_id=$1 AND c.state<>'deleted' AND (a.root_id IS NULL OR c.state IN ('writing','deleting'))) FROM operations WHERE id=$1").bind(&claim.fence.id).fetch_one(&mut *tx).await?;
+                    let pending:bool=sqlx::query_scalar("SELECT uncertain_io OR EXISTS(SELECT 1 FROM reservations WHERE operation_id=$1) OR EXISTS(SELECT 1 FROM object_copies c JOIN allocations a ON a.id=c.allocation_id WHERE c.operation_id=$1 AND c.state<>'deleted' AND (a.root_id IS NULL OR c.state IN ('writing','deleting'))) FROM operations WHERE id=$1").bind(&claim.fence.id).fetch_one(&mut *tx).await?;
                     require(!pending, ErrorCode::RootBusy)?;
-                    db::query("UPDATE operations SET state='completed',worker_expires_at=NULL WHERE id=$1").bind(&claim.fence.id).execute(&mut *tx).await?;
+                    sqlx::query("UPDATE operations SET state='completed',worker_expires_at=NULL WHERE id=$1").bind(&claim.fence.id).execute(&mut *tx).await?;
                     audit(
                         &mut tx,
                         &run_actor,
@@ -294,7 +293,7 @@ impl Writer {
                     )
                     .await?;
                 }
-                db::query("UPDATE maintenance_jobs SET state=$2,cursor=$3,processed=processed+$4,attempts=0,next_attempt_at=CASE WHEN $2='completed' THEN NULL ELSE clock_timestamp() END,failure=NULL,worker_expires_at=NULL,revision=$5 WHERE id=$1").bind(&claim.job).bind(if progress.complete{"completed"}else{"running"}).bind(progress.cursor).bind(progress.processed as i64).bind(id()).execute(&mut *tx).await?;
+                sqlx::query("UPDATE maintenance_jobs SET state=$2,cursor=$3,processed=processed+$4,attempts=0,next_attempt_at=CASE WHEN $2='completed' THEN NULL ELSE clock_timestamp() END,failure=NULL,worker_expires_at=NULL,revision=$5 WHERE id=$1").bind(&claim.job).bind(if progress.complete{"completed"}else{"running"}).bind(progress.cursor).bind(progress.processed as i64).bind(id()).execute(&mut *tx).await?;
             }
             Err(error) => {
                 let attempts = row.get::<i32, _>("attempts") + 1;
@@ -312,7 +311,7 @@ impl Writer {
                 } else {
                     "blocked"
                 };
-                db::query("UPDATE maintenance_jobs SET state=$2,attempts=$3,next_attempt_at=CASE WHEN $2='retry_wait' THEN clock_timestamp()+make_interval(secs=>$4) ELSE NULL END,failure=$5,worker_expires_at=NULL,revision=$6 WHERE id=$1").bind(&claim.job).bind(state).bind(attempts.min(100)).bind(maintenance_retry_seconds(attempts)).bind(json(&error.0)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?;
+                sqlx::query("UPDATE maintenance_jobs SET state=$2,attempts=$3,next_attempt_at=CASE WHEN $2='retry_wait' THEN clock_timestamp()+make_interval(secs=>$4) ELSE NULL END,failure=$5,worker_expires_at=NULL,revision=$6 WHERE id=$1").bind(&claim.job).bind(state).bind(attempts.min(100)).bind(maintenance_retry_seconds(attempts)).bind(json(&error.0)?.as_str().unwrap()).bind(id()).execute(&mut *tx).await?;
                 audit(&mut tx,&run_actor,Some(&claim.fence.root),"maintenance.failed_attempt",serde_json::json!({"job_id":claim.job,"state":state,"attempts":attempts,"failure":error.0})).await?;
             }
         }
@@ -321,12 +320,12 @@ impl Writer {
     }
     pub async fn renew_maintenance_claim(&self, claim: &MaintenanceClaim) -> Result<()> {
         let mut tx = self.transaction().await?;
-        let row=db::query("SELECT * FROM maintenance_jobs WHERE id=$1 AND state='running' AND worker_epoch=$2 AND server_epoch=$3 AND worker_expires_at>clock_timestamp() FOR UPDATE")
+        let row=sqlx::query("SELECT * FROM maintenance_jobs WHERE id=$1 AND state='running' AND worker_epoch=$2 AND server_epoch=$3 AND worker_expires_at>clock_timestamp() FOR UPDATE")
             .bind(&claim.job).bind(claim.worker_epoch).bind(self.epoch).fetch_optional(&mut *tx).await?.ok_or(Error(ErrorCode::RevisionConflict))?;
         auth::admin(&mut tx, &actor(&row)).await?;
         check_fence(&mut tx, &claim.fence, self.epoch).await?;
-        db::query("UPDATE operations SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1").bind(&claim.fence.id).execute(&mut *tx).await?;
-        db::query("UPDATE maintenance_jobs SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1").bind(&claim.job).execute(&mut *tx).await?;
+        sqlx::query("UPDATE operations SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1").bind(&claim.fence.id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE maintenance_jobs SET worker_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1").bind(&claim.job).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -334,30 +333,21 @@ impl Writer {
     pub async fn run_maintenance<E: MaintenanceExecutor>(&self, executor: &E) -> Result<()> {
         let jobs = {
             let mut tx = self.transaction().await?;
-            db::query_scalar::<_,String>("SELECT id FROM maintenance_jobs WHERE state IN ('queued','running','retry_wait') AND (next_attempt_at IS NULL OR next_attempt_at<=clock_timestamp()) AND (worker_expires_at IS NULL OR worker_expires_at<=clock_timestamp() OR server_epoch<>$1) AND NOT EXISTS(SELECT 1 FROM operations o WHERE o.root_id=maintenance_jobs.root_id AND o.state IN ('active','recovering','cleaning_up') AND (maintenance_jobs.operation_id IS NULL OR o.id<>maintenance_jobs.operation_id)) ORDER BY COALESCE(next_attempt_at,created_at),id LIMIT 8").bind(self.epoch).fetch_all(&mut *tx).await?
+            sqlx::query_scalar::<_,String>("SELECT id FROM maintenance_jobs WHERE state IN ('queued','running','retry_wait') AND (next_attempt_at IS NULL OR next_attempt_at<=clock_timestamp()) AND (worker_expires_at IS NULL OR worker_expires_at<=clock_timestamp() OR server_epoch<>$1) AND NOT EXISTS(SELECT 1 FROM operations o WHERE o.root_id=maintenance_jobs.root_id AND o.state IN ('active','recovering','cleaning_up') AND (maintenance_jobs.operation_id IS NULL OR o.id<>maintenance_jobs.operation_id)) ORDER BY COALESCE(next_attempt_at,created_at),id LIMIT 8").bind(self.epoch).fetch_all(&mut *tx).await?
         };
         for job in jobs {
             if let Some(claim) = self.claim_maintenance(&job.parse()?).await? {
-                let work = simple_server::time::timeout(
+                let work = tokio::time::timeout(
                     std::time::Duration::from_secs(120),
                     executor.advance(&claim),
                 );
-                futures_util::pin_mut!(work);
-                let mut heartbeat =
-                    simple_server::time::interval(std::time::Duration::from_secs(10));
+                tokio::pin!(work);
+                let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(10));
                 heartbeat.tick().await;
                 let result = loop {
-                    match futures_util::future::select(work.as_mut(), Box::pin(heartbeat.tick()))
-                        .await
-                    {
-                        futures_util::future::Either::Left((result, _)) => {
-                            break result.unwrap_or(Err(Error(ErrorCode::DestinationUnavailable)));
-                        }
-                        futures_util::future::Either::Right(_) => {
-                            if let Err(error) = self.renew_maintenance_claim(&claim).await {
-                                break Err(error);
-                            }
-                        }
+                    tokio::select! {
+                        result=&mut work=>break result.unwrap_or(Err(Error(ErrorCode::DestinationUnavailable))),
+                        _=heartbeat.tick()=>if let Err(error)=self.renew_maintenance_claim(&claim).await {break Err(error)},
                     }
                 };
                 self.finish_maintenance_batch(&claim, result).await?;

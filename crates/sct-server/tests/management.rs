@@ -4,13 +4,13 @@ use sct_core::backend::Registry;
 use sct_protocol::*;
 use serde_json::json;
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn account_http_scope_secrets_revocation_and_csrf() {
     let (catalog, _) = support::database().await;
     let writer = catalog.acquire_writer().await.unwrap();
     let admin = writer.recover_administrator().await.unwrap();
-    let listener = sct_server::web::bind("127.0.0.1:0").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let app = sct_server::api::App {
         writer: writer.clone(),
@@ -20,11 +20,11 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
         secure_cookies: false,
         transfer: None,
     };
-    let server = sct_spawn(async move {
-        sct_server::web::serve(
+    let server = tokio::spawn(async move {
+        simple_server::web::serve(
             listener,
             sct_server::application(app, "nonexistent".into()),
-            simple_server::engine_lifecycle::Shutdown::new(),
+            simple_server::lifecycle::Shutdown::new(),
         )
         .await
         .unwrap()
@@ -241,16 +241,4 @@ async fn account_http_scope_secrets_revocation_and_csrf() {
         .unwrap();
     assert_eq!(valid.status(), 200);
     server.abort();
-}
-
-fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(
-        simple_server::runtime::Runtime::try_current()
-            .expect("test engine")
-            .scope(future),
-    )
 }

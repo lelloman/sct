@@ -7,25 +7,25 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-simple-server = { workspace = true, features = ["task-policy-core", "database-migrations", "engine-lifecycle", "engine-tasks", "engine-io", "postgres-client", "client", "process"] }
+simple-server = { package = "lelloman-simple-server", version = "=0.1.6", default-features = false, features = ["task-policies", "auth", "database-migrations"] }
 hex = "0.4"
 sct-protocol.workspace = true
+sqlx.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 sha2.workspace = true
 hmac = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+reqwest = { workspace = true, features = ["stream"] }
 futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
 quick-xml = { version = "0.38", features = ["serialize"] }
 rustix = { version = "1.1", features = ["fs"] }
 
-
-url = "2"
+tokio = { workspace = true, features = ["fs", "io-util", "time", "sync", "process"] }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["fs", "io-util", "time", "sync", "process"] }
-tokio-util = { version = "0.7", features = ["compat"] }
 sct-archive = { path = "../sct-archive" }
 
 [lints]

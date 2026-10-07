@@ -1,6 +1,8 @@
 //! Keep ScT's server-generated UUID contract while sharing request scope.
-use crate::web::{extract::Request, middleware::Next, response::Response};
-use simple_server::correlation::{Correlation, HeaderRequestId, Propagation, current_header_id};
+use simple_server::{
+    correlation::{Correlation, HeaderRequestId, Propagation, current_header_id},
+    web::{extract::Request, middleware::Next, response::Response},
+};
 
 pub(crate) fn request_id() -> String {
     current_header_id()

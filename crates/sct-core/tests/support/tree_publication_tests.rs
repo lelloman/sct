@@ -7,7 +7,6 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
 pub(super) async fn seal(e: &TransferEngine, a: &Actor, r: &RootId, draft: &UploadId) {
@@ -48,16 +47,16 @@ pub(super) async fn patch(
     );
     draft.id
 }
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn directory_publication_is_atomic_replays_receipts_and_rotates_snapshots() {
     let (w, a, db) = setup().await;
     let r = root(&w, &a, "/tree-publish", 4000).await;
-    db::query("UPDATE pools SET capacity=220000")
+    sqlx::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    db::query("UPDATE allocations SET capacity=100000")
+    sqlx::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -206,7 +205,7 @@ async fn directory_publication_is_atomic_replays_receipts_and_rotates_snapshots(
     );
     // Atomic descendants never acquire independent version/current-entry rows.
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM entries WHERE root_id=$1")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM entries WHERE root_id=$1")
             .bind(r.id.as_str())
             .fetch_one(&db)
             .await
@@ -230,7 +229,7 @@ async fn directory_publication_is_atomic_replays_receipts_and_rotates_snapshots(
         2
     );
     assert!(
-        db::query_scalar::<_, bool>("SELECT retired FROM file_versions WHERE id=$1")
+        sqlx::query_scalar::<_, bool>("SELECT retired FROM file_versions WHERE id=$1")
             .bind(one.version_id.as_str())
             .fetch_one(&db)
             .await
@@ -240,7 +239,7 @@ async fn directory_publication_is_atomic_replays_receipts_and_rotates_snapshots(
         e.tick().await.unwrap();
     }
     assert!(
-        db::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT occupied FROM allocations WHERE root_id IS NULL")
             .fetch_one(&db)
             .await
             .unwrap()
@@ -252,7 +251,7 @@ async fn directory_publication_is_atomic_replays_receipts_and_rotates_snapshots(
         e.tick().await.unwrap();
     }
     assert_eq!(
-        db::query_scalar::<_, i64>(
+        sqlx::query_scalar::<_, i64>(
             "SELECT occupied+reserved FROM allocations WHERE root_id IS NULL"
         )
         .fetch_one(&db)

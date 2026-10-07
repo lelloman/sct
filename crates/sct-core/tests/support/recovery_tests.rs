@@ -8,9 +8,8 @@ use sct_core::{
     payload::{Fault, MemoryStore, ObjectKey, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn independent_recovery_restores_files_and_trees_without_production_or_idp() {
     let (w, a, db) = setup().await;
@@ -26,16 +25,16 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
         )
         .await
         .unwrap();
-    db::query("UPDATE archive_collections SET next_disc=7 WHERE id=$1")
+    sqlx::query("UPDATE archive_collections SET next_disc=7 WHERE id=$1")
         .bind(optical.id.as_str())
         .execute(&db)
         .await
         .unwrap();
-    db::query("UPDATE pools SET capacity=220000")
+    sqlx::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    db::query("UPDATE allocations SET capacity=100000")
+    sqlx::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -119,24 +118,24 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
     )
     .await
     .unwrap();
-    db::query("INSERT INTO archive_artifacts(id,disc_id,state,relative_path,expires_at) SELECT 'active_'||id,id,'building','old-work',clock_timestamp()+interval '1 day' FROM archive_discs WHERE set_id=$1")
+    sqlx::query("INSERT INTO archive_artifacts(id,disc_id,state,relative_path,expires_at) SELECT 'active_'||id,id,'building','old-work',clock_timestamp()+interval '1 day' FROM archive_discs WHERE set_id=$1")
         .bind(active.id.as_str()).execute(&db).await.unwrap();
-    db::query("INSERT INTO archive_exports(set_id,reserved_bytes,worker_epoch,server_epoch,worker_expires_at,writer_version,writer_options) VALUES($1,100,4,1,clock_timestamp()+interval '1 hour','fixture','{}')")
+    sqlx::query("INSERT INTO archive_exports(set_id,reserved_bytes,worker_epoch,server_epoch,worker_expires_at,writer_version,writer_options) VALUES($1,100,4,1,clock_timestamp()+interval '1 hour','fixture','{}')")
         .bind(active.id.as_str()).execute(&db).await.unwrap();
-    db::query("INSERT INTO archive_builds(disc_id,artifact_id,attempt,stage,relative_path,server_epoch,worker_epoch) SELECT disc_id,id,'old-attempt','staging','old-work',1,4 FROM archive_artifacts WHERE state='building'")
+    sqlx::query("INSERT INTO archive_builds(disc_id,artifact_id,attempt,stage,relative_path,server_epoch,worker_epoch) SELECT disc_id,id,'old-attempt','staging','old-work',1,4 FROM archive_artifacts WHERE state='building'")
         .execute(&db).await.unwrap();
     let old_cache = base.join("old-archive-cache");
     tokio::fs::create_dir(&old_cache).await.unwrap();
     tokio::fs::write(old_cache.join("sentinel"), b"keep old host files")
         .await
         .unwrap();
-    db::query("INSERT INTO archive_storage(directory,quota_bytes,cache_bytes,reserved_bytes) VALUES($1,10000,100,100)")
+    sqlx::query("INSERT INTO archive_storage(directory,quota_bytes,cache_bytes,reserved_bytes) VALUES($1,10000,100,100)")
         .bind(old_cache.to_str().unwrap()).execute(&db).await.unwrap();
-    db::query("UPDATE archive_accounts SET cache_bytes=100,reserved_bytes=100")
+    sqlx::query("UPDATE archive_accounts SET cache_bytes=100,reserved_bytes=100")
         .execute(&db)
         .await
         .unwrap();
-    db::query("INSERT INTO archive_downloads(id,artifact_id,principal_id,credential_id,expires_at) SELECT 'download_'||ar.id,ar.id,s.principal_id,s.credential_id,clock_timestamp()+interval '1 hour' FROM archive_artifacts ar JOIN archive_discs d ON d.id=ar.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE s.id=$1")
+    sqlx::query("INSERT INTO archive_downloads(id,artifact_id,principal_id,credential_id,expires_at) SELECT 'download_'||ar.id,ar.id,s.principal_id,s.credential_id,clock_timestamp()+interval '1 hour' FROM archive_artifacts ar JOIN archive_discs d ON d.id=ar.disc_id JOIN archive_sets s ON s.id=d.set_id WHERE s.id=$1")
         .bind(archived.id.as_str()).execute(&db).await.unwrap();
     let checkpoint = w
         .create_checkpoint(
@@ -246,7 +245,7 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
         .authenticate(&credential.secret, false, None)
         .await
         .unwrap();
-    let high_water: i64 = db::query_scalar(
+    let high_water: i64 = sqlx::query_scalar(
         "SELECT next_disc FROM archive_collections WHERE id=$1 AND reconciliation_required",
     )
     .bind(optical.id.as_str())
@@ -254,7 +253,7 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
     .await
     .unwrap();
     assert_eq!(high_water, 9);
-    let historical: bool = db::query_scalar(
+    let historical: bool = sqlx::query_scalar(
         "SELECT state='ready' AND verified_complete_at IS NOT NULL FROM archive_sets WHERE id=$1",
     )
     .bind(archived.id.as_str())
@@ -262,24 +261,24 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
     .await
     .unwrap();
     assert!(historical);
-    let abandoned: bool = db::query_scalar("SELECT state='failed' AND failure='archive_reconciliation_required' AND pinned_bytes=0 FROM archive_sets WHERE id=$1")
+    let abandoned: bool = sqlx::query_scalar("SELECT state='failed' AND failure='archive_reconciliation_required' AND pinned_bytes=0 FROM archive_sets WHERE id=$1")
         .bind(active.id.as_str()).fetch_one(&target).await.unwrap();
     assert!(abandoned);
     for table in ["archive_downloads", "archive_storage", "graph_pins"] {
-        let count: i64 = db::query_scalar(&format!("SELECT count(*) FROM {table}"))
+        let count: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {table}"))
             .fetch_one(&target)
             .await
             .unwrap();
         assert_eq!(count, 0, "{table}");
     }
-    let unsafe_runtime: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_accounts WHERE cache_bytes<>0 OR reserved_bytes<>0 OR pinned_bytes<>0) OR EXISTS(SELECT 1 FROM archive_exports WHERE NOT finished OR reserved_bytes<>0 OR server_epoch<>0 OR worker_expires_at IS NOT NULL) OR EXISTS(SELECT 1 FROM archive_builds WHERE relative_path<>'' OR server_epoch<>0) OR EXISTS(SELECT 1 FROM archive_artifacts WHERE relative_path IS NOT NULL OR state IN ('building','available'))")
+    let unsafe_runtime: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM archive_accounts WHERE cache_bytes<>0 OR reserved_bytes<>0 OR pinned_bytes<>0) OR EXISTS(SELECT 1 FROM archive_exports WHERE NOT finished OR reserved_bytes<>0 OR server_epoch<>0 OR worker_expires_at IS NOT NULL) OR EXISTS(SELECT 1 FROM archive_builds WHERE relative_path<>'' OR server_epoch<>0) OR EXISTS(SELECT 1 FROM archive_artifacts WHERE relative_path IS NOT NULL OR state IN ('building','available'))")
         .fetch_one(&target).await.unwrap();
     assert!(!unsafe_runtime);
-    let preserved: i64 = db::query_scalar("SELECT count(*) FROM archive_artifacts WHERE state='expired' AND sha256=repeat('a',64) AND length IS NOT NULL")
+    let preserved: i64 = sqlx::query_scalar("SELECT count(*) FROM archive_artifacts WHERE state='expired' AND sha256=repeat('a',64) AND length IS NOT NULL")
         .fetch_one(&target).await.unwrap();
     assert_eq!(preserved, 1);
     let copies: i64 =
-        db::query_scalar("SELECT count(*) FROM archive_copies WHERE health='read_back_verified'")
+        sqlx::query_scalar("SELECT count(*) FROM archive_copies WHERE health='read_back_verified'")
             .fetch_one(&target)
             .await
             .unwrap();
@@ -346,11 +345,12 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
     }
     assert_eq!(bytes, b"tree file");
     drop(read);
-    let pending_state: String = db::query_scalar("SELECT state FROM transfer_sessions WHERE id=$1")
-        .bind(pending.as_str())
-        .fetch_one(&target)
-        .await
-        .unwrap();
+    let pending_state: String =
+        sqlx::query_scalar("SELECT state FROM transfer_sessions WHERE id=$1")
+            .bind(pending.as_str())
+            .fetch_one(&target)
+            .await
+            .unwrap();
     assert_eq!(pending_state, "expired");
     assert_eq!(
         writer
@@ -375,7 +375,7 @@ async fn independent_recovery_restores_files_and_trees_without_production_or_idp
         .await
         .unwrap();
     recovered.tick().await.unwrap();
-    let lease_count: i64 = db::query_scalar("SELECT count(*) FROM server_lease")
+    let lease_count: i64 = sqlx::query_scalar("SELECT count(*) FROM server_lease")
         .fetch_one(&target)
         .await
         .unwrap();

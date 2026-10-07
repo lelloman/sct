@@ -3,10 +3,9 @@ use sct_core::{
     payload::{Fault, MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn checkpoint_capture_fences_publication_and_failed_restart_keeps_pins() {
     let (w, a, db) = setup().await;
@@ -48,7 +47,7 @@ async fn checkpoint_capture_fences_publication_and_failed_restart_keeps_pins() {
     assert_eq!(captured.state, CheckpointState::Exporting);
     assert!(captured.pinned_bytes.get() > 0);
     let pinned: i64 =
-        db::query_scalar("SELECT count(*) FROM checkpoint_objects WHERE checkpoint_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM checkpoint_objects WHERE checkpoint_id=$1")
             .bind(checkpoint.id.as_str())
             .fetch_one(&db)
             .await
@@ -77,7 +76,7 @@ async fn checkpoint_capture_fences_publication_and_failed_restart_keeps_pins() {
     engine.tick().await.unwrap(); // Recover the upload's old worker epoch.
     engine.commit_upload(&a, &r.id, &second).await.unwrap();
     engine.tick().await.unwrap();
-    let deleted:i64=db::query_scalar("SELECT count(*) FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE p.checkpoint_id=$1 AND c.state='deleted'").bind(checkpoint.id.as_str()).fetch_one(&db).await.unwrap();
+    let deleted:i64=sqlx::query_scalar("SELECT count(*) FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE p.checkpoint_id=$1 AND c.state='deleted'").bind(checkpoint.id.as_str()).fetch_one(&db).await.unwrap();
     assert_eq!(deleted, 0);
     assert_eq!(
         resumed
@@ -108,11 +107,11 @@ async fn checkpoint_capture_fences_publication_and_failed_restart_keeps_pins() {
     for _ in 0..5 {
         engine.tick().await.unwrap();
     }
-    let deleted:i64=db::query_scalar("SELECT count(*) FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE p.checkpoint_id=$1 AND c.state='deleted'").bind(checkpoint.id.as_str()).fetch_one(&db).await.unwrap();
+    let deleted:i64=sqlx::query_scalar("SELECT count(*) FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE p.checkpoint_id=$1 AND c.state='deleted'").bind(checkpoint.id.as_str()).fetch_one(&db).await.unwrap();
     assert!(deleted > 0);
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn checkpoint_drains_queued_uncertain_deletes_before_capturing() {
     let (w, a, db) = setup().await;
@@ -137,7 +136,7 @@ async fn checkpoint_drains_queued_uncertain_deletes_before_capturing() {
     engine.commit_upload(&a, &r.id, &second).await.unwrap();
     engine.tick().await.unwrap();
     let deleting: i64 =
-        db::query_scalar("SELECT count(*) FROM object_copies WHERE state='deleting'")
+        sqlx::query_scalar("SELECT count(*) FROM object_copies WHERE state='deleting'")
             .fetch_one(&db)
             .await
             .unwrap();
@@ -176,16 +175,16 @@ async fn checkpoint_drains_queued_uncertain_deletes_before_capturing() {
         CheckpointState::Exporting
     );
     let deleting: i64 =
-        db::query_scalar("SELECT count(*) FROM object_copies WHERE state='deleting'")
+        sqlx::query_scalar("SELECT count(*) FROM object_copies WHERE state='deleting'")
             .fetch_one(&db)
             .await
             .unwrap();
     assert_eq!(deleting, 0);
-    let invalid:i64=db::query_scalar("SELECT count(*) FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE c.state<>'available'").fetch_one(&db).await.unwrap();
+    let invalid:i64=sqlx::query_scalar("SELECT count(*) FROM checkpoint_objects p JOIN object_copies c ON c.generation=p.generation WHERE c.state<>'available'").fetch_one(&db).await.unwrap();
     assert_eq!(invalid, 0);
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn checkpoint_exports_consistent_catalog_inventory_and_verified_hashes() {
     use sct_core::checkpoint_export::{CatalogHeader, CatalogRecord};
@@ -225,9 +224,9 @@ async fn checkpoint_exports_consistent_catalog_inventory_and_verified_hashes() {
     }
     let directory = std::env::temp_dir().join(format!("sct-checkpoint-{}", uuid::Uuid::new_v4()));
     let exporter = engine.clone().with_checkpoint_directory(directory.clone());
-    let task = sct_spawn(async move { exporter.tick().await });
+    let task = tokio::spawn(async move { exporter.tick().await });
     for _ in 0..1000 {
-        let frozen: bool = db::query_scalar("SELECT EXISTS(SELECT 1 FROM checkpoint_barrier)")
+        let frozen: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM checkpoint_barrier)")
             .fetch_one(&db)
             .await
             .unwrap();
@@ -319,7 +318,7 @@ async fn checkpoint_exports_consistent_catalog_inventory_and_verified_hashes() {
     tokio::fs::remove_dir_all(directory).await.unwrap();
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn checkpoint_export_failure_retains_pins_and_releases_service_barrier() {
     let (w, a, db) = setup().await;
@@ -364,7 +363,7 @@ async fn checkpoint_export_failure_retains_pins_and_releases_service_barrier() {
     assert_eq!(failed.state, CheckpointState::Failed);
     assert!(failed.pinned_bytes.get() > 0);
     assert_eq!(failed.failure, Some(ErrorCode::DestinationUnavailable));
-    let barriers: i64 = db::query_scalar("SELECT count(*) FROM checkpoint_barrier")
+    let barriers: i64 = sqlx::query_scalar("SELECT count(*) FROM checkpoint_barrier")
         .fetch_one(&db)
         .await
         .unwrap();
@@ -372,16 +371,4 @@ async fn checkpoint_export_failure_retains_pins_and_releases_service_barrier() {
     assert!(w.ready().await);
     assert!(w.checkpoint_descriptor(&a, &checkpoint.id).await.is_err());
     tokio::fs::remove_file(directory).await.unwrap();
-}
-
-fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(
-        simple_server::runtime::Runtime::try_current()
-            .expect("test engine")
-            .scope(future),
-    )
 }

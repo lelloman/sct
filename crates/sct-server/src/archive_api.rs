@@ -1,11 +1,11 @@
 use crate::api::{ApiError, App, Auth};
-use crate::web::{
+use sct_protocol::*;
+use simple_server::extract::RejectionResponse;
+use simple_server::web::{
     Json, Router,
     extract::{Path, Query, State},
     routing::{get, post},
 };
-use sct_protocol::*;
-use simple_server::extract::RejectionResponse;
 type Result<T> = std::result::Result<T, ApiError>;
 fn id<T: std::str::FromStr>(s: &str) -> Result<T> {
     s.parse().map_err(|_| ApiError(ErrorCode::InvalidRequest))
@@ -28,7 +28,7 @@ pub fn routes() -> Router<App> {
         )
         .route(
             "/api/v1/archives/{collection}/copies/{copy}",
-            crate::web::routing::patch(update_copy),
+            simple_server::web::routing::patch(update_copy),
         )
         .route(
             "/api/v1/archives/{collection}/copies/{copy}/reports",
@@ -274,10 +274,10 @@ async fn iso(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((collection, disc)): Path<(String, String)>,
-    headers: crate::web::http::HeaderMap,
-    method: crate::web::http::Method,
-) -> Result<crate::web::response::Response> {
-    use crate::web::{body::Body, http::StatusCode, response::IntoResponse};
+    headers: simple_server::web::http::HeaderMap,
+    method: simple_server::web::http::Method,
+) -> Result<simple_server::web::response::Response> {
+    use simple_server::web::{body::Body, http::StatusCode, response::IntoResponse};
     let engine = app
         .transfer
         .as_ref()
@@ -313,7 +313,7 @@ async fn iso(
         }
     }
     let mut range = None;
-    if method != crate::web::http::Method::HEAD
+    if method != simple_server::web::http::Method::HEAD
         && headers
             .get("if-range")
             .is_none_or(|v| v.to_str().ok() == Some(etag.as_str()))
@@ -331,7 +331,7 @@ async fn iso(
         }
     }
     let (start, end) = range.unwrap_or((0, length));
-    let mut response = if method == crate::web::http::Method::HEAD {
+    let mut response = if method == simple_server::web::http::Method::HEAD {
         Body::empty().into_response()
     } else {
         let download = engine

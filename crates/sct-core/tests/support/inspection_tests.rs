@@ -3,7 +3,6 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
 use std::collections::{BTreeMap, BTreeSet};
 fn page(limit: u64) -> ListRequest {
     ListRequest {
@@ -12,7 +11,7 @@ fn page(limit: u64) -> ListRequest {
     }
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn inspection_distinguishes_usage_and_scopes_program_activity() {
     let (w, a, db) = setup().await;
@@ -42,7 +41,7 @@ async fn inspection_distinguishes_usage_and_scopes_program_activity() {
     assert_eq!(usage.staging_occupied_bytes.get(), 0);
     assert_eq!(usage.reserved_bytes.get(), 0);
     assert_eq!(usage.pending_cleanup_bytes.get(), 0);
-    let charged:i64=db::query_scalar("SELECT coalesce(sum(bytes),0)::bigint FROM object_copies WHERE root_id=$1 AND state<>'deleted'").bind(r.id.as_str()).fetch_one(&db).await.unwrap();
+    let charged:i64=sqlx::query_scalar("SELECT coalesce(sum(bytes),0)::bigint FROM object_copies WHERE root_id=$1 AND state<>'deleted'").bind(r.id.as_str()).fetch_one(&db).await.unwrap();
     assert_eq!(usage.physical_occupied_bytes.get(), charged as u64);
     let directory = w
         .resolve_path(&a, &r.id, &"/".parse().unwrap())
@@ -152,15 +151,15 @@ async fn inspection_distinguishes_usage_and_scopes_program_activity() {
         ErrorCode::Forbidden
     );
     // Equal event timestamps must not duplicate or skip events between streams.
-    db::query("UPDATE management_audit SET created_at='2026-01-01T00:00:00Z'")
+    sqlx::query("UPDATE management_audit SET created_at='2026-01-01T00:00:00Z'")
         .execute(&db)
         .await
         .unwrap();
-    db::query("UPDATE transfer_audit SET created_at='2026-01-01T00:00:00Z'")
+    sqlx::query("UPDATE transfer_audit SET created_at='2026-01-01T00:00:00Z'")
         .execute(&db)
         .await
         .unwrap();
-    let expected:i64=db::query_scalar("SELECT (SELECT count(*) FROM management_audit WHERE root_id=$1)+(SELECT count(*) FROM transfer_audit WHERE root_id=$1)").bind(r.id.as_str()).fetch_one(&db).await.unwrap();
+    let expected:i64=sqlx::query_scalar("SELECT (SELECT count(*) FROM management_audit WHERE root_id=$1)+(SELECT count(*) FROM transfer_audit WHERE root_id=$1)").bind(r.id.as_str()).fetch_one(&db).await.unwrap();
     let mut request = page(1);
     let mut ids = BTreeSet::new();
     loop {

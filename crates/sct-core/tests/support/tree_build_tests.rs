@@ -4,7 +4,6 @@ use sct_core::{
     payload::{MemoryStore, ObjectStore},
     transfer_io::TransferEngine,
 };
-use simple_server::database::postgres as db;
 use std::collections::BTreeMap;
 
 pub(super) async fn stage_files(
@@ -120,16 +119,16 @@ pub(super) async fn admitted(
     panic!("tree admission did not converge");
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "requires isolated PostgreSQL"]
 async fn whole_tree_admission_counts_unique_chunks_before_accepting_payload() {
     let (w, a, db) = setup().await;
     let r = root(&w, &a, "/tree-admit", 4000).await;
-    db::query("UPDATE pools SET capacity=220000")
+    sqlx::query("UPDATE pools SET capacity=220000")
         .execute(&db)
         .await
         .unwrap();
-    db::query("UPDATE allocations SET capacity=100000")
+    sqlx::query("UPDATE allocations SET capacity=100000")
         .execute(&db)
         .await
         .unwrap();
@@ -178,7 +177,7 @@ async fn whole_tree_admission_counts_unique_chunks_before_accepting_payload() {
         .is_err()
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM object_copies")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM object_copies")
             .fetch_one(&db)
             .await
             .unwrap(),
@@ -197,7 +196,7 @@ async fn whole_tree_admission_counts_unique_chunks_before_accepting_payload() {
         admitted(&e, &a, &r.id, &draft).await.admission,
         AdmissionState::Admitted
     );
-    let manifest:Vec<u8>=db::query_scalar("SELECT o.body FROM tree_drafts d JOIN content_objects o ON o.root_id=d.root_id AND o.digest=d.manifest WHERE d.id=$1").bind(draft.as_str()).fetch_one(&db).await.unwrap();
+    let manifest:Vec<u8>=sqlx::query_scalar("SELECT o.body FROM tree_drafts d JOIN content_objects o ON o.root_id=d.root_id AND o.digest=d.manifest WHERE d.id=$1").bind(draft.as_str()).fetch_one(&db).await.unwrap();
     let manifest: DirectoryManifest = parse_canonical(&manifest).unwrap();
     assert_eq!(manifest.entries.get(), 132);
     assert_eq!(manifest.height, 1);
@@ -231,7 +230,7 @@ async fn whole_tree_admission_counts_unique_chunks_before_accepting_payload() {
         e.tick().await.unwrap();
     }
     assert_eq!(
-        db::query_scalar::<_, i64>(
+        sqlx::query_scalar::<_, i64>(
             "SELECT occupied+reserved FROM allocations WHERE root_id IS NULL"
         )
         .fetch_one(&db)
@@ -240,13 +239,13 @@ async fn whole_tree_admission_counts_unique_chunks_before_accepting_payload() {
         0
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT count(*) FROM draft_entries")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM draft_entries")
             .fetch_one(&db)
             .await
             .unwrap(),
         0
     );
-    db::query("UPDATE allocations SET capacity=1000 WHERE root_id IS NULL")
+    sqlx::query("UPDATE allocations SET capacity=1000 WHERE root_id IS NULL")
         .execute(&db)
         .await
         .unwrap();
@@ -261,7 +260,7 @@ async fn whole_tree_admission_counts_unique_chunks_before_accepting_payload() {
         Some(ErrorCode::StagingExhausted)
     );
     assert_eq!(
-        db::query_scalar::<_, i64>("SELECT capacity FROM allocations WHERE root_id IS NULL")
+        sqlx::query_scalar::<_, i64>("SELECT capacity FROM allocations WHERE root_id IS NULL")
             .fetch_one(&db)
             .await
             .unwrap(),

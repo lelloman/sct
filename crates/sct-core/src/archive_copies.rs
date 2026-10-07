@@ -8,9 +8,8 @@ use crate::{
     paging,
     roots::{json, remember, replay},
 };
-use db::{PgConnection, PgRow};
 use sct_protocol::*;
-use simple_server::database::postgres as db;
+use sqlx::{PgConnection, Row, postgres::PgRow};
 
 const COPY_SELECT: &str = "SELECT c.*,(extract(epoch FROM c.reported_burned_at)*1000)::bigint AS burned_ms FROM archive_copies c";
 fn copy_row(row: &PgRow) -> Result<ArchivePhysicalCopy> {
@@ -33,7 +32,7 @@ fn copy_row(row: &PgRow) -> Result<ArchivePhysicalCopy> {
 }
 async fn load_copy(db: &mut PgConnection, copy: &ArchiveCopyId) -> Result<ArchivePhysicalCopy> {
     copy_row(
-        &db::query(&format!("{COPY_SELECT} WHERE c.id=$1"))
+        &sqlx::query(&format!("{COPY_SELECT} WHERE c.id=$1"))
             .bind(copy.as_str())
             .fetch_optional(db)
             .await?
@@ -48,7 +47,7 @@ async fn copy_access(
     lock: bool,
 ) -> Result<ArchivePhysicalCopy> {
     collection_access(db, actor, collection, lock).await?;
-    let disc: String = db::query_scalar("SELECT c.disc_id FROM archive_copies c JOIN archive_discs d ON d.id=c.disc_id WHERE c.id=$1 AND d.collection_id=$2").bind(copy.as_str()).bind(collection.as_str()).fetch_optional(&mut *db).await?.ok_or(Error(ErrorCode::NotFound))?;
+    let disc: String = sqlx::query_scalar("SELECT c.disc_id FROM archive_copies c JOIN archive_discs d ON d.id=c.disc_id WHERE c.id=$1 AND d.collection_id=$2").bind(copy.as_str()).bind(collection.as_str()).fetch_optional(&mut *db).await?.ok_or(Error(ErrorCode::NotFound))?;
     disc_access(db, actor, collection, &disc.parse()?).await?;
     load_copy(db, copy).await
 }
@@ -64,7 +63,7 @@ async fn event(
     copy: &ArchivePhysicalCopy,
     kind: &str,
 ) -> Result<()> {
-    db::query("INSERT INTO archive_copy_events(id,copy_id,principal_id,kind,observation) VALUES($1,$2,$3,$4,$5)").bind(id()).bind(copy.id.as_str()).bind(actor.principal_id()).bind(kind).bind(json(copy)?).execute(&mut *db).await?;
+    sqlx::query("INSERT INTO archive_copy_events(id,copy_id,principal_id,kind,observation) VALUES($1,$2,$3,$4,$5)").bind(id()).bind(copy.id.as_str()).bind(actor.principal_id()).bind(kind).bind(json(copy)?).execute(&mut *db).await?;
     crate::management::audit(
         db,
         actor,
@@ -130,7 +129,7 @@ impl Writer {
             return Ok(value);
         }
         let copy: ArchiveCopyId = id().parse()?;
-        db::query("INSERT INTO archive_copies(id,disc_id,label,location,revision,reported_burned_at) VALUES($1,$2,$3,$4,$5,to_timestamp($6::double precision/1000))").bind(copy.as_str()).bind(disc.as_str()).bind(request.label.as_str()).bind(&request.location).bind(id()).bind(request.reported_burned_at_ms.as_ref().map(|n|n.get() as i64)).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO archive_copies(id,disc_id,label,location,revision,reported_burned_at) VALUES($1,$2,$3,$4,$5,to_timestamp($6::double precision/1000))").bind(copy.as_str()).bind(disc.as_str()).bind(request.label.as_str()).bind(&request.location).bind(id()).bind(request.reported_burned_at_ms.as_ref().map(|n|n.get() as i64)).execute(&mut *tx).await?;
         let result = load_copy(&mut tx, &copy).await?;
         event(&mut tx, actor, &result, "registered").await?;
         remember(&mut tx, actor, &scope, &key, json(request)?, json(&result)?).await?;
@@ -152,7 +151,7 @@ impl Writer {
             old.revision == request.expected_revision,
             ErrorCode::RevisionConflict,
         )?;
-        db::query("UPDATE archive_copies SET label=$2,location=$3,health=$4,revision=$5,reported_burned_at=CASE WHEN $6::bigint IS NULL THEN reported_burned_at ELSE to_timestamp($6::double precision/1000) END WHERE id=$1").bind(copy.as_str()).bind(request.label.as_str()).bind(&request.location).bind(json(request.health.as_ref().unwrap_or(&old.health))?.as_str().ok_or(Error(ErrorCode::InvalidRequest))?).bind(id()).bind(request.reported_burned_at_ms.as_ref().map(|n|n.get() as i64)).execute(&mut *tx).await?;
+        sqlx::query("UPDATE archive_copies SET label=$2,location=$3,health=$4,revision=$5,reported_burned_at=CASE WHEN $6::bigint IS NULL THEN reported_burned_at ELSE to_timestamp($6::double precision/1000) END WHERE id=$1").bind(copy.as_str()).bind(request.label.as_str()).bind(&request.location).bind(json(request.health.as_ref().unwrap_or(&old.health))?.as_str().ok_or(Error(ErrorCode::InvalidRequest))?).bind(id()).bind(request.reported_burned_at_ms.as_ref().map(|n|n.get() as i64)).execute(&mut *tx).await?;
         let result = load_copy(&mut tx, copy).await?;
         event(&mut tx, actor, &result, "updated").await?;
         tx.commit().await?;
@@ -169,7 +168,7 @@ impl Writer {
         disc_access(&mut tx, actor, collection, disc).await?;
         let scope = format!("archive-copies:{}", disc.as_str());
         let cursor = after(&mut tx, actor, &scope, request).await?;
-        let rows = db::query(&format!(
+        let rows = sqlx::query(&format!(
             "{COPY_SELECT} WHERE c.disc_id=$1 AND c.id>$2 ORDER BY c.id LIMIT $3"
         ))
         .bind(disc.as_str())
@@ -212,7 +211,7 @@ fn report_row(row: &PgRow) -> Result<ArchiveVerificationReport> {
     })
 }
 async fn refresh_completion(db: &mut PgConnection, collection: &ArchiveCollectionId) -> Result<()> {
-    let after: Option<i64> = db::query_scalar(
+    let after: Option<i64> = sqlx::query_scalar(
         "SELECT after_sequence FROM archive_verification_queue WHERE collection_id=$1 FOR UPDATE",
     )
     .bind(collection.as_str())
@@ -221,17 +220,17 @@ async fn refresh_completion(db: &mut PgConnection, collection: &ArchiveCollectio
     let Some(after) = after else {
         return Ok(());
     };
-    let sets = db::query("SELECT id,sequence FROM archive_sets WHERE collection_id=$1 AND state='ready' AND verified_complete_at IS NULL AND sequence>$2 ORDER BY sequence LIMIT 32").bind(collection.as_str()).bind(after).fetch_all(&mut *db).await?;
+    let sets = sqlx::query("SELECT id,sequence FROM archive_sets WHERE collection_id=$1 AND state='ready' AND verified_complete_at IS NULL AND sequence>$2 ORDER BY sequence LIMIT 32").bind(collection.as_str()).bind(after).fetch_all(&mut *db).await?;
     for set in &sets {
-        db::query("UPDATE archive_sets SET verified_complete_at=clock_timestamp(),revision=$2 WHERE id=$1 AND verified_complete_at IS NULL AND NOT EXISTS(SELECT 1 FROM (SELECT id AS disc FROM archive_discs WHERE set_id=$1 UNION SELECT disc_id FROM archive_placements WHERE set_id=$1) required WHERE NOT EXISTS(SELECT 1 FROM archive_copies c WHERE c.disc_id=required.disc AND c.health='read_back_verified'))").bind(set.get::<String,_>("id")).bind(id()).execute(&mut *db).await?;
+        sqlx::query("UPDATE archive_sets SET verified_complete_at=clock_timestamp(),revision=$2 WHERE id=$1 AND verified_complete_at IS NULL AND NOT EXISTS(SELECT 1 FROM (SELECT id AS disc FROM archive_discs WHERE set_id=$1 UNION SELECT disc_id FROM archive_placements WHERE set_id=$1) required WHERE NOT EXISTS(SELECT 1 FROM archive_copies c WHERE c.disc_id=required.disc AND c.health='read_back_verified'))").bind(set.get::<String,_>("id")).bind(id()).execute(&mut *db).await?;
     }
     if sets.len() < 32 {
-        db::query("DELETE FROM archive_verification_queue WHERE collection_id=$1")
+        sqlx::query("DELETE FROM archive_verification_queue WHERE collection_id=$1")
             .bind(collection.as_str())
             .execute(db)
             .await?;
     } else {
-        db::query(
+        sqlx::query(
             "UPDATE archive_verification_queue SET after_sequence=$2,next_attempt_at=clock_timestamp() WHERE collection_id=$1",
         )
         .bind(collection.as_str())
@@ -268,7 +267,7 @@ impl Writer {
             request.collection_id == *collection && old.disc_id == request.disc_id,
             ErrorCode::InvalidRequest,
         )?;
-        let disc = db::query("SELECT * FROM archive_discs WHERE id=$1")
+        let disc = sqlx::query("SELECT * FROM archive_discs WHERE id=$1")
             .bind(old.disc_id.as_str())
             .fetch_one(&mut *tx)
             .await?;
@@ -292,8 +291,8 @@ impl Writer {
             && request.verified_objects.get() == expected
             && request.verified_bytes.get() == bytes;
         let report = id();
-        let row = db::query("INSERT INTO archive_reports(id,copy_id,principal_id,observation,complete_read_back) VALUES($1,$2,$3,$4,$5) RETURNING *, (extract(epoch FROM received_at)*1000)::bigint AS received_ms").bind(&report).bind(copy.as_str()).bind(actor.principal_id()).bind(json(request)?).bind(complete).fetch_one(&mut *tx).await?;
-        db::query(
+        let row = sqlx::query("INSERT INTO archive_reports(id,copy_id,principal_id,observation,complete_read_back) VALUES($1,$2,$3,$4,$5) RETURNING *, (extract(epoch FROM received_at)*1000)::bigint AS received_ms").bind(&report).bind(copy.as_str()).bind(actor.principal_id()).bind(json(request)?).bind(complete).fetch_one(&mut *tx).await?;
+        sqlx::query(
             "UPDATE archive_copies SET revision=$2,latest_report_id=$3,health=$4 WHERE id=$1",
         )
         .bind(copy.as_str())
@@ -308,7 +307,7 @@ impl Writer {
         .await?;
         let current = load_copy(&mut tx, copy).await?;
         event(&mut tx, actor, &current, "read_back").await?;
-        db::query("INSERT INTO archive_verification_queue(collection_id) VALUES($1) ON CONFLICT(collection_id) DO UPDATE SET after_sequence=0").bind(collection.as_str()).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO archive_verification_queue(collection_id) VALUES($1) ON CONFLICT(collection_id) DO UPDATE SET after_sequence=0").bind(collection.as_str()).execute(&mut *tx).await?;
         refresh_completion(&mut tx, collection).await?;
         let result = report_row(&row)?;
         remember(&mut tx, actor, &scope, &key, json(request)?, json(&result)?).await?;
@@ -326,7 +325,7 @@ impl Writer {
         copy_access(&mut tx, actor, collection, copy, false).await?;
         let scope = format!("archive-reports:{}", copy.as_str());
         let cursor = after(&mut tx, actor, &scope, request).await?;
-        let rows = db::query(&format!(
+        let rows = sqlx::query(&format!(
             "{REPORT_SELECT} WHERE r.copy_id=$1 AND r.id>$2 ORDER BY r.id LIMIT $3"
         ))
         .bind(copy.as_str())
@@ -358,7 +357,7 @@ impl Writer {
     /// Finish bounded historical-completion updates after large report imports.
     pub async fn archive_verification_tick(&self) -> Result<()> {
         let mut tx = self.transaction().await?;
-        let collections: Vec<String> = db::query_scalar(
+        let collections: Vec<String> = sqlx::query_scalar(
             "SELECT collection_id FROM archive_verification_queue ORDER BY next_attempt_at,collection_id LIMIT 4",
         )
         .fetch_all(&mut *tx)
@@ -367,7 +366,7 @@ impl Writer {
         for collection in collections {
             let mut tx = self.transaction().await?;
             // The same collection lock serializes reports, damage and completion.
-            db::query("SELECT id FROM archive_collections WHERE id=$1 FOR UPDATE")
+            sqlx::query("SELECT id FROM archive_collections WHERE id=$1 FOR UPDATE")
                 .bind(&collection)
                 .fetch_one(&mut *tx)
                 .await?;
@@ -390,7 +389,7 @@ impl Writer {
         copy_access(&mut tx, actor, collection, copy, false).await?;
         let scope = format!("archive-copy-events:{}", copy.as_str());
         let cursor = after(&mut tx, actor, &scope, request).await?;
-        let rows = db::query("SELECT *, (extract(epoch FROM received_at)*1000)::bigint AS received_ms FROM archive_copy_events WHERE copy_id=$1 AND id>$2 ORDER BY id LIMIT $3").bind(copy.as_str()).bind(cursor).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
+        let rows = sqlx::query("SELECT *, (extract(epoch FROM received_at)*1000)::bigint AS received_ms FROM archive_copy_events WHERE copy_id=$1 AND id>$2 ORDER BY id LIMIT $3").bind(copy.as_str()).bind(cursor).bind(request.limit.get() as i64+1).fetch_all(&mut *tx).await?;
         let more = rows.len() > request.limit.get() as usize;
         let mut events = Vec::new();
         for row in rows.iter().take(request.limit.get() as usize) {

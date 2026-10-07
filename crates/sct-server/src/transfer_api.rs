@@ -1,14 +1,14 @@
 //! Thin HTTP translation; authorization and admission live in core.
 use crate::api::{ApiError, App, Auth};
-use crate::web::{
+use sct_core::transfer_io::TransferEngine;
+use sct_protocol::*;
+use simple_server::web::{
     Json, Router,
     extract::{Path, Query, Request, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post, put},
 };
-use sct_core::transfer_io::TransferEngine;
-use sct_protocol::*;
 fn engine(app: &App) -> Result<&TransferEngine, ApiError> {
     app.transfer
         .as_ref()
@@ -99,9 +99,9 @@ async fn page(
     let digest = id(&digest)?;
     // Authorize the session before consuming even a manifest page body.
     engine(&app)?.upload_status(&actor, &root, &upload).await?;
-    let bytes = simple_server::time::timeout(
+    let bytes = tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        crate::web::body::to_bytes(request.into_body(), MANIFEST_BYTES),
+        simple_server::web::body::to_bytes(request.into_body(), MANIFEST_BYTES),
     )
     .await
     .map_err(|_| ApiError(ErrorCode::DestinationUnavailable))?
@@ -164,9 +164,9 @@ async fn chunk(
         .chunk_permission(&actor, &root, &upload, &digest)
         .await?;
     let _permit = engine.payload_permit().await?;
-    let bytes = simple_server::time::timeout(
+    let bytes = tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        crate::web::body::to_bytes(request.into_body(), length as usize + 1),
+        simple_server::web::body::to_bytes(request.into_body(), length as usize + 1),
     )
     .await
     .map_err(|_| ApiError(ErrorCode::DestinationUnavailable))?
@@ -234,7 +234,7 @@ async fn content(
     State(app): State<App>,
     Auth(actor): Auth,
     Path((root, version)): Path<(String, String)>,
-    headers: crate::web::http::HeaderMap,
+    headers: simple_server::web::http::HeaderMap,
 ) -> Result<Response, ApiError> {
     content_response(
         engine(&app)?,
@@ -253,7 +253,7 @@ pub(crate) async fn content_response(
     root: RootId,
     version: VersionId,
     path: Option<RootPath>,
-    headers: crate::web::http::HeaderMap,
+    headers: simple_server::web::http::HeaderMap,
 ) -> Result<Response, ApiError> {
     let manifest = if let Some(path) = &path {
         engine
@@ -315,7 +315,7 @@ pub(crate) async fn content_response(
             .map(|next| next.map(|bytes| (bytes, d)))
             .map_err(std::io::Error::other)
     });
-    let mut response = crate::web::body::Body::from_stream(stream).into_response();
+    let mut response = simple_server::web::body::Body::from_stream(stream).into_response();
     response
         .headers_mut()
         .insert("content-type", "application/octet-stream".parse().unwrap());

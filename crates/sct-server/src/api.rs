@@ -1,5 +1,9 @@
 use crate::oidc::Oidc;
-use crate::web::{
+use sct_core::{auth::Actor, backend::Registry, error::Error, lease::Writer};
+use sct_protocol::*;
+use simple_server::auth::{AsyncAccess, HeaderCredential, RepeatedHeaders, SchemeCase};
+use simple_server::extract::RejectionResponse;
+use simple_server::web::{
     Json, Router,
     extract::Request,
     extract::{FromRequestParts, Path, Query, State},
@@ -8,10 +12,6 @@ use crate::web::{
     response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
 };
-use sct_core::{auth::Actor, backend::Registry, error::Error, lease::Writer};
-use sct_protocol::*;
-use simple_server::auth::{AsyncAccess, HeaderCredential, RepeatedHeaders, SchemeCase};
-use simple_server::extract::RejectionResponse;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -41,7 +41,7 @@ impl simple_server::extract::IntoRejectionResponse for ApiError {
             StatusCode::from_u16(self.0.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let body = ErrorResponse::new(request_id.parse().unwrap(), self.0.clone());
         let retry = matches!(body.retry, RetryGuidance::After { .. });
-        let mut response = crate::web::http::Response::new(
+        let mut response = simple_server::web::http::Response::new(
             serde_json::to_vec(&body).expect("protocol error serializes"),
         );
         *response.status_mut() = status;
@@ -123,9 +123,9 @@ impl FromRequestParts<App> for Auth {
             cookie(&parts.headers, session_name(state)).ok_or(ApiError(ErrorCode::Unauthorized))?;
         let mutation = !matches!(
             parts.method,
-            crate::web::http::Method::GET
-                | crate::web::http::Method::HEAD
-                | crate::web::http::Method::OPTIONS
+            simple_server::web::http::Method::GET
+                | simple_server::web::http::Method::HEAD
+                | simple_server::web::http::Method::OPTIONS
         );
         let csrf = if mutation {
             let origin = parts
@@ -147,7 +147,7 @@ impl FromRequestParts<App> for Auth {
         };
         let route = parts
             .extensions
-            .get::<crate::web::extract::MatchedPath>()
+            .get::<simple_server::web::extract::MatchedPath>()
             .map(|path| path.as_str())
             .unwrap_or(parts.uri.path());
         let actor = authenticate(AuthContext {
@@ -269,7 +269,7 @@ pub fn routes(state: App) -> Router {
         .route("/api/v1/admin/allocations", get(list_allocations))
         .route(
             "/api/v1/admin/roots/{root}/policy-constraints",
-            crate::web::routing::patch(policy_constraints),
+            simple_server::web::routing::patch(policy_constraints),
         )
         .route("/api/v1/admin/pools/{pool}", get(pool))
         .route("/api/v1/admin/allocations/{allocation}", get(allocation))
@@ -284,14 +284,7 @@ pub fn routes(state: App) -> Router {
         .merge(crate::inspection_api::routes())
         .merge(crate::maintenance_api::routes())
         .merge(crate::checkpoint_api::routes())
-        .layer(middleware::from_fn(
-            |mut request: Request, next: Next| async move {
-                request
-                    .extensions_mut()
-                    .insert(simple_server::engine_web::extract::BodyLimit(65536));
-                next.run(request).await
-            },
-        ))
+        .layer(simple_server::body_limit::BodyLimit::max(65536))
         .layer(middleware::from_fn(response_headers))
         .with_state(state)
 }
@@ -742,23 +735,10 @@ async fn policy_constraints(
 }
 
 #[cfg(test)]
-fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(
-        simple_server::runtime::Runtime::try_current()
-            .expect("test engine")
-            .scope(future),
-    )
-}
-
-#[cfg(test)]
 mod rejection_contract {
     use super::*;
 
-    #[simple_server::test(host_runtime = true)]
+    #[tokio::test]
     async fn protocol_errors_preserve_metadata_and_exact_json_for_rejections_and_handlers() {
         for code in [ErrorCode::Unauthorized, ErrorCode::RateLimited] {
             for extraction in [false, true] {
@@ -796,7 +776,7 @@ mod rejection_contract {
 mod response_header_tests {
     use super::*;
 
-    #[simple_server::test(host_runtime = true)]
+    #[tokio::test]
     async fn response_policy_preserves_success_and_normalizes_early_errors_without_storage() {
         let router = Router::new()
             .route(
@@ -814,12 +794,14 @@ mod response_header_tests {
             )
             .route("/error", get(|| async { StatusCode::BAD_REQUEST }))
             .layer(middleware::from_fn(response_headers));
-        let listener = crate::web::bind("127.0.0.1:0").await.unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
-        let stop = simple_server::engine_lifecycle::Shutdown::new();
+        let stop = simple_server::lifecycle::Shutdown::new();
         let stopped = stop.clone();
-        let server = super::sct_spawn(async move {
-            crate::web::serve(listener, router, stopped).await.unwrap();
+        let server = tokio::spawn(async move {
+            simple_server::web::serve(listener, router, stopped)
+                .await
+                .unwrap();
         });
         let client = reqwest::Client::new();
         for (method, path, status) in [

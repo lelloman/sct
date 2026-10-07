@@ -65,7 +65,7 @@ impl Config {
         let mut config: Self = toml::from_str(input)
             .map_err(|_| "invalid TOML configuration: check documented fields and value types")?;
         config.validate()?;
-        config.public_url = url::Url::parse(&config.public_url)
+        config.public_url = reqwest::Url::parse(&config.public_url)
             .map_err(|_| "invalid public URL")?
             .origin()
             .ascii_serialization();
@@ -73,7 +73,7 @@ impl Config {
     }
     pub fn validate(&self) -> Result<(), &'static str> {
         validate_url(&self.public_url, self.development)?;
-        if url::Url::parse(&self.public_url)
+        if reqwest::Url::parse(&self.public_url)
             .map_err(|_| "invalid public URL")?
             .path()
             != "/"
@@ -152,7 +152,7 @@ impl Config {
             config.public_url = url;
         }
         config.validate()?;
-        config.public_url = url::Url::parse(&config.public_url)
+        config.public_url = reqwest::Url::parse(&config.public_url)
             .map_err(|_| "invalid public URL")?
             .origin()
             .ascii_serialization();
@@ -160,7 +160,7 @@ impl Config {
     }
 }
 fn validate_url(value: &str, development: bool) -> Result<(), &'static str> {
-    let url = url::Url::parse(value).map_err(|_| "invalid public or issuer URL")?;
+    let url = reqwest::Url::parse(value).map_err(|_| "invalid public or issuer URL")?;
     let local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
     if (url.scheme() != "https" && !(development && local && url.scheme() == "http"))
         || url.host_str().is_none()

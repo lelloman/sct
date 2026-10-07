@@ -1,8 +1,8 @@
 //! Asynchronous, provider-independent immutable object operations.
 use crate::error::{Error, Result, require};
 use sct_protocol::{CHUNK_MAX, ChunkDigest, ErrorCode, Revision, RootId, digest};
-use simple_server::io::{AsyncRead, AsyncReadExt};
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 pub type Reader = Pin<Box<dyn AsyncRead + Send + Unpin>>;
 pub type IoFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -67,7 +67,7 @@ pub async fn verified(mut body: Reader, key: &ObjectKey, length: u64) -> Result<
     Ok(bytes)
 }
 pub fn reader(bytes: Vec<u8>) -> Reader {
-    Box::pin(simple_server::io::Cursor::new(bytes))
+    Box::pin(std::io::Cursor::new(bytes))
 }
 
 /// Deterministic failure injection. Production configuration never registers this.
@@ -84,8 +84,8 @@ pub enum Fault {
 }
 #[derive(Default)]
 pub struct MemoryStore {
-    objects: simple_server::sync::Mutex<BTreeMap<ObjectKey, Vec<u8>>>,
-    fault: simple_server::sync::Mutex<Fault>,
+    objects: tokio::sync::Mutex<BTreeMap<ObjectKey, Vec<u8>>>,
+    fault: tokio::sync::Mutex<Fault>,
 }
 impl MemoryStore {
     pub async fn fault(&self, fault: Fault) {
@@ -96,7 +96,7 @@ impl MemoryStore {
         match f {
             Fault::Offline => Err(Error(ErrorCode::DestinationUnavailable)),
             Fault::Delay(d) => {
-                simple_server::time::sleep(d).await;
+                tokio::time::sleep(d).await;
                 Ok(Fault::None)
             }
             _ => Ok(f),
@@ -224,7 +224,7 @@ pub(crate) mod tests {
         );
         store.delete(&next).await.unwrap();
     }
-    #[simple_server::test(host_runtime = true)]
+    #[tokio::test]
     async fn faults_do_not_turn_stat_into_verification() {
         let store = MemoryStore::default();
         conformance(&store).await;

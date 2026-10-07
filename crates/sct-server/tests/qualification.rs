@@ -1,11 +1,10 @@
 //! Destructive qualification against disposable services only. Never normal CI fixtures.
-use simple_server::database::postgres as db;
 #[path = "../../sct-core/tests/support/mod.rs"]
 mod support;
-use db::PgPool;
 use sct_client::{Client, UploadJob, protocol::*};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use sqlx::PgPool;
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
@@ -52,7 +51,7 @@ impl Fixture {
             .principal_id()
             .to_owned();
         w.release().await.unwrap();
-        let schema: String = db::query_scalar("SELECT current_schema()")
+        let schema: String = sqlx::query_scalar("SELECT current_schema()")
             .fetch_one(&db)
             .await
             .unwrap();
@@ -148,7 +147,7 @@ impl Fixture {
         child.0.kill().unwrap();
         child.0.wait().unwrap();
         // Only this isolated schema; accelerate the lease wait, not work-state recovery.
-        db::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
+        sqlx::query("UPDATE server_lease SET expires_at=clock_timestamp()-interval '1 second'")
             .execute(&self.db)
             .await
             .unwrap();
@@ -358,7 +357,7 @@ async fn mode(value: &str) -> u64 {
     state["accepted"].as_u64().unwrap()
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "destructive qualification; scripts/qualify"]
 async fn qualification_crash_matrix_preserves_acknowledged_history() {
     let mut f = Fixture::new().await;
@@ -414,7 +413,7 @@ async fn qualification_crash_matrix_preserves_acknowledged_history() {
                 let c = f.client.clone();
                 let r = root.id.clone();
                 let u = upload.clone();
-                Some(sct_spawn(async move { c.commit_upload(&r, &u).await }))
+                Some(tokio::spawn(async move { c.commit_upload(&r, &u).await }))
             } else {
                 None
             };
@@ -485,7 +484,7 @@ async fn qualification_crash_matrix_preserves_acknowledged_history() {
     }
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "network fault qualification; scripts/qualify"]
 async fn qualification_real_s3_fallback_and_failed_writes() {
     mode("normal").await;
@@ -548,7 +547,7 @@ async fn qualification_real_s3_fallback_and_failed_writes() {
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "large payload and SQLite qualification; scripts/qualify"]
 async fn qualification_streaming_sqlite_reuse_and_disk_exhaustion() {
     mode("normal").await;
@@ -567,7 +566,7 @@ async fn qualification_streaming_sqlite_reuse_and_disk_exhaustion() {
     let peak = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let sampled_peak = peak.clone();
     let pid = f.process.as_ref().unwrap().0.id();
-    let sampler = sct_spawn(async move {
+    let sampler = tokio::spawn(async move {
         loop {
             if let Ok(status) = std::fs::read_to_string(format!("/proc/{pid}/status"))
                 && let Some(kib) = status
@@ -590,14 +589,14 @@ async fn qualification_streaming_sqlite_reuse_and_disk_exhaustion() {
         peak.load(std::sync::atomic::Ordering::Relaxed)
     );
     sampler.abort();
-    let copies: i64 = db::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
+    let copies: i64 = sqlx::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
         .bind(root.id.as_str())
         .fetch_one(&f.db)
         .await
         .unwrap();
     let (repeat, _) = f.job(&root.id, &path, "large.bin").await;
     f.client.upload(&root.id, &repeat).await.unwrap();
-    let after: i64 = db::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
         .bind(root.id.as_str())
         .fetch_one(&f.db)
         .await
@@ -706,7 +705,7 @@ async fn qualification_streaming_sqlite_reuse_and_disk_exhaustion() {
         drop(fill);
         (filler, filled)
     }
-    let before: i64 = db::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
+    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
         .bind(r.id.as_str())
         .fetch_one(&f.db)
         .await
@@ -721,7 +720,7 @@ async fn qualification_streaming_sqlite_reuse_and_disk_exhaustion() {
         matches!(result,Err(sct_client::Error::Server(ref e)) if e.code==ErrorCode::DestinationCapacity),
         "wrong disk-full failure: {result:?}"
     );
-    let after: i64 = db::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM object_copies WHERE root_id=$1")
         .bind(r.id.as_str())
         .fetch_one(&f.db)
         .await
@@ -775,7 +774,7 @@ async fn qualification_streaming_sqlite_reuse_and_disk_exhaustion() {
     );
 }
 
-#[simple_server::test(host_runtime = true)]
+#[tokio::test]
 #[ignore = "concurrent retention qualification; scripts/qualify"]
 async fn qualification_concurrent_roots_and_readers_remain_isolated() {
     use futures_util::{StreamExt, stream};
@@ -855,9 +854,9 @@ async fn qualification_concurrent_roots_and_readers_remain_isolated() {
                 ((round + 1) as usize).min(3)
             );
         }
-        let invalid:i64=db::query_scalar("SELECT count(*) FROM allocations WHERE occupied<0 OR reserved<0 OR pending_cleanup<0 OR pending_cleanup>occupied OR occupied+reserved>capacity").fetch_one(&f.db).await.unwrap();
+        let invalid:i64=sqlx::query_scalar("SELECT count(*) FROM allocations WHERE occupied<0 OR reserved<0 OR pending_cleanup<0 OR pending_cleanup>occupied OR occupied+reserved>capacity").fetch_one(&f.db).await.unwrap();
         assert_eq!(invalid, 0);
-        let mismatches:i64=db::query_scalar("SELECT count(*) FROM allocations a WHERE a.occupied<>(SELECT COALESCE(sum(c.bytes),0) FROM object_copies c WHERE c.allocation_id=a.id AND c.state<>'deleted')").fetch_one(&f.db).await.unwrap();
+        let mismatches:i64=sqlx::query_scalar("SELECT count(*) FROM allocations a WHERE a.occupied<>(SELECT COALESCE(sum(c.bytes),0) FROM object_copies c WHERE c.allocation_id=a.id AND c.state<>'deleted')").fetch_one(&f.db).await.unwrap();
         assert_eq!(
             mismatches, 0,
             "physical copy charges do not match occupied allocations"
@@ -866,16 +865,4 @@ async fn qualification_concurrent_roots_and_readers_remain_isolated() {
             "QUALIFY concurrency round={round} roots=8 mirrored_commits=8 restart_verified=true cross_root_reads_rejected=true"
         );
     }
-}
-
-fn sct_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-where
-    F: std::future::Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    tokio::spawn(
-        simple_server::runtime::Runtime::try_current()
-            .expect("test engine")
-            .scope(future),
-    )
 }

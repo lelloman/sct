@@ -9,8 +9,8 @@ use hmac::{Hmac, Mac};
 use sct_protocol::{AdapterDocumentation, ErrorCode, ObservedHealth, digest};
 use serde::Deserialize;
 use sha2::Sha256;
-use simple_server::io::AsyncReadExt;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use tokio::io::AsyncReadExt;
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Settings {
@@ -25,15 +25,15 @@ struct Settings {
 pub struct S3Adapter;
 pub struct S3Store {
     settings: Settings,
-    client: simple_server::client::Client,
+    client: reqwest::Client,
     access: String,
     secret: String,
     token: Option<String>,
-    checked: simple_server::sync::OnceCell<()>,
+    checked: tokio::sync::OnceCell<()>,
 }
 fn settings(value: &serde_json::Value) -> Result<Settings> {
     let mut s: Settings = serde_json::from_value(value.clone())?;
-    let url = url::Url::parse(&s.endpoint).map_err(|_| Error(ErrorCode::InvalidRequest))?;
+    let url = reqwest::Url::parse(&s.endpoint).map_err(|_| Error(ErrorCode::InvalidRequest))?;
     require(
         url.username().is_empty()
             && url.password().is_none()
@@ -73,8 +73,8 @@ impl S3Store {
         let access = env(&s.access_key_env)?;
         let secret = env(&s.secret_key_env)?;
         let token = s.session_token_env.as_deref().map(env).transpose()?;
-        let client = simple_server::client::Client::builder()
-            .no_redirect()
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(30))
             .timeout(Duration::from_secs(120))
@@ -86,29 +86,29 @@ impl S3Store {
             access,
             secret,
             token,
-            checked: simple_server::sync::OnceCell::new(),
+            checked: tokio::sync::OnceCell::new(),
         })
     }
     async fn request(
         &self,
-        method: simple_server::client::Method,
+        method: reqwest::Method,
         key: Option<&ObjectKey>,
         query: &str,
         body: Vec<u8>,
         conditional: bool,
-    ) -> Result<simple_server::client::Response> {
+    ) -> Result<reqwest::Response> {
         self.request_using(&self.client, method, key, query, body, conditional)
             .await
     }
     async fn request_using(
         &self,
-        client: &simple_server::client::Client,
-        method: simple_server::client::Method,
+        client: &reqwest::Client,
+        method: reqwest::Method,
         key: Option<&ObjectKey>,
         query: &str,
         body: Vec<u8>,
         conditional: bool,
-    ) -> Result<simple_server::client::Response> {
+    ) -> Result<reqwest::Response> {
         let path = match key {
             Some(k) => format!("/{}/{}", self.settings.bucket, k.path()),
             None => format!("/{}", self.settings.bucket),
@@ -123,7 +123,7 @@ impl S3Store {
                 format!("?{query}")
             }
         );
-        let parsed = url::Url::parse(&url).map_err(|_| Error(ErrorCode::InvalidRequest))?;
+        let parsed = reqwest::Url::parse(&url).map_err(|_| Error(ErrorCode::InvalidRequest))?;
         let host = match parsed.port() {
             Some(p) => format!("{}:{p}", parsed.host_str().unwrap()),
             None => parsed.host_str().unwrap().into(),
@@ -179,13 +179,7 @@ impl S3Store {
         self.checked
             .get_or_try_init(|| async {
                 let r = self
-                    .request(
-                        simple_server::client::Method::GET,
-                        None,
-                        "versioning=",
-                        vec![],
-                        false,
-                    )
+                    .request(reqwest::Method::GET, None, "versioning=", vec![], false)
                     .await?;
                 require(r.status().is_success(), ErrorCode::DestinationUnavailable)?;
                 let xml = small_body(r).await?;
@@ -198,13 +192,7 @@ impl S3Store {
                     .map_err(|_| Error(ErrorCode::DestinationUnavailable))?;
                 require(v.status.is_none(), ErrorCode::UnsupportedOperation)?;
                 let r = self
-                    .request(
-                        simple_server::client::Method::GET,
-                        None,
-                        "object-lock=",
-                        vec![],
-                        false,
-                    )
+                    .request(reqwest::Method::GET, None, "object-lock=", vec![], false)
                     .await?;
                 let status = r.status();
                 let xml = small_body(r).await?;
@@ -220,7 +208,7 @@ impl S3Store {
                             || e.code == "ObjectLockConfigurationNotFound"
                     });
                 require(
-                    status == simple_server::client::StatusCode::NOT_FOUND && absent,
+                    status == reqwest::StatusCode::NOT_FOUND && absent,
                     ErrorCode::UnsupportedOperation,
                 )?;
                 Ok(())
@@ -234,10 +222,10 @@ fn hmac(key: &[u8], bytes: &[u8]) -> Vec<u8> {
     h.update(bytes);
     h.finalize().into_bytes().to_vec()
 }
-async fn small_body(response: simple_server::client::Response) -> Result<String> {
-    let mut reader = Box::pin(response.bytes_stream().map_err(std::io::Error::other))
-        .into_async_read()
-        .take(65537);
+async fn small_body(response: reqwest::Response) -> Result<String> {
+    let mut reader =
+        tokio_util::io::StreamReader::new(response.bytes_stream().map_err(std::io::Error::other))
+            .take(65537);
     let mut bytes = Vec::new();
     reader
         .read_to_end(&mut bytes)
@@ -267,17 +255,10 @@ impl ObjectStore for S3Store {
             self.bucket().await?;
             let bytes = verified(body, key, length).await?;
             let r = self
-                .request(
-                    simple_server::client::Method::PUT,
-                    Some(key),
-                    "",
-                    bytes,
-                    true,
-                )
+                .request(reqwest::Method::PUT, Some(key), "", bytes, true)
                 .await?;
             require(
-                r.status().is_success()
-                    || r.status() == simple_server::client::StatusCode::PRECONDITION_FAILED,
+                r.status().is_success() || r.status() == reqwest::StatusCode::PRECONDITION_FAILED,
                 ErrorCode::DestinationUnavailable,
             )?;
             verified(self.read(key).await?, key, length).await?;
@@ -288,23 +269,15 @@ impl ObjectStore for S3Store {
         Box::pin(async move {
             self.bucket().await?;
             let r = self
-                .request(
-                    simple_server::client::Method::GET,
-                    Some(key),
-                    "",
-                    vec![],
-                    false,
-                )
+                .request(reqwest::Method::GET, Some(key), "", vec![], false)
                 .await?;
-            if r.status() == simple_server::client::StatusCode::NOT_FOUND {
+            if r.status() == reqwest::StatusCode::NOT_FOUND {
                 return Err(Error(ErrorCode::NotFound));
             }
             require(r.status().is_success(), ErrorCode::DestinationUnavailable)?;
-            Ok(
-                Box::pin(
-                    Box::pin(r.bytes_stream().map_err(std::io::Error::other)).into_async_read(),
-                ) as Reader,
-            )
+            Ok(Box::pin(tokio_util::io::StreamReader::new(
+                r.bytes_stream().map_err(std::io::Error::other),
+            )) as Reader)
         })
     }
     fn read_with_policy<'a>(
@@ -315,43 +288,30 @@ impl ObjectStore for S3Store {
         Box::pin(async move {
             self.bucket().await?;
             // No fixed body timeout: the caller enforces idle/progress/deadline budgets.
-            let client = simple_server::client::Client::builder()
-                .no_redirect()
+            let client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_millis(policy.connection_timeout_ms.get()))
                 .build()
                 .map_err(|_| Error(ErrorCode::InternalError))?;
             let response = self
-                .request_using(
-                    &client,
-                    simple_server::client::Method::GET,
-                    Some(key),
-                    "",
-                    vec![],
-                    false,
-                )
+                .request_using(&client, reqwest::Method::GET, Some(key), "", vec![], false)
                 .await?;
             require(
                 response.status().is_success(),
                 ErrorCode::DestinationUnavailable,
             )?;
-            Ok(Box::pin(
-                Box::pin(response.bytes_stream().map_err(std::io::Error::other)).into_async_read(),
-            ) as Reader)
+            Ok(Box::pin(tokio_util::io::StreamReader::new(
+                response.bytes_stream().map_err(std::io::Error::other),
+            )) as Reader)
         })
     }
     fn stat<'a>(&'a self, key: &'a ObjectKey) -> IoFuture<'a, Option<u64>> {
         Box::pin(async move {
             self.bucket().await?;
             let r = self
-                .request(
-                    simple_server::client::Method::HEAD,
-                    Some(key),
-                    "",
-                    vec![],
-                    false,
-                )
+                .request(reqwest::Method::HEAD, Some(key), "", vec![], false)
                 .await?;
-            if r.status() == simple_server::client::StatusCode::NOT_FOUND {
+            if r.status() == reqwest::StatusCode::NOT_FOUND {
                 return Ok(None);
             }
             require(r.status().is_success(), ErrorCode::DestinationUnavailable)?;
@@ -370,13 +330,7 @@ impl ObjectStore for S3Store {
             // An empty immutable-key tombstone is a physical write fence. Unlike
             // DELETE, it prevents an older conditional PUT finishing afterward.
             let r = self
-                .request(
-                    simple_server::client::Method::PUT,
-                    Some(key),
-                    "",
-                    vec![],
-                    false,
-                )
+                .request(reqwest::Method::PUT, Some(key), "", vec![], false)
                 .await?;
             require(r.status().is_success(), ErrorCode::DestinationUnavailable)?;
             Ok(DeleteOutcome::Confirmed)
@@ -392,27 +346,21 @@ impl ObjectStore for S3Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[simple_server::test(host_runtime = true)]
+    #[tokio::test]
     #[ignore = "requires disposable S3-compatible service"]
     async fn real_s3_conformance() {
         let endpoint = std::env::var("SCT_TEST_S3_ENDPOINT").expect("S3 endpoint required");
         let settings = serde_json::json!({"endpoint":endpoint,"bucket":"sct-test","region":"us-east-1","access_key_env":"SCT_TEST_S3_ACCESS","secret_key_env":"SCT_TEST_S3_SECRET"});
         let store = S3Store::from_settings(&settings).unwrap();
         let response = store
-            .request(simple_server::client::Method::PUT, None, "", vec![], false)
+            .request(reqwest::Method::PUT, None, "", vec![], false)
             .await
             .unwrap();
         assert!(response.status().is_success() || response.status().as_u16() == 409);
         crate::payload::tests::conformance(&store).await;
         let key = crate::payload::tests::key(b"good", "corrupted");
         store
-            .request(
-                simple_server::client::Method::PUT,
-                Some(&key),
-                "",
-                b"bad".to_vec(),
-                false,
-            )
+            .request(reqwest::Method::PUT, Some(&key), "", b"bad".to_vec(), false)
             .await
             .unwrap();
         assert!(
@@ -429,7 +377,7 @@ mod tests {
         let versioned = S3Store::from_settings(&versioned).unwrap();
         assert!(
             versioned
-                .request(simple_server::client::Method::PUT, None, "", vec![], false)
+                .request(reqwest::Method::PUT, None, "", vec![], false)
                 .await
                 .unwrap()
                 .status()
@@ -438,13 +386,7 @@ mod tests {
         let xml=br#"<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Status>Enabled</Status></VersioningConfiguration>"#.to_vec();
         assert!(
             versioned
-                .request(
-                    simple_server::client::Method::PUT,
-                    None,
-                    "versioning=",
-                    xml,
-                    false
-                )
+                .request(reqwest::Method::PUT, None, "versioning=", xml, false)
                 .await
                 .unwrap()
                 .status()
